@@ -1,12 +1,34 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Mail, Lock, AlertCircle, ArrowRight, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { 
+  Mail, 
+  Lock, 
+  AlertCircle, 
+  ArrowRight, 
+  ShieldCheck, 
+  CheckCircle2, 
+  Copy, 
+  Check, 
+  ExternalLink, 
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  Globe
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { NexoraLogo } from '../../components/ui/NexoraLogo';
 import { AcademicYear } from '../../types';
 
+interface ErrorDetails {
+  message: string;
+  code?: string;
+  isDomainError?: boolean;
+  hostname?: string;
+  projectId?: string;
+}
+
 export const LoginPage: React.FC = () => {
-  const { loginWithGoogle, loginWithEmail, user, updateProfile } = useAuth();
+  const { loginWithGoogle, loginWithEmail, updateProfile } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -17,7 +39,9 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<ErrorDetails | null>(null);
+  const [copiedHostname, setCopiedHostname] = useState(false);
+  const [showAdminGuide, setShowAdminGuide] = useState(false);
 
   // First-time Google profile completion modal state
   const [showProfileCompleteModal, setShowProfileCompleteModal] = useState(false);
@@ -34,14 +58,17 @@ export const LoginPage: React.FC = () => {
   // Email/Password login
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    setErrorDetails(null);
     setSubmitting(true);
 
     try {
       await loginWithEmail(email.trim(), password);
       navigate(redirectPath);
     } catch (err: any) {
-      setError(err.message || 'Invalid credentials. Please verify your email and password.');
+      setErrorDetails({
+        message: err.message || 'Invalid credentials. Please verify your email and password.',
+        code: err?.code
+      });
     } finally {
       setSubmitting(false);
     }
@@ -49,7 +76,7 @@ export const LoginPage: React.FC = () => {
 
   // Google Sign-In
   const handleGoogleSignIn = async () => {
-    setError(null);
+    setErrorDetails(null);
     setGoogleLoading(true);
 
     try {
@@ -61,17 +88,38 @@ export const LoginPage: React.FC = () => {
         navigate(redirectPath);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to sign in with Google.');
+      const isDomain = err?.isDomainError || err?.code === 'auth/unauthorized-domain';
+      const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+      
+      setErrorDetails({
+        message: err.message || 'Failed to sign in with Google.',
+        code: err?.code,
+        isDomainError: isDomain,
+        hostname: err?.hostname || currentHost,
+        projectId: err?.projectId || 'gen-lang-client-0089073748'
+      });
+      if (isDomain) {
+        setShowAdminGuide(true);
+      }
     } finally {
       setGoogleLoading(false);
     }
+  };
+
+  const handleCopyHostname = (host: string) => {
+    if (!host) return;
+    navigator.clipboard.writeText(host);
+    setCopiedHostname(true);
+    setTimeout(() => setCopiedHostname(false), 3000);
   };
 
   // Complete academic profile
   const handleSaveAcademicProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!academicData.enrollment_number.trim()) {
-      setError('Enrollment number is required to participate in BVM & collegiate events.');
+      setErrorDetails({
+        message: 'Enrollment number is required to participate in BVM & collegiate events.'
+      });
       return;
     }
     setSavingProfile(true);
@@ -88,11 +136,16 @@ export const LoginPage: React.FC = () => {
       setShowProfileCompleteModal(false);
       navigate(redirectPath);
     } catch (err: any) {
-      setError(err.message || 'Failed to save academic profile.');
+      setErrorDetails({
+        message: err.message || 'Failed to save academic profile.'
+      });
     } finally {
       setSavingProfile(false);
     }
   };
+
+  const activeHostname = errorDetails?.hostname || (typeof window !== 'undefined' ? window.location.hostname : '');
+  const activeProjectId = errorDetails?.projectId || 'gen-lang-client-0089073748';
 
   return (
     <div className="min-h-[85vh] flex items-center justify-center py-16 px-4 sm:px-6 lg:px-8">
@@ -114,10 +167,96 @@ export const LoginPage: React.FC = () => {
         {/* Glassmorphic Auth Card */}
         <div className="p-8 rounded-2xl bg-[#11101B]/85 backdrop-blur-xl border border-violet-500/25 shadow-[0_0_50px_-10px_rgba(139,92,246,0.25)] space-y-6">
           
-          {error && (
-            <div className="p-3.5 bg-red-950/50 border border-red-500/40 rounded-xl text-xs text-red-200 flex items-start gap-2.5">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-              <span>{error}</span>
+          {/* Error Message & Unauthorized Domain Diagnostic Panel */}
+          {errorDetails && (
+            <div className="space-y-3">
+              <div className="p-3.5 bg-red-950/60 border border-red-500/40 rounded-xl text-xs text-red-200 flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <div className="flex-1 space-y-2">
+                  <p className="leading-relaxed">{errorDetails.message}</p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleGoogleSignIn}
+                      disabled={googleLoading}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-900/50 hover:bg-red-800/60 border border-red-400/30 text-white rounded-lg text-[11px] font-medium transition-colors cursor-pointer"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${googleLoading ? 'animate-spin' : ''}`} />
+                      <span>Retry Google Sign-In</span>
+                    </button>
+                    {errorDetails.isDomainError && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminGuide(!showAdminGuide)}
+                        className="inline-flex items-center gap-1 text-[11px] text-violet-300 hover:text-white underline cursor-pointer ml-auto"
+                      >
+                        <span>{showAdminGuide ? 'Hide Setup Guide' : 'Domain Setup Guide'}</span>
+                        {showAdminGuide ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Step-by-Step Domain Authorization Guide (Appears when auth/unauthorized-domain occurs) */}
+              {errorDetails.isDomainError && showAdminGuide && (
+                <div className="p-4 bg-violet-950/50 border border-violet-500/30 rounded-xl space-y-3 text-xs">
+                  <div className="flex items-center gap-2 font-mono text-violet-300 font-semibold border-b border-violet-500/20 pb-2">
+                    <Globe className="w-4 h-4 text-violet-400 shrink-0" />
+                    <span>Authorize Domain in Firebase</span>
+                  </div>
+
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    Firebase Authentication requires this application&apos;s current hostname to be added to your project&apos;s list of authorized domains.
+                  </p>
+
+                  {/* Hostname Box with Copy Button */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-mono text-slate-400">Exact Hostname to Add:</span>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-[#08080D] border border-violet-500/25 font-mono text-violet-200 text-xs">
+                      <span className="truncate pr-2">{activeHostname}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyHostname(activeHostname)}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-violet-600/40 hover:bg-violet-600 text-white rounded text-[10px] shrink-0 transition-colors cursor-pointer"
+                      >
+                        {copiedHostname ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span>Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy Hostname</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Steps */}
+                  <div className="space-y-1.5 text-[11px] text-slate-300 pt-1">
+                    <div>1. Open <strong className="text-white">Firebase Console</strong> → Build → <strong className="text-white">Authentication</strong></div>
+                    <div>2. Click <strong className="text-white">Settings</strong> tab → <strong className="text-white">Authorized domains</strong></div>
+                    <div>3. Click <strong className="text-white">Add domain</strong>, paste the copied hostname, and Save.</div>
+                  </div>
+
+                  {/* Direct Link to Firebase Console */}
+                  <div className="pt-2 border-t border-violet-500/15 flex items-center justify-between">
+                    <span className="text-[10px] font-mono text-slate-400">Project: {activeProjectId}</span>
+                    <a
+                      href={`https://console.firebase.google.com/project/${activeProjectId}/authentication/settings`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-[11px] font-medium text-violet-300 hover:text-white underline cursor-pointer"
+                    >
+                      <span>Open Firebase Console</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

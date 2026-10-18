@@ -264,13 +264,38 @@ class NexoraDataService {
       this.notify();
       return profile;
     } catch (error: any) {
-      if (error?.code === 'auth/popup-closed-by-user') {
-        throw new Error('Google Sign-In was cancelled.');
+      console.error('[NEXORA AUTH DIAGNOSTIC]', {
+        code: error?.code,
+        message: error?.message,
+        hostname: typeof window !== 'undefined' ? window.location.hostname : '',
+        origin: typeof window !== 'undefined' ? window.location.origin : ''
+      });
+
+      const errObj: any = new Error();
+      errObj.code = error?.code || 'auth/unknown';
+      errObj.originalMessage = error?.message;
+      errObj.hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+      errObj.origin = typeof window !== 'undefined' ? window.location.origin : '';
+      errObj.projectId = 'gen-lang-client-0089073748';
+
+      if (error?.code === 'auth/unauthorized-domain') {
+        errObj.message = "Google Sign-In is temporarily unavailable because this website's authentication domain has not been authorized. Please contact the administrator.";
+        errObj.isDomainError = true;
+      } else if (error?.code === 'auth/popup-blocked') {
+        errObj.message = 'Google Sign-In popup was blocked by your browser. Please allow popups for this site and try again.';
+      } else if (error?.code === 'auth/popup-closed-by-user') {
+        errObj.message = 'Google Sign-In window was closed before completing authentication.';
+      } else if (error?.code === 'auth/network-request-failed') {
+        errObj.message = 'A network error occurred while connecting to Google Authentication. Please check your internet connection.';
+      } else if (error?.code === 'auth/operation-not-allowed') {
+        errObj.message = 'Google Sign-In is not enabled in Firebase Console. Please enable the Google provider under Authentication > Sign-in method.';
+      } else if (error?.code === 'auth/invalid-api-key') {
+        errObj.message = 'Invalid Firebase API key configuration. Please verify your project credentials.';
+      } else {
+        errObj.message = error?.message || 'Google Sign-In failed.';
       }
-      if (error?.code === 'auth/popup-blocked') {
-        throw new Error('Google Sign-In popup was blocked by your browser. Please allow popups for this site.');
-      }
-      throw new Error(error.message || 'Google Sign-In failed.');
+
+      throw errObj;
     }
   }
 
