@@ -1,0 +1,6 @@
+{
+  "name": "NEXORA - Student Technology & Innovation Community",
+  "description": "Beyond a Club. The Beginning of a New Tech Era at Birla Vishvakarma Mahavidyalaya (BVM). Student innovation platform for competitions, hackathons, cybersecurity challenges, and technology festivals.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

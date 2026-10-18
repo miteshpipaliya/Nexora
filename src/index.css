@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --color-nexora-bg: #08080D;
+  --color-nexora-surface: #11101B;
+  --color-nexora-card: #171426;
+  --color-nexora-card-hover: #1f1b33;
+  --color-nexora-purple: #8B5CF6;
+  --color-nexora-violet: #A78BFA;
+  --color-nexora-lavender: #C4B5FD;
+  --color-nexora-text: #F8FAFC;
+  --color-nexora-muted: #A1A1AA;
+  --color-nexora-border: rgba(139, 92, 246, 0.18);
+  --color-nexora-border-hover: rgba(167, 139, 250, 0.35);
+}
+
+@layer base {
+  body {
+    background-color: #08080D;
+    color: #F8FAFC;
+    font-family: var(--font-sans);
+  }
+
+  h1, h2, h3, h4, .font-heading {
+    font-family: var(--font-display);
+  }
+}
+
+/* Content Protection Discipline (Part 13) */
+.user-select-none,
+.brand-display,
+.hero-heading,
+.decorative-label,
+.card-decorative-title,
+.orbital-deco {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Allow selection explicitly on interactive & readable components */
+input, textarea, select, .selectable-content, pre, code, .prose-rules, .privacy-text {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+/* Subtle glassmorphism */
+.glass-panel {
+  background: rgba(23, 20, 38, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(139, 92, 246, 0.16);
+}
+
+.glass-panel-elevated {
+  background: rgba(23, 20, 38, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(167, 139, 250, 0.25);
+  box-shadow: 0 16px 40px -12px rgba(8, 8, 13, 0.8), 0 0 30px -10px rgba(139, 92, 246, 0.15);
+}
+
+/* Atmospheric cosmic glow */
+.glow-purple {
+  box-shadow: 0 0 50px -10px rgba(139, 92, 246, 0.25);
+}
+
+.glow-purple-sm {
+  box-shadow: 0 0 20px -5px rgba(139, 92, 246, 0.35);
+}
+
+/* Clean Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #08080D;
+}
+::-webkit-scrollbar-thumb {
+  background: #252238;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #393454;
+}
