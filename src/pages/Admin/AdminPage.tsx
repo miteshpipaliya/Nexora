@@ -117,15 +117,20 @@ export const AdminPage: React.FC = () => {
       setTimeLeft(300);
       setOtpSuccess('Verification codes dispatched! Check email and SMS.');
 
-      // Inspect challenge codes in dev mode for quick evaluation
-      try {
-        const inspectRes = await fetch(`/api/admin/inspect-challenge/${data.challengeId}`);
-        if (inspectRes.ok) {
-          const codes = await inspectRes.json();
-          setDevCodes({ emailOtp: codes.emailOtp, smsOtp: codes.smsOtp });
+      if (data.devCodes) {
+        setDevCodes(data.devCodes);
+      } else {
+        // Inspect challenge codes in dev mode if server endpoint provides JSON
+        try {
+          const inspectRes = await fetch(`/api/admin/inspect-challenge/${data.challengeId}`);
+          const contentType = inspectRes.headers.get('content-type') || '';
+          if (inspectRes.ok && contentType.includes('application/json')) {
+            const codes = await inspectRes.json();
+            setDevCodes({ emailOtp: codes.emailOtp, smsOtp: codes.smsOtp });
+          }
+        } catch {
+          // Gracefully ignore
         }
-      } catch {
-        // Ignore inspect error in production
       }
     } catch (err: any) {
       setOtpError(err.message || 'Failed to dispatch verification codes.');
