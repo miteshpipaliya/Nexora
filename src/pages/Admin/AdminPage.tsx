@@ -183,8 +183,14 @@ export const AdminPage: React.FC = () => {
     }
   };
 
-  // 1. Unauthorized Student Screen
-  if (!user || !isAdmin) {
+  // 1. Unauthorized Access Gate (Enforce founder email and admin role)
+  const isFounderAdmin = Boolean(
+    user && 
+    isAdmin && 
+    (user.email || '').toLowerCase().trim() === 'miteshpipaliya2202@gmail.com'
+  );
+
+  if (!user || !isFounderAdmin) {
     return (
       <div className="py-24 px-4 max-w-md mx-auto text-center space-y-6">
         <div className="w-16 h-16 rounded-2xl bg-red-950/60 border border-red-500/30 flex items-center justify-center mx-auto text-red-400 shadow-lg">

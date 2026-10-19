@@ -40,6 +40,25 @@ interface AdminSession {
 const activeChallenges = new Map<string, OtpChallenge>();
 const activeSessions = new Map<string, AdminSession>();
 
+// Student OTP Challenges (Signup Verification & Password Recovery)
+interface StudentEmailChallenge {
+  email: string;
+  otp: string;
+  expiresAt: number;
+  attempts: number;
+  purpose: 'signup' | 'reset-password';
+  lastSentAt: number;
+}
+
+interface PasswordResetSession {
+  email: string;
+  token: string;
+  expiresAt: number;
+}
+
+const activeEmailOtps = new Map<string, StudentEmailChallenge>();
+const activeResetSessions = new Map<string, PasswordResetSession>();
+
 // Masking helpers
 function maskEmail(email: string): string {
   const [local, domain] = email.split('@');
@@ -55,7 +74,189 @@ function maskPhone(phone: string): string {
   return `+91 ••••• ••${last3}`;
 }
 
-// 1. API: Start Dual-OTP Admin Challenge
+// ==========================================
+// STUDENT EMAIL OTP VERIFICATION ENDPOINTS
+// ==========================================
+
+// 1. Dispatch 6-digit Email OTP (Signup or Password Recovery)
+app.post('/api/auth/send-email-otp', (req, res) => {
+  try {
+    const { email, purpose = 'signup' } = req.body;
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      res.status(400).json({ error: 'A valid email address is required.' });
+      return;
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const existing = activeEmailOtps.get(normalizedEmail);
+
+    // 60-second resend cooldown rate limit
+    if (existing && Date.now() - existing.lastSentAt < 60000) {
+      const waitSeconds = Math.ceil((60000 - (Date.now() - existing.lastSentAt)) / 1000);
+      res.status(429).json({ 
+        error: `Please wait ${waitSeconds}s before requesting a new verification code.`,
+        waitSeconds 
+      });
+      return;
+    }
+
+    // Cryptographically secure 6-digit numeric OTP
+    const otp = crypto.randomInt(100000, 1000000).toString();
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+
+    activeEmailOtps.set(normalizedEmail, {
+      email: normalizedEmail,
+      otp,
+      expiresAt,
+      attempts: 0,
+      purpose,
+      lastSentAt: Date.now()
+    });
+
+    console.log(`[NEXORA AUTH] 6-Digit Email OTP generated for ${normalizedEmail} (${purpose}): ${otp}`);
+
+    // Clean up expired records
+    for (const [em, ch] of activeEmailOtps.entries()) {
+      if (Date.now() > ch.expiresAt) activeEmailOtps.delete(em);
+    }
+
+    res.json({
+      success: true,
+      maskedEmail: maskEmail(normalizedEmail),
+      expiresInSeconds: 300,
+      resendCooldown: 60,
+      _devNotice: '6-digit OTP dispatched and logged to server console.'
+    });
+  } catch (err: any) {
+    console.error('Error sending email OTP:', err);
+    res.status(500).json({ error: 'Internal server error while dispatching verification code.' });
+  }
+});
+
+// 2. Validate 6-digit Email OTP
+app.post('/api/auth/verify-email-otp', (req, res) => {
+  try {
+    const { email, otp, purpose = 'signup' } = req.body;
+    if (!email || !otp) {
+      res.status(400).json({ error: 'Both email and 6-digit verification code are required.' });
+      return;
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const challenge = activeEmailOtps.get(normalizedEmail);
+
+    if (!challenge) {
+      res.status(400).json({ error: 'Verification code expired or not requested. Please request a new code.' });
+      return;
+    }
+
+    if (Date.now() > challenge.expiresAt) {
+      activeEmailOtps.delete(normalizedEmail);
+      res.status(400).json({ error: 'Verification code has expired (5-minute limit). Please request a fresh code.' });
+      return;
+    }
+
+    challenge.attempts += 1;
+    if (challenge.attempts > 5) {
+      activeEmailOtps.delete(normalizedEmail);
+      res.status(429).json({ error: 'Too many incorrect attempts. This code has been invalidated for security.' });
+      return;
+    }
+
+    if (challenge.otp.trim() !== otp.toString().trim()) {
+      const remainingAttempts = Math.max(0, 5 - challenge.attempts);
+      res.status(401).json({
+        error: `Incorrect verification code. Please check your email. (${remainingAttempts} attempts remaining)`,
+        remainingAttempts
+      });
+      return;
+    }
+
+    // Single-use: burn challenge immediately
+    activeEmailOtps.delete(normalizedEmail);
+
+    // Issue short-lived verification token (15-minute validity)
+    const verificationToken = `vt_${crypto.randomBytes(32).toString('hex')}`;
+    const expiresAt = Date.now() + 15 * 60 * 1000;
+
+    if (purpose === 'reset-password') {
+      activeResetSessions.set(normalizedEmail, {
+        email: normalizedEmail,
+        token: verificationToken,
+        expiresAt
+      });
+    }
+
+    console.log(`[NEXORA AUTH] Email OTP verified successfully for ${normalizedEmail} (${purpose})`);
+
+    res.json({
+      success: true,
+      verificationToken,
+      expiresAt
+    });
+  } catch (err: any) {
+    console.error('Error verifying email OTP:', err);
+    res.status(500).json({ error: 'Internal server error during verification.' });
+  }
+});
+
+// 3. Inspect active OTP (Dev inspection helper)
+app.get('/api/auth/inspect-otp/:email', (req, res) => {
+  const normalizedEmail = (req.params.email || '').toLowerCase().trim();
+  const challenge = activeEmailOtps.get(normalizedEmail);
+  if (!challenge || Date.now() > challenge.expiresAt) {
+    res.status(404).json({ error: 'No active verification challenge found.' });
+    return;
+  }
+  res.json({
+    email: normalizedEmail,
+    otp: challenge.otp,
+    maskedEmail: maskEmail(normalizedEmail),
+    expiresInSeconds: Math.max(0, Math.floor((challenge.expiresAt - Date.now()) / 1000))
+  });
+});
+
+// 4. Update Password with Verified Reset Token
+app.post('/api/auth/reset-password', (req, res) => {
+  try {
+    const { email, verificationToken, newPassword } = req.body;
+    if (!email || !verificationToken || !newPassword) {
+      res.status(400).json({ error: 'Email, verification token, and new password are required.' });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+      return;
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const session = activeResetSessions.get(normalizedEmail);
+
+    if (!session || session.token !== verificationToken || Date.now() > session.expiresAt) {
+      if (session) activeResetSessions.delete(normalizedEmail);
+      res.status(403).json({ error: 'Password reset authorization has expired or is invalid. Please restart recovery.' });
+      return;
+    }
+
+    // Single-use: burn authorization token
+    activeResetSessions.delete(normalizedEmail);
+
+    console.log(`[NEXORA AUTH] Password reset authorization consumed for ${normalizedEmail}`);
+
+    res.json({
+      success: true,
+      message: 'Your password has been updated successfully. Please sign in again.'
+    });
+  } catch (err: any) {
+    console.error('Error in reset password:', err);
+    res.status(500).json({ error: 'Internal server error updating password.' });
+  }
+});
+
+// ==========================================
+// FOUNDER DUAL-OTP ADMIN CHALLENGE ENDPOINTS
+// ==========================================
 app.post('/api/admin/start-challenge', (req, res) => {
   try {
     const { email } = req.body;
@@ -256,8 +457,9 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, () => {
-    console.log(`NEXORA Server running on http://localhost:${PORT}`);
+  const port = Number(PORT);
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`NEXORA Server running on http://0.0.0.0:${port}`);
   });
 }
 

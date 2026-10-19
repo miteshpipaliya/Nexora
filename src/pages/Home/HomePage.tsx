@@ -126,8 +126,8 @@ export const HomePage: React.FC = () => {
           </div>
 
           {/* Right Column: Three.js Rotating Purple Orbital Sphere (Seamless blending into galaxy) */}
-          <div className="lg:col-span-5 relative flex items-center justify-center pointer-events-none">
-            <div className="relative w-full aspect-square max-w-[500px]">
+          <div className="lg:col-span-5 relative flex items-center justify-center pointer-events-none w-full">
+            <div className="relative w-full aspect-square max-w-[480px] lg:max-w-[540px] flex items-center justify-center overflow-visible">
               <CosmicHeroObject />
             </div>
           </div>

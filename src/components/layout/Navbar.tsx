@@ -31,8 +31,14 @@ export const Navbar: React.FC = () => {
     { label: 'Profile', path: '/profile' }
   ];
 
-  // Strictly enforce: Admin navigation visible ONLY when server-authorized admin
-  if (isAdmin) {
+  // Strictly enforce: Admin navigation visible ONLY when authenticated as founder account
+  const isFounderAdmin = Boolean(
+    user && 
+    isAdmin && 
+    (user.email || '').toLowerCase().trim() === 'miteshpipaliya2202@gmail.com'
+  );
+
+  if (isFounderAdmin) {
     navLinks.push({ label: 'Admin', path: '/admin' });
   }
 

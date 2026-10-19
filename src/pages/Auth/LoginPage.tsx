@@ -313,7 +313,7 @@ export const LoginPage: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="student@bvmengineering.ac.in"
+                  placeholder="Enter your email address"
                   className="w-full bg-[#08080D]/70 border border-violet-500/25 rounded-xl px-3.5 py-2.5 pl-10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 focus:ring-1 focus:ring-violet-400 transition-colors"
                 />
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3 pointer-events-none" />
@@ -415,18 +415,18 @@ export const LoginPage: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">Branch</label>
+                  <label className="block text-xs text-slate-300 mb-1">Branch / Discipline *</label>
                   <input
                     type="text"
                     required
                     value={academicData.branch}
                     onChange={(e) => setAcademicData({ ...academicData, branch: e.target.value })}
-                    placeholder="Information Technology"
+                    placeholder="Enter branch or discipline"
                     className="w-full bg-[#08080D] border border-violet-500/25 rounded-xl p-2.5 text-xs text-white"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">Academic Year</label>
+                  <label className="block text-xs text-slate-300 mb-1">Academic Year *</label>
                   <select
                     value={academicData.academic_year}
                     onChange={(e) => setAcademicData({ ...academicData, academic_year: e.target.value as AcademicYear })}
@@ -449,7 +449,7 @@ export const LoginPage: React.FC = () => {
                     required
                     value={academicData.enrollment_number}
                     onChange={(e) => setAcademicData({ ...academicData, enrollment_number: e.target.value })}
-                    placeholder="23IT401"
+                    placeholder="Enter enrollment number"
                     className="w-full bg-[#08080D] border border-violet-500/25 rounded-xl p-2.5 text-xs text-white"
                   />
                 </div>
@@ -459,19 +459,19 @@ export const LoginPage: React.FC = () => {
                     type="text"
                     value={academicData.division}
                     onChange={(e) => setAcademicData({ ...academicData, division: e.target.value })}
-                    placeholder="A / B"
+                    placeholder="Enter division"
                     className="w-full bg-[#08080D] border border-violet-500/25 rounded-xl p-2.5 text-xs text-white"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs text-slate-300 mb-1">Mobile Number (For WhatsApp / Event Updates)</label>
+                <label className="block text-xs text-slate-300 mb-1">Mobile Number (Optional)</label>
                 <input
                   type="tel"
                   value={academicData.phone_number}
                   onChange={(e) => setAcademicData({ ...academicData, phone_number: e.target.value })}
-                  placeholder="+91 9876543210"
+                  placeholder="Enter contact phone number"
                   className="w-full bg-[#08080D] border border-violet-500/25 rounded-xl p-2.5 text-xs text-white"
                 />
               </div>
