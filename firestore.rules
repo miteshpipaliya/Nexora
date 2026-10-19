@@ -36,6 +36,14 @@ service cloud.firestore {
       );
     }
 
+    // Protected Server-Side OTP Challenges and Reset Authorizations (Frontend Access Strictly Forbidden)
+    match /_otp_challenges/{challengeId} {
+      allow read, write: if false;
+    }
+    match /_reset_authorizations/{authId} {
+      allow read, write: if false;
+    }
+
     // Student Profiles
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();

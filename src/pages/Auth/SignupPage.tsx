@@ -59,40 +59,41 @@ export const SignupPage: React.FC = () => {
   const searchParams = new URLSearchParams(location.search);
   const redirectPath = searchParams.get('redirect') || '/profile';
 
-  // Wizard Step State
-  // Flow:
-  // 1: Name
-  // 2: Email
-  // 3: Password (skipped for Google)
-  // 4: Email OTP Verification (skipped for Google)
-  // 5: College
-  // 6: Branch
-  // 7: Academic Year
-  // 8: Enrollment Number
-  // 9: Division (Optional)
-  // 10: Phone Number (Optional)
-  // 11: Review & Submit
+  // Registration Sequence:
+  // Step 1: Email Address ("What's your email address?") -> Dispatches Brevo OTP
+  // Step 2: Email OTP Verification ("Verify Your Email" with 30s countdown)
+  // Step 3: Full Name ("What should we call you?")
+  // Step 4: Password ("Create your password", skipped for Google)
+  // Step 5: College ("Which college do you study at?")
+  // Step 6: Branch ("What's your field of study?")
+  // Step 7: Academic Year ("Which year are you studying in?")
+  // Step 8: Enrollment Number ("What's your enrollment number?")
+  // Step 9: Division ("What's your division?", Optional with Skip)
+  // Step 10: Phone Number ("Would you like to add a contact number?", Optional with Skip)
+  // Step 11: Review & Submit ("You're almost there!")
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [isGoogleAuth, setIsGoogleAuth] = useState<boolean>(false);
   const [googleUserUid, setGoogleUserUid] = useState<string | null>(null);
 
   // Form Fields (ZERO personal default values)
-  const [fullName, setFullName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
-  const [password, setPassword] = useState<string>('');
-  const [showPassword, setShowPassword] = useState<boolean>(false);
-
-  // OTP Verification State
+  const [verifiedEmail, setVerifiedEmail] = useState<string>('');
+  const [verificationToken, setVerificationToken] = useState<string | null>(null);
+  
+  // OTP Verification State (Strict 30-second window)
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [maskedEmail, setMaskedEmail] = useState<string>('');
   const [otpSending, setOtpSending] = useState<boolean>(false);
   const [otpVerifying, setOtpVerifying] = useState<boolean>(false);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [otpSuccess, setOtpSuccess] = useState<string | null>(null);
-  const [resendCooldown, setResendCooldown] = useState<number>(0);
-  const [devOtp, setDevOtp] = useState<string | null>(null);
-  const [verificationToken, setVerificationToken] = useState<string | null>(null);
+  const [countdownSeconds, setCountdownSeconds] = useState<number>(30);
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Profile Fields
+  const [fullName, setFullName] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
 
   // Academic Details
   const [college, setCollege] = useState<string>('');
@@ -114,7 +115,7 @@ export const SignupPage: React.FC = () => {
   const mainInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     setStepError(null);
-    if (currentStep !== 4) {
+    if (currentStep !== 2) {
       setTimeout(() => {
         mainInputRef.current?.focus();
       }, 100);
@@ -125,27 +126,36 @@ export const SignupPage: React.FC = () => {
     }
   }, [currentStep]);
 
-  // Resend countdown timer
+  // Strict 30-Second Countdown Timer for OTP Expiration & Resend Cooldown
   useEffect(() => {
-    if (resendCooldown <= 0) return;
+    if (currentStep !== 2 || countdownSeconds <= 0) return;
     const timer = setInterval(() => {
-      setResendCooldown((prev) => Math.max(0, prev - 1));
+      setCountdownSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
     }, 1000);
     return () => clearInterval(timer);
-  }, [resendCooldown]);
+  }, [currentStep, countdownSeconds]);
 
-  // If user is already logged in with an incomplete profile, resume from college
+  // Resume for Google users with incomplete profiles
   useEffect(() => {
     if (user && !user.is_profile_complete) {
       setIsGoogleAuth(true);
       setGoogleUserUid(user.id);
       if (user.full_name) setFullName(user.full_name);
-      if (user.email) setEmail(user.email);
+      if (user.email) {
+        setEmail(user.email);
+        setVerifiedEmail(user.email);
+      }
       setCurrentStep(5);
     }
   }, [user]);
 
-  // Handle Google Sign-In Onboarding
+  // Handle Google Sign-In Fast-Track
   const handleGoogleSignup = async () => {
     setStepError(null);
     setGoogleLoading(true);
@@ -155,14 +165,15 @@ export const SignupPage: React.FC = () => {
       setGoogleUserUid(loggedIn.id);
       setFullName(loggedIn.full_name || '');
       setEmail(loggedIn.email || '');
+      setVerifiedEmail(loggedIn.email || '');
 
       if (loggedIn.enrollment_number && loggedIn.branch && loggedIn.is_profile_complete) {
-        // Returning student with complete profile -> skip straight to redirect
+        // Returning student with completed profile
         navigate(redirectPath);
         return;
       }
 
-      // First-time or incomplete Google account -> proceed to academic onboarding
+      // First-time Google user -> proceed to academic details (Step 5)
       setCurrentStep(5);
     } catch (err: any) {
       setStepError(err.message || 'Failed to authenticate with Google.');
@@ -171,7 +182,7 @@ export const SignupPage: React.FC = () => {
     }
   };
 
-  // Dispatch Email OTP
+  // Dispatch Real Brevo Email OTP
   const triggerSendEmailOtp = async (targetEmail: string) => {
     setOtpError(null);
     setOtpSuccess(null);
@@ -179,23 +190,26 @@ export const SignupPage: React.FC = () => {
     try {
       const res = await sendEmailOtp(targetEmail, 'signup');
       setMaskedEmail(res.maskedEmail);
-      setResendCooldown(res.resendCooldown || 60);
-      setOtpSuccess('6-digit verification code dispatched to your email.');
-      if (res.devOtp) {
-        setDevOtp(res.devOtp);
-      }
+      setCountdownSeconds(30);
+      setOtpDigits(['', '', '', '', '', '']);
+      setOtpSuccess('Verification code sent to your email.');
     } catch (err: any) {
-      setOtpError(err.message || 'Could not send verification code. Please check your email.');
+      setOtpError(err.message || 'Could not dispatch verification email. Please check your email address.');
     } finally {
       setOtpSending(false);
     }
   };
 
-  // Verify Email OTP
+  // Verify Email OTP on Backend
   const handleVerifyOtp = async () => {
     const fullOtp = otpDigits.join('');
     if (fullOtp.length !== 6) {
       setOtpError('Please enter all 6 digits.');
+      return;
+    }
+
+    if (countdownSeconds <= 0) {
+      setOtpError('This verification code has expired (30-second limit). Please request a new code.');
       return;
     }
 
@@ -204,10 +218,11 @@ export const SignupPage: React.FC = () => {
     try {
       const res = await verifyEmailOtp(email.trim().toLowerCase(), fullOtp, 'signup');
       setVerificationToken(res.verificationToken);
+      setVerifiedEmail(email.trim().toLowerCase());
       setOtpSuccess('Email verified successfully!');
       setTimeout(() => {
-        setCurrentStep(5); // Advance to College
-      }, 500);
+        setCurrentStep(3); // Advance to Full Name
+      }, 400);
     } catch (err: any) {
       setOtpError(err.message || 'Incorrect verification code. Please try again.');
     } finally {
@@ -225,13 +240,11 @@ export const SignupPage: React.FC = () => {
       return;
     }
 
-    // Single digit typed
     const digit = cleanVal.slice(-1);
     const newDigits = [...otpDigits];
     newDigits[index] = digit;
     setOtpDigits(newDigits);
 
-    // Auto-advance
     if (index < 5) {
       otpInputRefs.current[index + 1]?.focus();
     }
@@ -264,42 +277,42 @@ export const SignupPage: React.FC = () => {
   const handleNext = async () => {
     setStepError(null);
 
-    // Step 1: Full Name
+    // Step 1: Email Address
     if (currentStep === 1) {
-      if (!fullName.trim() || fullName.trim().length < 2) {
-        setStepError('Please enter your full name (minimum 2 characters).');
-        return;
-      }
-      setCurrentStep(2);
-      return;
-    }
-
-    // Step 2: Email
-    if (currentStep === 2) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!email.trim() || !emailRegex.test(email.trim())) {
         setStepError('Please enter a valid student or personal email address.');
         return;
       }
-      setCurrentStep(3);
+      // Advance to OTP screen and send real Brevo email
+      setCurrentStep(2);
+      await triggerSendEmailOtp(email.trim().toLowerCase());
       return;
     }
 
-    // Step 3: Password
+    // Step 2: OTP Verification
+    if (currentStep === 2) {
+      handleVerifyOtp();
+      return;
+    }
+
+    // Step 3: Full Name
     if (currentStep === 3) {
+      if (!fullName.trim() || fullName.trim().length < 2) {
+        setStepError('Please enter your full name (minimum 2 characters).');
+        return;
+      }
+      setCurrentStep(4);
+      return;
+    }
+
+    // Step 4: Password
+    if (currentStep === 4) {
       if (password.length < 6) {
         setStepError('Password must be at least 6 characters long.');
         return;
       }
-      // Send OTP and move to Step 4
-      setCurrentStep(4);
-      triggerSendEmailOtp(email.trim().toLowerCase());
-      return;
-    }
-
-    // Step 4: OTP Verification handled by handleVerifyOtp
-    if (currentStep === 4) {
-      handleVerifyOtp();
+      setCurrentStep(5);
       return;
     }
 
@@ -366,14 +379,20 @@ export const SignupPage: React.FC = () => {
   const handleBack = () => {
     setStepError(null);
     if (currentStep === 1) return;
-    if (isGoogleAuth && currentStep === 5) {
-      // If Google user went into academic questions, back to step 1
+    if (currentStep === 2) {
+      // Back to email step
       setCurrentStep(1);
       return;
     }
-    if (currentStep === 5 && !isGoogleAuth) {
-      // Back from college to OTP
-      setCurrentStep(4);
+    if (currentStep === 3) {
+      // Cannot go back to OTP once email is verified; back to step 1 to restart with new email
+      setCurrentStep(1);
+      setVerificationToken(null);
+      setVerifiedEmail('');
+      return;
+    }
+    if (isGoogleAuth && currentStep === 5) {
+      setCurrentStep(1);
       return;
     }
     setCurrentStep((prev) => Math.max(1, prev - 1));
@@ -393,7 +412,7 @@ export const SignupPage: React.FC = () => {
     }
   };
 
-  // Final Registration & Profile Saving in Firestore
+  // Final Registration in Firestore & Firebase Auth
   const handleFinalSubmission = async () => {
     setSubmitting(true);
     setStepError(null);
@@ -404,7 +423,6 @@ export const SignupPage: React.FC = () => {
 
     try {
       if (isGoogleAuth && googleUserUid) {
-        // Complete Google authenticated profile
         await updateProfile({
           full_name: fullName.trim(),
           college: finalCollege,
@@ -416,17 +434,20 @@ export const SignupPage: React.FC = () => {
           is_profile_complete: true
         });
       } else {
-        // Create full email/password Firebase Auth account + Firestore profile
+        if (!verificationToken) {
+          throw new Error('Email verification is mandatory. Please verify your email first.');
+        }
         await signupWithEmail({
           full_name: fullName.trim(),
-          email: email.trim().toLowerCase(),
+          email: verifiedEmail || email.trim().toLowerCase(),
           password,
           college: finalCollege,
           branch: finalBranch,
           academic_year: academicYear as AcademicYear,
           enrollment_number: enrollmentNumber.trim().toUpperCase(),
           division: division.trim(),
-          phone_number: formattedPhone
+          phone_number: formattedPhone,
+          verificationToken
         });
       }
 
@@ -438,14 +459,15 @@ export const SignupPage: React.FC = () => {
     }
   };
 
-  // Compute dynamic progress metrics
-  // Total steps for email flow = 11 (Name, Email, Password, OTP, College, Branch, Year, Enrollment, Div, Phone, Review)
-  // Total steps for Google flow = 8 (Name, College, Branch, Year, Enrollment, Div, Phone, Review)
+  // Progress bar calculation
   const totalSteps = isGoogleAuth ? 8 : 11;
   const currentStepDisplay = isGoogleAuth 
     ? (currentStep === 1 ? 1 : Math.min(8, currentStep - 3))
     : currentStep;
   const progressPercent = Math.round((currentStepDisplay / totalSteps) * 100);
+
+  // Formatted countdown timer string MM:SS
+  const timerDisplay = `00:${countdownSeconds.toString().padStart(2, '0')}`;
 
   return (
     <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -489,29 +511,29 @@ export const SignupPage: React.FC = () => {
           )}
 
           {/* ======================================================== */}
-          {/* STEP 1: Full Name */}
+          {/* STEP 1: Email Address (Section 6: First Step) */}
           {/* ======================================================== */}
           {currentStep === 1 && (
             <div className="space-y-6">
               <div className="space-y-1.5">
                 <span className="text-xs font-mono text-violet-400 uppercase tracking-wider">Welcome to NEXORA</span>
                 <h2 className="text-2xl font-bold text-white tracking-tight">
-                  What should we call you?
+                  What's your email address?
                 </h2>
                 <p className="text-xs text-slate-400">
-                  Enter your full name as you would like it to appear on competition certificates.
+                  We'll dispatch a 6-digit verification code to confirm ownership of your email address.
                 </p>
               </div>
 
               <div className="space-y-3">
                 <div className="relative">
-                  <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+                  <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                   <input
                     ref={mainInputRef}
-                    type="text"
-                    placeholder="Enter your full name"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
+                    type="email"
+                    placeholder="Enter your email address"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleNext()}
                     className="w-full pl-10 pr-4 py-3 bg-[#08080D] border border-violet-500/25 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-400 transition-all select-text"
                   />
@@ -536,35 +558,136 @@ export const SignupPage: React.FC = () => {
                       <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
                     </svg>
                   )}
-                  <span>Continue with Google (Fast Track)</span>
+                  <span>Continue with Google (No OTP Needed)</span>
                 </button>
               </div>
             </div>
           )}
 
           {/* ======================================================== */}
-          {/* STEP 2: Email Address */}
+          {/* STEP 2: Verify Your Email (Section 6: Strict 30s Window) */}
           {/* ======================================================== */}
           {currentStep === 2 && (
             <div className="space-y-6">
-              <div className="space-y-1.5">
-                <span className="text-xs font-mono text-violet-400 uppercase tracking-wider">Account Identity</span>
+              <div className="text-center space-y-2">
+                <div className="w-12 h-12 rounded-2xl bg-violet-950/60 border border-violet-500/30 flex items-center justify-center mx-auto text-violet-300">
+                  <Mail className="w-6 h-6" />
+                </div>
                 <h2 className="text-2xl font-bold text-white tracking-tight">
-                  What's your email address?
+                  Verify Your Email
+                </h2>
+                <p className="text-xs text-slate-300 max-w-sm mx-auto">
+                  Enter the six-digit code sent to your email address:
+                  <span className="block mt-1 text-violet-300 font-mono font-medium">{maskedEmail || email}</span>
+                </p>
+              </div>
+
+              {otpError && (
+                <div className="p-3 bg-red-950/50 border border-red-500/40 rounded-xl text-xs text-red-200 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                  <span>{otpError}</span>
+                </div>
+              )}
+
+              {otpSuccess && (
+                <div className="p-2.5 bg-emerald-950/40 border border-emerald-500/40 rounded-xl text-xs text-emerald-200 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{otpSuccess}</span>
+                </div>
+              )}
+
+              {/* 30-Second Countdown Indicator */}
+              <div className="flex items-center justify-center gap-2 text-xs font-mono">
+                <span className="text-slate-400">Code expires in:</span>
+                <span className={`font-bold ${countdownSeconds <= 10 ? 'text-red-400' : 'text-violet-300'}`}>
+                  {timerDisplay}
+                </span>
+              </div>
+
+              {/* Six Separate Digit Input Boxes */}
+              <div className="flex justify-center items-center gap-2 sm:gap-3 py-2" onPaste={handleDigitPaste}>
+                {otpDigits.map((digit, idx) => (
+                  <input
+                    key={idx}
+                    ref={(el) => {
+                      otpInputRefs.current[idx] = el;
+                    }}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={1}
+                    value={digit}
+                    onChange={(e) => handleDigitChange(idx, e.target.value)}
+                    onKeyDown={(e) => handleDigitKeyDown(idx, e)}
+                    className="w-11 h-13 sm:w-12 sm:h-14 text-center font-mono text-xl sm:text-2xl font-bold bg-[#08080D] border border-violet-500/30 rounded-xl text-white focus:outline-none focus:border-violet-400 focus:ring-1 focus:ring-violet-400"
+                  />
+                ))}
+              </div>
+
+              {/* Resend & Change Email Actions */}
+              <div className="flex items-center justify-between text-xs pt-1 border-t border-violet-500/15">
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep(1)}
+                  className="text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  Change Email
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => triggerSendEmailOtp(email.trim().toLowerCase())}
+                  disabled={countdownSeconds > 0 || otpSending}
+                  className="text-violet-400 hover:text-violet-300 font-semibold disabled:opacity-40 cursor-pointer"
+                >
+                  {otpSending ? 'Sending...' : countdownSeconds > 0 ? `Resend OTP (${countdownSeconds}s)` : 'Resend OTP'}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleVerifyOtp}
+                disabled={otpVerifying || otpDigits.join('').length !== 6 || countdownSeconds <= 0}
+                className="w-full py-3 text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 rounded-xl transition-all shadow-md disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+              >
+                {otpVerifying ? (
+                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                ) : (
+                  <>
+                    <span>Verify Email</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* STEP 3: What should we call you? (Full Name) */}
+          {/* ======================================================== */}
+          {currentStep === 3 && (
+            <div className="space-y-6">
+              <div className="space-y-1.5">
+                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono">
+                  <Check className="w-3 h-3" />
+                  <span>Email Verified: {verifiedEmail}</span>
+                </div>
+                <h2 className="text-2xl font-bold text-white tracking-tight">
+                  What should we call you?
                 </h2>
                 <p className="text-xs text-slate-400">
-                  We'll use this to send competition confirmations and verify your eligibility.
+                  Enter your full legal or preferred name for competition certificates.
                 </p>
               </div>
 
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+                <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                 <input
                   ref={mainInputRef}
-                  type="email"
-                  placeholder="Enter your email address"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  type="text"
+                  placeholder="Enter your full name"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleNext()}
                   className="w-full pl-10 pr-4 py-3 bg-[#08080D] border border-violet-500/25 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-400 transition-all select-text"
                 />
@@ -573,9 +696,9 @@ export const SignupPage: React.FC = () => {
           )}
 
           {/* ======================================================== */}
-          {/* STEP 3: Password */}
+          {/* STEP 4: Password Creation */}
           {/* ======================================================== */}
-          {currentStep === 3 && (
+          {currentStep === 4 && (
             <div className="space-y-6">
               <div className="space-y-1.5">
                 <span className="text-xs font-mono text-violet-400 uppercase tracking-wider">Account Security</span>
@@ -608,123 +731,11 @@ export const SignupPage: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Password strength guidance */}
                 <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-400">
                   <div className={`w-2 h-2 rounded-full ${password.length >= 6 ? 'bg-emerald-400' : 'bg-slate-600'}`} />
                   <span>{password.length >= 6 ? 'Minimum length satisfied' : 'At least 6 characters required'}</span>
                 </div>
               </div>
-            </div>
-          )}
-
-          {/* ======================================================== */}
-          {/* STEP 4: 6-Digit Email OTP Verification */}
-          {/* ======================================================== */}
-          {currentStep === 4 && (
-            <div className="space-y-6">
-              <div className="text-center space-y-2">
-                <div className="w-12 h-12 rounded-2xl bg-violet-950/60 border border-violet-500/30 flex items-center justify-center mx-auto text-violet-300">
-                  <Mail className="w-6 h-6" />
-                </div>
-                <h2 className="text-2xl font-bold text-white tracking-tight">
-                  Verify Your Email
-                </h2>
-                <p className="text-xs text-slate-300 max-w-sm mx-auto">
-                  We've sent a 6-digit verification code to <span className="text-violet-300 font-mono">{maskedEmail || email}</span>.
-                </p>
-              </div>
-
-              {otpError && (
-                <div className="p-3 bg-red-950/50 border border-red-500/40 rounded-xl text-xs text-red-200 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                  <span>{otpError}</span>
-                </div>
-              )}
-
-              {otpSuccess && (
-                <div className="p-2.5 bg-emerald-950/40 border border-emerald-500/40 rounded-xl text-xs text-emerald-200 flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>{otpSuccess}</span>
-                </div>
-              )}
-
-              {/* 6 Individual Digit Boxes */}
-              <div className="flex justify-center items-center gap-2 sm:gap-3 py-2" onPaste={handleDigitPaste}>
-                {otpDigits.map((digit, idx) => (
-                  <input
-                    key={idx}
-                    ref={(el) => {
-                      otpInputRefs.current[idx] = el;
-                    }}
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={1}
-                    value={digit}
-                    onChange={(e) => handleDigitChange(idx, e.target.value)}
-                    onKeyDown={(e) => handleDigitKeyDown(idx, e)}
-                    className="w-11 h-13 sm:w-12 sm:h-14 text-center font-mono text-xl sm:text-2xl font-bold bg-[#08080D] border border-violet-500/30 rounded-xl text-white focus:outline-none focus:border-violet-400 focus:ring-1 focus:ring-violet-400"
-                  />
-                ))}
-              </div>
-
-              {/* Dev Inspection Helper for testing without live SMTP */}
-              {devOtp && (
-                <div className="p-3 bg-violet-950/40 border border-violet-500/30 rounded-xl text-[11px] space-y-1 font-mono">
-                  <div className="flex items-center justify-between text-violet-300">
-                    <span>Dev Verification Code:</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const arr = devOtp.split('').slice(0, 6);
-                        setOtpDigits(arr);
-                      }}
-                      className="px-2 py-0.5 bg-violet-600/40 hover:bg-violet-600 text-white rounded text-[10px] cursor-pointer"
-                    >
-                      Auto-fill
-                    </button>
-                  </div>
-                  <div className="text-white font-bold text-center tracking-widest text-sm">
-                    {devOtp}
-                  </div>
-                </div>
-              )}
-
-              {/* Resend & Change Email Actions */}
-              <div className="flex items-center justify-between text-xs pt-1 border-t border-violet-500/15">
-                <button
-                  type="button"
-                  onClick={() => setCurrentStep(2)}
-                  className="text-slate-400 hover:text-white transition-colors cursor-pointer"
-                >
-                  Change Email
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => triggerSendEmailOtp(email.trim().toLowerCase())}
-                  disabled={resendCooldown > 0 || otpSending}
-                  className="text-violet-400 hover:text-violet-300 font-semibold disabled:opacity-40 cursor-pointer"
-                >
-                  {resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : 'Resend Code'}
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleVerifyOtp}
-                disabled={otpVerifying || otpDigits.join('').length !== 6}
-                className="w-full py-3 text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 rounded-xl transition-all shadow-md disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
-              >
-                {otpVerifying ? (
-                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                ) : (
-                  <>
-                    <span>Verify Email &amp; Continue</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
             </div>
           )}
 
@@ -994,24 +1005,22 @@ export const SignupPage: React.FC = () => {
 
               <div className="p-4 rounded-xl bg-[#08080D]/70 border border-violet-500/20 divide-y divide-violet-500/10 text-xs space-y-2">
                 <div className="flex justify-between items-center py-1">
-                  <span className="text-slate-400">Name:</span>
+                  <span className="text-slate-400">Email:</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-white font-medium">{fullName}</span>
-                    <button type="button" onClick={() => setCurrentStep(1)} className="text-violet-400 hover:text-white">
-                      <Edit2 className="w-3 h-3" />
-                    </button>
+                    <span className="text-white font-mono">{verifiedEmail || email}</span>
+                    <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
+                      <Check className="w-3 h-3" /> Verified
+                    </span>
                   </div>
                 </div>
 
                 <div className="flex justify-between items-center py-1">
-                  <span className="text-slate-400">Email:</span>
+                  <span className="text-slate-400">Name:</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-white font-mono">{email}</span>
-                    {!isGoogleAuth && (
-                      <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
-                        <Check className="w-3 h-3" /> Verified
-                      </span>
-                    )}
+                    <span className="text-white font-medium">{fullName}</span>
+                    <button type="button" onClick={() => setCurrentStep(3)} className="text-violet-400 hover:text-white">
+                      <Edit2 className="w-3 h-3" />
+                    </button>
                   </div>
                 </div>
 
@@ -1074,8 +1083,8 @@ export const SignupPage: React.FC = () => {
             </div>
           )}
 
-          {/* Navigation Controls (Excluding OTP step which has its own Verify button) */}
-          {currentStep !== 4 && (
+          {/* Navigation Controls (Excluding Step 2 which has Verify button) */}
+          {currentStep !== 2 && (
             <div className="pt-2 flex items-center justify-between gap-3">
               {currentStep > 1 ? (
                 <button
@@ -1111,6 +1120,11 @@ export const SignupPage: React.FC = () => {
                 >
                   {submitting ? (
                     <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                  ) : currentStep === 1 ? (
+                    <>
+                      <span>Send Verification Code</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </>
                   ) : currentStep === 11 ? (
                     <span>{isGoogleAuth ? 'Complete My Profile' : 'Create My NEXORA Account'}</span>
                   ) : (

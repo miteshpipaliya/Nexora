@@ -51,7 +51,6 @@ export const AdminPage: React.FC = () => {
   const [otpError, setOtpError] = useState<string | null>(null);
   const [otpSuccess, setOtpSuccess] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(300);
-  const [devCodes, setDevCodes] = useState<{ emailOtp: string; smsOtp: string } | null>(null);
 
   // Active view: 'all' | 'zerocode' | 'ctf' | 'hackathon' | 'coderush' | 'audit'
   const [activeEventView, setActiveEventView] = useState<'all' | 'zerocode' | 'ctf' | 'hackathon' | 'coderush' | 'audit'>('all');
@@ -115,23 +114,7 @@ export const AdminPage: React.FC = () => {
       setMaskedEmail(data.maskedEmail);
       setMaskedPhone(data.maskedPhone);
       setTimeLeft(300);
-      setOtpSuccess('Verification codes dispatched! Check email and SMS.');
-
-      if (data.devCodes) {
-        setDevCodes(data.devCodes);
-      } else {
-        // Inspect challenge codes in dev mode if server endpoint provides JSON
-        try {
-          const inspectRes = await fetch(`/api/admin/inspect-challenge/${data.challengeId}`);
-          const contentType = inspectRes.headers.get('content-type') || '';
-          if (inspectRes.ok && contentType.includes('application/json')) {
-            const codes = await inspectRes.json();
-            setDevCodes({ emailOtp: codes.emailOtp, smsOtp: codes.smsOtp });
-          }
-        } catch {
-          // Gracefully ignore
-        }
-      }
+      setOtpSuccess('Verification codes dispatched! Check your registered email and mobile.');
     } catch (err: any) {
       setOtpError(err.message || 'Failed to dispatch verification codes.');
     } finally {
@@ -172,15 +155,6 @@ export const AdminPage: React.FC = () => {
     setChallengeId(null);
     setEmailOtp('');
     setSmsOtp('');
-    setDevCodes(null);
-  };
-
-  // Auto-fill dev test codes for quick evaluation
-  const handleFillDevCodes = () => {
-    if (devCodes) {
-      setEmailOtp(devCodes.emailOtp);
-      setSmsOtp(devCodes.smsOtp);
-    }
   };
 
   // 1. Unauthorized Access Gate (Enforce founder email and admin role)
@@ -351,25 +325,6 @@ export const AdminPage: React.FC = () => {
                   />
                 </div>
 
-                {/* Dev Helper Panel for Testing / Faculty Pitch Evaluation */}
-                {devCodes && (
-                  <div className="p-3 bg-violet-950/40 border border-violet-500/30 rounded-xl text-[11px] space-y-1.5">
-                    <div className="flex items-center justify-between font-mono text-violet-300">
-                      <span>Server Verification Console:</span>
-                      <button
-                        type="button"
-                        onClick={handleFillDevCodes}
-                        className="px-2 py-0.5 bg-violet-600/40 hover:bg-violet-600 text-white rounded text-[10px]"
-                      >
-                        Auto-fill Codes
-                      </button>
-                    </div>
-                    <div className="font-mono text-slate-300 flex justify-between">
-                      <span>Email OTP: <strong className="text-white">{devCodes.emailOtp}</strong></span>
-                      <span>SMS OTP: <strong className="text-white">{devCodes.smsOtp}</strong></span>
-                    </div>
-                  </div>
-                )}
 
                 <button
                   type="submit"

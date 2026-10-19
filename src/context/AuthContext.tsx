@@ -20,14 +20,12 @@ interface AuthContextType {
     maskedEmail: string;
     expiresInSeconds: number;
     resendCooldown: number;
-    devOtp?: string;
   }>;
   verifyEmailOtp: (email: string, otp: string, purpose?: 'signup' | 'reset-password') => Promise<{
     verificationToken: string;
     expiresAt: number;
   }>;
   resetPasswordWithOtp: (email: string, verificationToken: string, newPassword: string) => Promise<void>;
-  inspectEmailOtp: (email: string) => Promise<string | null>;
   // Backward compatibility aliases
   login: (email: string, pass: string) => Promise<UserProfile>;
   signup: (data: any) => Promise<UserProfile>;
@@ -136,10 +134,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await dataService.resetPasswordWithOtp(email, token, newPass);
   };
 
-  const inspectEmailOtp = async (email: string) => {
-    return await dataService.inspectEmailOtp(email);
-  };
-
   const isAdmin = dataService.isUserAdmin(user);
 
   return (
@@ -161,7 +155,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sendEmailOtp,
         verifyEmailOtp,
         resetPasswordWithOtp,
-        inspectEmailOtp,
         login: loginWithEmail,
         signup: signupWithEmail
       }}

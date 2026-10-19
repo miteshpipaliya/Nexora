@@ -357,16 +357,31 @@ class NexoraDataService {
     enrollment_number: string;
     division?: string;
     phone_number?: string;
+    verificationToken?: string;
   }): Promise<UserProfile> {
     try {
       const result = await createUserWithEmailAndPassword(auth, data.email.trim().toLowerCase(), data.password);
       const user = result.user;
 
-      // Send Firebase Email Verification
-      try {
-        await sendEmailVerification(user);
-      } catch (evErr) {
-        console.warn('Email verification send warning:', evErr);
+      let emailVerified = false;
+      if (data.verificationToken) {
+        try {
+          const idToken = await user.getIdToken();
+          const confirmRes = await fetch('/api/auth/confirm-verified-signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: data.email.trim().toLowerCase(),
+              verificationToken: data.verificationToken,
+              idToken
+            })
+          });
+          if (confirmRes.ok) {
+            emailVerified = true;
+          }
+        } catch {
+          // Non-fatal confirmation fallback
+        }
       }
 
       const isAdmin = ADMIN_EMAILS.includes(data.email.trim().toLowerCase());
@@ -384,7 +399,7 @@ class NexoraDataService {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         is_admin: isAdmin,
-        email_verified: false,
+        email_verified: emailVerified,
         is_profile_complete: true
       };
 
@@ -400,6 +415,7 @@ class NexoraDataService {
           enrollment_number: profilePayload.enrollment_number,
           division: profilePayload.division,
           phone_number: profilePayload.phone_number,
+          email_verified: profilePayload.email_verified,
           created_at: profilePayload.created_at,
           updated_at: profilePayload.updated_at
         });
@@ -441,52 +457,29 @@ class NexoraDataService {
     }
   }
 
-  // 5a. Send 6-digit Email OTP (Signup verification or Password recovery)
+  // 5a. Send 6-digit Email OTP via Brevo backend
   public async sendEmailOtp(email: string, purpose: 'signup' | 'reset-password' = 'signup'): Promise<{
     maskedEmail: string;
     expiresInSeconds: number;
     resendCooldown: number;
-    devOtp?: string;
   }> {
     const cleanEmail = email.trim().toLowerCase();
-    try {
-      const res = await fetch('/api/auth/send-email-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail, purpose })
-      });
+    const res = await fetch('/api/auth/send-email-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, purpose })
+    });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to send verification code.');
-      }
-
-      // Check if dev inspector has active code
-      try {
-        const inspectRes = await fetch(`/api/auth/inspect-otp/${encodeURIComponent(cleanEmail)}`);
-        if (inspectRes.ok) {
-          const inspectData = await inspectRes.json();
-          if (inspectData.otp) {
-            data.devOtp = inspectData.otp;
-          }
-        }
-      } catch {
-        // ignore
-      }
-
-      return data;
-    } catch (err: any) {
-      if (err.message && !err.message.includes('fetch')) {
-        throw err;
-      }
-      // Offline fallback: generate mock OTP for demonstration
-      return {
-        maskedEmail: maskEmail(cleanEmail),
-        expiresInSeconds: 300,
-        resendCooldown: 60,
-        devOtp: '742918'
-      };
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to dispatch verification code via email.');
     }
+
+    return {
+      maskedEmail: data.maskedEmail || maskEmail(cleanEmail),
+      expiresInSeconds: data.expiresInSeconds || 30,
+      resendCooldown: data.resendCooldown || 30
+    };
   }
 
   // 5b. Verify 6-digit Email OTP
@@ -497,28 +490,21 @@ class NexoraDataService {
     const cleanEmail = email.trim().toLowerCase();
     const cleanOtp = otp.trim();
 
-    try {
-      const res = await fetch('/api/auth/verify-email-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail, otp: cleanOtp, purpose })
-      });
+    const res = await fetch('/api/auth/verify-email-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, otp: cleanOtp, purpose })
+    });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Invalid verification code.');
-      }
-
-      return data;
-    } catch (err: any) {
-      if (err.message && !err.message.includes('fetch')) {
-        throw err;
-      }
-      return {
-        verificationToken: `vt_offline_${Date.now()}`,
-        expiresAt: Date.now() + 15 * 60 * 1000
-      };
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Invalid or expired verification code.');
     }
+
+    return {
+      verificationToken: data.verificationToken,
+      expiresAt: data.expiresAt
+    };
   }
 
   // 5c. Complete Password Reset using Verified OTP Token
@@ -550,19 +536,6 @@ class NexoraDataService {
     }
   }
 
-  // 5d. Inspect active OTP in dev mode
-  public async inspectEmailOtp(email: string): Promise<string | null> {
-    try {
-      const res = await fetch(`/api/auth/inspect-otp/${encodeURIComponent(email.trim().toLowerCase())}`);
-      if (res.ok) {
-        const data = await res.json();
-        return data.otp || null;
-      }
-    } catch {
-      // ignore
-    }
-    return null;
-  }
 
   // 6. Sign Out
   public async logout(): Promise<void> {
@@ -801,7 +774,6 @@ class NexoraDataService {
     maskedEmail: string;
     maskedPhone: string;
     expiresInSeconds: number;
-    devCodes?: { emailOtp: string; smsOtp: string };
   }> {
     const normalizedEmail = adminEmail.toLowerCase().trim();
     if (!ADMIN_EMAILS.includes(normalizedEmail)) {
@@ -856,16 +828,11 @@ class NexoraDataService {
       if (Date.now() > c.expiresAt) localAdminChallenges.delete(id);
     }
 
-    console.info(`[NEXORA ADMIN SECURITY] Dual-OTP Challenge generated for ${normalizedEmail}`);
-    console.info(`[NEXORA ADMIN SECURITY] -> Email OTP [${maskEmail(normalizedEmail)}]: ${emailOtp}`);
-    console.info(`[NEXORA ADMIN SECURITY] -> Mobile SMS OTP [${maskPhone(ADMIN_PHONE)}]: ${smsOtp}`);
-
     return {
       challengeId,
       maskedEmail: maskEmail(normalizedEmail),
       maskedPhone: maskPhone(ADMIN_PHONE),
-      expiresInSeconds: 300,
-      devCodes: { emailOtp, smsOtp }
+      expiresInSeconds: 300
     };
   }
 

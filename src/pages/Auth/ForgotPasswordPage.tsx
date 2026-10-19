@@ -24,11 +24,11 @@ export const ForgotPasswordPage: React.FC = () => {
   const [email, setEmail] = useState<string>('');
   const [maskedEmail, setMaskedEmail] = useState<string>('');
   
-  // OTP state
+  // OTP state (Strict 30-second window)
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [verificationToken, setVerificationToken] = useState<string | null>(null);
-  const [resendCooldown, setResendCooldown] = useState<number>(0);
-  const [devOtp, setDevOtp] = useState<string | null>(null);
+  const [countdownSeconds, setCountdownSeconds] = useState<number>(30);
+  const [resendCooldown, setResendCooldown] = useState<number>(30);
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Password state
@@ -41,18 +41,25 @@ export const ForgotPasswordPage: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
 
-  // Resend countdown
+  // 30-Second Countdown Timer for OTP Expiration & Resend Cooldown
   useEffect(() => {
-    if (resendCooldown <= 0) return;
+    if (stage !== 'otp' || countdownSeconds <= 0) return;
     const interval = setInterval(() => {
+      setCountdownSeconds((p) => {
+        if (p <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return p - 1;
+      });
       setResendCooldown((p) => Math.max(0, p - 1));
     }, 1000);
     return () => clearInterval(interval);
-  }, [resendCooldown]);
+  }, [stage, countdownSeconds]);
 
   // Stage 1: Request OTP
-  const handleRequestOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleRequestOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     const cleanEmail = email.trim().toLowerCase();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!cleanEmail || !emailRegex.test(cleanEmail)) {
@@ -66,8 +73,9 @@ export const ForgotPasswordPage: React.FC = () => {
     try {
       const res = await sendEmailOtp(cleanEmail, 'reset-password');
       setMaskedEmail(res.maskedEmail);
-      setResendCooldown(res.resendCooldown || 60);
-      if (res.devOtp) setDevOtp(res.devOtp);
+      setCountdownSeconds(30);
+      setResendCooldown(30);
+      setOtpDigits(['', '', '', '', '', '']);
       setStage('otp');
       setTimeout(() => {
         otpInputRefs.current[0]?.focus();
@@ -282,42 +290,36 @@ export const ForgotPasswordPage: React.FC = () => {
                 ))}
               </div>
 
-              {/* Dev Helper */}
-              {devOtp && (
-                <div className="p-2.5 bg-violet-950/40 border border-violet-500/30 rounded-xl text-[11px] font-mono flex items-center justify-between text-violet-300">
-                  <span>Dev Test OTP: <strong className="text-white">{devOtp}</strong></span>
-                  <button
-                    type="button"
-                    onClick={() => setOtpDigits(devOtp.split('').slice(0, 6))}
-                    className="px-2 py-0.5 bg-violet-600/40 hover:bg-violet-600 text-white rounded text-[10px]"
-                  >
-                    Fill
-                  </button>
-                </div>
-              )}
+              {/* 30-Second Countdown Indicator */}
+              <div className="flex items-center justify-center gap-2 text-xs font-mono">
+                <span className="text-slate-400">Code expires in:</span>
+                <span className={`font-bold ${countdownSeconds <= 10 ? 'text-red-400' : 'text-violet-300'}`}>
+                  00:{countdownSeconds.toString().padStart(2, '0')}
+                </span>
+              </div>
 
               <div className="flex items-center justify-between text-xs pt-1 border-t border-violet-500/15">
                 <button
                   type="button"
                   onClick={() => setStage('request')}
-                  className="text-slate-400 hover:text-white"
+                  className="text-slate-400 hover:text-white cursor-pointer"
                 >
                   Change Email
                 </button>
                 <button
                   type="button"
-                  onClick={handleRequestOtp}
-                  disabled={resendCooldown > 0}
-                  className="text-violet-400 hover:text-violet-300 font-semibold disabled:opacity-40"
+                  onClick={() => handleRequestOtp()}
+                  disabled={countdownSeconds > 0 || loading}
+                  className="text-violet-400 hover:text-violet-300 font-semibold disabled:opacity-40 cursor-pointer"
                 >
-                  {resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : 'Resend Code'}
+                  {countdownSeconds > 0 ? `Resend OTP (${countdownSeconds}s)` : 'Resend OTP'}
                 </button>
               </div>
 
               <button
                 type="button"
                 onClick={() => handleVerifyOtp()}
-                disabled={loading || otpDigits.join('').length !== 6}
+                disabled={loading || otpDigits.join('').length !== 6 || countdownSeconds <= 0}
                 className="w-full py-3 text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {loading ? (
