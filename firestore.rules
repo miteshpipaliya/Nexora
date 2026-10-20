@@ -28,10 +28,11 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    // Founder Administrator: Verified founder email or custom admin claim or /admins document
     function isAdmin() {
       return isSignedIn() && (
+        request.auth.token.admin == true ||
         request.auth.token.email == 'miteshpipaliya2202@gmail.com' ||
-        request.auth.token.email == 'editwithvision@gmail.com' ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
@@ -53,7 +54,7 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Competition Events
+    // Competition Events (Public Read, Admin Write)
     match /events/{eventId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
@@ -81,10 +82,21 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Admin authorization store
+    // Admin authorization store (Managed by backend Admin SDK only)
     match /admins/{adminId} {
       allow read: if isAdmin();
       allow write: if false;
+    }
+
+    // Internal Security Store (Explicitly disallow all client reads/writes)
+    match /adminSecrets/{docId} {
+      allow read, write: if false;
+    }
+    match /otpChallenges/{docId} {
+      allow read, write: if false;
+    }
+    match /passwordTokens/{docId} {
+      allow read, write: if false;
     }
   }
 }
