@@ -55,6 +55,9 @@ export function extractErrorMessage(err: unknown, fallback = 'An unexpected erro
     }
 
     // Brevo / API specific codes
+    if (e.code === 'BREVO_NOT_CONFIGURED') {
+      return 'Email delivery service is undergoing configuration. Please sign in with Google or try again shortly.';
+    }
     if (e.code === 'BREVO_IP_UNAUTHORIZED') {
       return 'Email delivery service requires IP authorization in Brevo console.';
     }
@@ -66,6 +69,15 @@ export function extractErrorMessage(err: unknown, fallback = 'An unexpected erro
     }
     if (e.code === 'BREVO_QUOTA_EXCEEDED') {
       return 'Email sending limit reached. Please contact NEXORA administrator.';
+    }
+    if (e.code === 'BREVO_INVALID_RECIPIENT') {
+      return 'Please enter a valid, active email address.';
+    }
+    if (e.code === 'BREVO_SERVICE_ERROR') {
+      return 'Unable to reach email delivery service. Please check your internet connection or try again.';
+    }
+    if (typeof e.message === 'string' && e.message.includes('FUNCTION_INVOCATION_FAILED')) {
+      return 'Server is temporarily unavailable. Please try again in a few moments.';
     }
     if (e.code === 'auth/email-already-in-use') {
       return 'An account with this email address already exists. Please log in.';

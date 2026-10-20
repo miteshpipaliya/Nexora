@@ -88,8 +88,8 @@ export const SignupPage: React.FC = () => {
   const [otpVerifying, setOtpVerifying] = useState<boolean>(false);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [otpSuccess, setOtpSuccess] = useState<string | null>(null);
-  const [countdownSeconds, setCountdownSeconds] = useState<number>(180);
-  const [resendCooldown, setResendCooldown] = useState<number>(30);
+  const [countdownSeconds, setCountdownSeconds] = useState<number>(0);
+  const [resendCooldown, setResendCooldown] = useState<number>(0);
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Profile Fields
@@ -618,12 +618,20 @@ export const SignupPage: React.FC = () => {
                 </div>
               )}
 
-              {/* 30-Second Countdown Indicator */}
+              {/* 3-Minute Countdown Indicator */}
               <div className="flex items-center justify-center gap-2 text-xs font-mono">
-                <span className="text-slate-400">Code expires in:</span>
-                <span className={`font-bold ${countdownSeconds <= 10 ? 'text-red-400' : 'text-violet-300'}`}>
-                  {timerDisplay}
-                </span>
+                {countdownSeconds > 0 ? (
+                  <>
+                    <span className="text-slate-400">Code expires in:</span>
+                    <span className={`font-bold ${countdownSeconds <= 15 ? 'text-red-400' : 'text-violet-300'}`}>
+                      {timerDisplay}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-red-400 font-medium">
+                    Code expired. Please click "Resend OTP" below.
+                  </span>
+                )}
               </div>
 
               {/* Six Separate Digit Input Boxes */}

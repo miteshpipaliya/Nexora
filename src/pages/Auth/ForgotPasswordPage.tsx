@@ -28,8 +28,8 @@ export const ForgotPasswordPage: React.FC = () => {
   // OTP state (Strict 30-second window)
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [verificationToken, setVerificationToken] = useState<string | null>(null);
-  const [countdownSeconds, setCountdownSeconds] = useState<number>(180);
-  const [resendCooldown, setResendCooldown] = useState<number>(30);
+  const [countdownSeconds, setCountdownSeconds] = useState<number>(0);
+  const [resendCooldown, setResendCooldown] = useState<number>(0);
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Password state
