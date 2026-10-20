@@ -13,6 +13,7 @@ import {
   ConfirmationResult
 } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 // Initialize Firebase App
@@ -20,6 +21,9 @@ export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 // CRITICAL: Must pass firebaseConfig.firestoreDatabaseId to getFirestore
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Firebase Storage instance for permanent media uploads
+export const storage = getStorage(app, firebaseConfig.storageBucket || undefined);
 
 // Auth instance
 export const auth = getAuth(app);

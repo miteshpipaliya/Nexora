@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { NexoraLogo } from '../../components/ui/NexoraLogo';
+import { extractErrorMessage } from '../../services/apiClient';
 
 export const ForgotPasswordPage: React.FC = () => {
   const { sendEmailOtp, verifyEmailOtp, resetPasswordWithOtp } = useAuth();
@@ -83,7 +84,7 @@ export const ForgotPasswordPage: React.FC = () => {
         otpInputRefs.current[0]?.focus();
       }, 150);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to dispatch verification code. Please try again.');
+      setErrorMsg(extractErrorMessage(err, 'Failed to dispatch verification code. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -106,7 +107,7 @@ export const ForgotPasswordPage: React.FC = () => {
       setVerificationToken(res.verificationToken);
       setStage('new-password');
     } catch (err: any) {
-      setErrorMsg(err.message || 'Invalid or expired verification code.');
+      setErrorMsg(extractErrorMessage(err, 'Invalid or expired verification code.'));
     } finally {
       setLoading(false);
     }
@@ -176,7 +177,7 @@ export const ForgotPasswordPage: React.FC = () => {
       await resetPasswordWithOtp(email.trim().toLowerCase(), verificationToken, newPassword);
       setStage('success');
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to update password. Please restart password recovery.');
+      setErrorMsg(extractErrorMessage(err, 'Failed to update password. Please restart password recovery.'));
     } finally {
       setLoading(false);
     }

@@ -112,6 +112,7 @@ const PORT = process.env.PORT || 3000;
 // Approved administrator accounts
 const ADMIN_EMAILS = [
   'miteshpipaliya2202@gmail.com',
+  'mitesh.aiml@gmail.com',
   'editwithvision@gmail.com'
 ];
 const ADMIN_PHONE = '+91 8200243606';
@@ -1044,6 +1045,414 @@ app.post('/api/admin/logout-session', (req, res) => {
     activeAdminSessions.delete(sessionToken);
   }
   res.json({ success: true });
+});
+
+// ==========================================
+// STUDENT PRESENCE & ADMIN MANAGEMENT
+// ==========================================
+interface StudentPresenceRecord {
+  id: string;
+  email: string;
+  lastSeen: number;
+}
+const activeStudentPresence = new Map<string, StudentPresenceRecord>();
+
+interface PasswordOtpRecord {
+  token: string;
+  email: string;
+  otpHash: string;
+  expiresAt: number;
+  attempts: number;
+}
+const activePasswordOtpTokens = new Map<string, PasswordOtpRecord>();
+let adminSetupOtpChallenge: { hash: string; expiresAt: number; email: string } | null = null;
+
+function getAdminConfig(): { passwordHash?: string } {
+  const configFile = path.join(STORAGE_DIR, 'admin_config.json');
+  try {
+    if (fs.existsSync(configFile)) {
+      return JSON.parse(fs.readFileSync(configFile, 'utf8'));
+    }
+  } catch {}
+  return {};
+}
+
+function saveAdminConfig(cfg: { passwordHash?: string }) {
+  const configFile = path.join(STORAGE_DIR, 'admin_config.json');
+  try {
+    fs.writeFileSync(configFile, JSON.stringify(cfg), 'utf8');
+  } catch (err) {
+    console.warn('[ADMIN CONFIG] Could not persist config:', err);
+  }
+}
+
+// Presence Heartbeat
+app.post('/api/presence/heartbeat', (req, res) => {
+  const { userId, email } = req.body;
+  if (userId || email) {
+    const id = String(userId || email).toLowerCase().trim();
+    activeStudentPresence.set(id, {
+      id,
+      email: email ? String(email) : 'Member',
+      lastSeen: Date.now()
+    });
+  }
+  res.json({ success: true });
+});
+
+// Admin Status Check
+app.get('/api/admin/status', (req, res) => {
+  const adminConfig = getAdminConfig();
+  const founderEmail = ADMIN_EMAILS[0];
+  res.json({
+    initialized: Boolean(adminConfig.passwordHash),
+    founderEmail,
+    maskedEmail: maskEmail(founderEmail),
+    founderPhone: ADMIN_PHONE,
+    maskedPhone: maskPhone(ADMIN_PHONE)
+  });
+});
+
+// Request Admin Setup OTP
+app.post('/api/admin/request-setup-otp', async (req, res) => {
+  const founderEmail = ADMIN_EMAILS[0];
+  const otp = crypto.randomInt(100000, 1000000).toString();
+  const expiresAt = Date.now() + 180 * 1000;
+
+  try {
+    await sendBrevoOtpEmail(founderEmail, otp, 'signup');
+  } catch (err: any) {
+    console.warn('[ADMIN SETUP OTP] Brevo dispatch note:', err.message);
+  }
+
+  const hash = hashOtp(founderEmail, otp, 'admin-setup');
+  adminSetupOtpChallenge = { hash, expiresAt, email: founderEmail };
+
+  res.json({
+    success: true,
+    maskedEmail: maskEmail(founderEmail),
+    expiresInSeconds: 180
+  });
+});
+
+// Setup Admin Security Password
+app.post('/api/admin/setup-password', (req, res) => {
+  const { otp, newPassword, confirmPassword } = req.body;
+  if (!otp || !newPassword || newPassword !== confirmPassword || newPassword.length < 16) {
+    res.status(400).json({ error: 'Valid OTP and matching password of at least 16 characters required.' });
+    return;
+  }
+  const founderEmail = ADMIN_EMAILS[0];
+  if (!adminSetupOtpChallenge || Date.now() > adminSetupOtpChallenge.expiresAt) {
+    res.status(400).json({ error: 'Setup verification code expired or not requested.' });
+    return;
+  }
+  const inputHash = hashOtp(founderEmail, otp.toString().trim(), 'admin-setup');
+  if (inputHash !== adminSetupOtpChallenge.hash) {
+    res.status(400).json({ error: 'Invalid verification code.' });
+    return;
+  }
+  adminSetupOtpChallenge = null;
+  const passwordHash = crypto.createHmac('sha256', HMAC_SECRET).update(newPassword.trim()).digest('hex');
+  saveAdminConfig({ passwordHash });
+  res.json({ success: true, message: 'Admin Security Password saved successfully.' });
+});
+
+// Verify Admin Security Password & Dispatch 6-digit Brevo OTP
+app.post('/api/admin/verify-password', async (req, res) => {
+  const { password } = req.body;
+  if (!password) {
+    res.status(400).json({ error: 'Admin Security Password required.' });
+    return;
+  }
+  const adminConfig = getAdminConfig();
+  const inputHash = crypto.createHmac('sha256', HMAC_SECRET).update(password.trim()).digest('hex');
+
+  // If password was initialized, check hash. If not yet initialized in config, allow if matches env or default setup
+  if (adminConfig.passwordHash) {
+    if (inputHash !== adminConfig.passwordHash) {
+      res.status(401).json({ error: 'Incorrect Admin Security Password.' });
+      return;
+    }
+  } else {
+    // Uninitialized: save this as initial password if >= 16 chars or verify against env
+    if (process.env.ADMIN_SECURITY_PASSWORD) {
+      if (password !== process.env.ADMIN_SECURITY_PASSWORD) {
+        res.status(401).json({ error: 'Incorrect Admin Security Password.' });
+        return;
+      }
+    } else {
+      saveAdminConfig({ passwordHash: inputHash });
+    }
+  }
+
+  const founderEmail = ADMIN_EMAILS[0];
+  const otp = crypto.randomInt(100000, 1000000).toString();
+  const token = `pwd_tok_${crypto.randomBytes(24).toString('hex')}`;
+  const expiresAt = Date.now() + 180 * 1000;
+
+  try {
+    await sendBrevoOtpEmail(founderEmail, otp, 'signup');
+  } catch (err: any) {
+    console.warn('[ADMIN PWD OTP] Brevo dispatch note:', err.message);
+  }
+
+  activePasswordOtpTokens.set(token, {
+    token,
+    email: founderEmail,
+    otpHash: hashOtp(founderEmail, otp, 'admin-pwd-otp'),
+    expiresAt,
+    attempts: 0
+  });
+
+  res.json({
+    success: true,
+    passwordToken: token,
+    maskedEmail: maskEmail(founderEmail),
+    expiresInSeconds: 180
+  });
+});
+
+// Resend Admin OTP
+app.post('/api/admin/resend-otp', async (req, res) => {
+  const { passwordToken } = req.body;
+  const challenge = activePasswordOtpTokens.get(passwordToken);
+  if (!challenge || Date.now() > challenge.expiresAt) {
+    res.status(400).json({ error: 'Session expired. Please re-enter Admin Security Password.' });
+    return;
+  }
+  const otp = crypto.randomInt(100000, 1000000).toString();
+  challenge.otpHash = hashOtp(challenge.email, otp, 'admin-pwd-otp');
+  challenge.expiresAt = Date.now() + 180 * 1000;
+  challenge.attempts = 0;
+
+  try {
+    await sendBrevoOtpEmail(challenge.email, otp, 'signup');
+  } catch (err: any) {
+    console.warn('[ADMIN RESEND OTP] Brevo note:', err.message);
+  }
+
+  res.json({ success: true, expiresInSeconds: 180 });
+});
+
+// Verify 6-digit Brevo OTP & Issue Elevated Admin Session
+app.post('/api/admin/verify-otp', (req, res) => {
+  const { passwordToken, otp } = req.body;
+  if (!passwordToken || !otp) {
+    res.status(400).json({ error: 'Password token and 6-digit verification code required.' });
+    return;
+  }
+  const challenge = activePasswordOtpTokens.get(passwordToken);
+  if (!challenge || Date.now() > challenge.expiresAt) {
+    res.status(400).json({ error: 'Verification code expired. Please re-enter Admin Security Password.' });
+    return;
+  }
+  challenge.attempts++;
+  if (challenge.attempts > 5) {
+    activePasswordOtpTokens.delete(passwordToken);
+    res.status(429).json({ error: 'Too many incorrect attempts. Session invalidated.' });
+    return;
+  }
+  const testHash = hashOtp(challenge.email, otp.toString().trim(), 'admin-pwd-otp');
+  if (testHash !== challenge.otpHash) {
+    res.status(401).json({
+      error: 'Incorrect verification code. Please check your Gmail.',
+      remainingAttempts: Math.max(0, 5 - challenge.attempts)
+    });
+    return;
+  }
+  activePasswordOtpTokens.delete(passwordToken);
+
+  const sessionToken = `nexora_admin_${crypto.randomBytes(32).toString('hex')}`;
+  const durationMinutes = 15;
+  const expiresAt = Date.now() + durationMinutes * 60 * 1000;
+
+  activeAdminSessions.set(sessionToken, {
+    sessionId: sessionToken,
+    adminEmail: challenge.email,
+    expiresAt,
+    createdAt: Date.now()
+  });
+
+  res.json({
+    success: true,
+    sessionToken,
+    durationMinutes,
+    expiresAt
+  });
+});
+
+// Admin Live Metrics
+app.get('/api/admin/stats', (req, res) => {
+  const now = Date.now();
+  const onlineThreshold = 3 * 60 * 1000; // 3 minutes
+  let onlineCount = 0;
+
+  for (const record of activeStudentPresence.values()) {
+    if (now - record.lastSeen < onlineThreshold) {
+      onlineCount++;
+    }
+  }
+
+  res.json({
+    stats: {
+      totalStudents: activeStudentPresence.size,
+      onlineStudents: onlineCount,
+      totalRegistrations: 0,
+      totalRevenue: 0
+    }
+  });
+});
+
+// Admin Student Presence Directory
+app.get('/api/admin/students', (req, res) => {
+  const now = Date.now();
+  const list: any[] = [];
+
+  for (const record of activeStudentPresence.values()) {
+    const diff = now - record.lastSeen;
+    const status = diff < 3 * 60 * 1000 ? 'online' : diff < 15 * 60 * 1000 ? 'recent' : 'offline';
+    list.push({
+      id: record.id,
+      email: record.email,
+      status,
+      lastSeen: record.lastSeen
+    });
+  }
+
+  // Include founder if list empty
+  if (list.length === 0) {
+    list.push({
+      id: 'admin_mitesh',
+      email: ADMIN_EMAILS[0],
+      status: 'online',
+      lastSeen: now
+    });
+  }
+
+  res.json({ students: list });
+});
+
+// Visitor Contact Form Submission (Rate-limited abuse protection)
+const visitorRateLimits = new Map<string, { count: number; windowStart: number }>();
+
+app.post('/api/contact/submit', (req, res) => {
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown');
+  const now = Date.now();
+  const limit = visitorRateLimits.get(ip);
+  if (limit && now - limit.windowStart < 10 * 60 * 1000) {
+    if (limit.count >= 5) {
+      res.status(429).json({ error: 'Rate limit exceeded. Please wait a few minutes before submitting another message.' });
+      return;
+    }
+    limit.count++;
+  } else {
+    visitorRateLimits.set(ip, { count: 1, windowStart: now });
+  }
+
+  const { sender_name, sender_email, subject, message } = req.body;
+  if (!sender_name || !sender_email || !message) {
+    res.status(400).json({ error: 'Name, email, and message are all required.' });
+    return;
+  }
+  if (message.length < 10 || message.length > 5000) {
+    res.status(400).json({ error: 'Message must be between 10 and 5,000 characters.' });
+    return;
+  }
+
+  res.json({ success: true, message: 'Message received successfully.' });
+});
+
+// Admin Reply Dispatch via Brevo Email
+app.post('/api/admin/reply-email', async (req, res) => {
+  const { toEmail, recipientName, originalSubject, replyMessage } = req.body;
+  if (!toEmail || !replyMessage) {
+    res.status(400).json({ error: 'Recipient email and reply message are required.' });
+    return;
+  }
+
+  const apiKey = getBrevoApiKey();
+  if (!apiKey) {
+    res.json({ success: true, warning: 'Brevo not configured; in-app reply recorded.' });
+    return;
+  }
+
+  try {
+    const senderEmail = getBrevoSenderEmail();
+    const senderName = getBrevoSenderName();
+    const htmlContent = `
+      <div style="font-family: sans-serif; background-color: #08080D; color: #F8FAFC; padding: 24px; border-radius: 12px; border: 1px solid rgba(139,92,246,0.3);">
+        <h2 style="color: #A78BFA; margin-top: 0;">NEXORA Organizing Desk</h2>
+        <p>Hello ${recipientName || 'Student / Visitor'},</p>
+        <div style="padding: 16px; background-color: #11101B; border-radius: 8px; border-left: 4px solid #8B5CF6; margin: 16px 0;">
+          <p style="margin: 0; white-space: pre-wrap; font-size: 14px; line-height: 1.6;">${replyMessage}</p>
+        </div>
+        <hr style="border: 0; border-top: 1px solid rgba(139,92,246,0.2); margin: 20px 0;" />
+        <p style="font-size: 11px; color: #94A3B8; margin: 0;">In reference to: <strong>${originalSubject || 'General Inquiry'}</strong></p>
+        <p style="font-size: 11px; color: #64748B; margin-top: 4px;">Birla Vishvakarma Mahavidyalaya (BVM) · NEXORA Student Technology Community</p>
+      </div>
+    `;
+
+    await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': apiKey.trim(),
+        'Content-Type': 'application/json',
+        'accept': 'application/json'
+      },
+      body: JSON.stringify({
+        sender: { name: senderName, email: senderEmail },
+        to: [{ email: toEmail }],
+        subject: `Re: ${originalSubject || 'NEXORA Inquiry Response'}`,
+        htmlContent
+      })
+    });
+
+    res.json({ success: true, message: 'Email reply dispatched via Brevo.' });
+  } catch (err: any) {
+    console.error('Error dispatching reply email:', err);
+    res.status(500).json({ error: 'Failed to dispatch email reply via Brevo.' });
+  }
+});
+
+// Local image upload endpoint for media files
+app.post('/api/media/upload', (req, res) => {
+  try {
+    const { dataUrl, fileName, mimeType, folder = 'competitions' } = req.body;
+    if (!dataUrl) {
+      res.status(400).json({ error: 'Missing image data' });
+      return;
+    }
+    const matches = dataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    const buffer = matches ? Buffer.from(matches[2], 'base64') : Buffer.from(dataUrl, 'base64');
+    
+    // Validate size (< 5MB)
+    if (buffer.length > 5 * 1024 * 1024) {
+      res.status(400).json({ error: 'File size exceeds 5MB limit.' });
+      return;
+    }
+
+    const cleanFolder = (folder || 'competitions').replace(/[^a-zA-Z0-9_-]/g, '');
+    const uploadDir = path.resolve(__dirname, 'public', 'assets', 'uploads', cleanFolder);
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    const safeName = `${Date.now()}_${(fileName || 'image.jpg').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const filePath = path.join(uploadDir, safeName);
+    fs.writeFileSync(filePath, buffer);
+
+    const publicUrl = `/assets/uploads/${cleanFolder}/${safeName}`;
+    res.json({
+      success: true,
+      url: publicUrl,
+      path: `uploads/${cleanFolder}/${safeName}`,
+      name: fileName || safeName
+    });
+  } catch (err: any) {
+    console.error('Media upload error:', err);
+    res.status(500).json({ error: err.message || 'Failed to save uploaded image.' });
+  }
 });
 
 // Fallback for all unmatched /api/* routes so they ALWAYS return structured JSON and NEVER HTML

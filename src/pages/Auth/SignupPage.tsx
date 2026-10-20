@@ -23,6 +23,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { NexoraLogo } from '../../components/ui/NexoraLogo';
 import { AcademicYear } from '../../types';
+import { extractErrorMessage } from '../../services/apiClient';
 
 const COLLEGES = [
   'Birla Vishvakarma Mahavidyalaya (BVM)',
@@ -191,9 +192,10 @@ export const SignupPage: React.FC = () => {
   };
 
   // Dispatch Real Brevo Email OTP
-  const triggerSendEmailOtp = async (targetEmail: string) => {
+  const triggerSendEmailOtp = async (targetEmail: string): Promise<boolean> => {
     setOtpError(null);
     setOtpSuccess(null);
+    setStepError(null);
     setOtpSending(true);
     try {
       const res = await sendEmailOtp(targetEmail, 'signup');
@@ -202,8 +204,12 @@ export const SignupPage: React.FC = () => {
       setResendCooldown(res.resendCooldown || 30);
       setOtpDigits(['', '', '', '', '', '']);
       setOtpSuccess('Verification code sent to your email.');
+      return true;
     } catch (err: any) {
-      setOtpError(err.message || 'Could not dispatch verification email. Please check your email address.');
+      const msg = extractErrorMessage(err, 'Could not dispatch verification email. Please check your email address.');
+      setOtpError(msg);
+      setStepError(msg);
+      return false;
     } finally {
       setOtpSending(false);
     }
@@ -213,12 +219,12 @@ export const SignupPage: React.FC = () => {
   const handleVerifyOtp = async () => {
     const fullOtp = otpDigits.join('');
     if (fullOtp.length !== 6) {
-      setOtpError('Please enter all 6 digits.');
+      setOtpError('Please enter all 6 digits of your verification code.');
       return;
     }
 
     if (countdownSeconds <= 0) {
-      setOtpError('This verification code has expired (3-minute limit). Please request a new code.');
+      setOtpError('This verification code has expired (3-minute limit). Please click "Resend OTP" below.');
       return;
     }
 
@@ -233,7 +239,8 @@ export const SignupPage: React.FC = () => {
         setCurrentStep(3); // Advance to Full Name
       }, 400);
     } catch (err: any) {
-      setOtpError(err.message || 'Incorrect verification code. Please try again.');
+      const msg = extractErrorMessage(err, 'Incorrect verification code. Please check your email or request a new code.');
+      setOtpError(msg);
     } finally {
       setOtpVerifying(false);
     }
@@ -241,6 +248,7 @@ export const SignupPage: React.FC = () => {
 
   // Handle digit box typing
   const handleDigitChange = (index: number, val: string) => {
+    if (otpError) setOtpError(null);
     const cleanVal = val.replace(/\D/g, '');
     if (!cleanVal) {
       const newDigits = [...otpDigits];
@@ -293,9 +301,12 @@ export const SignupPage: React.FC = () => {
         setStepError('Please enter a valid student or personal email address.');
         return;
       }
-      // Advance to OTP screen and send real Brevo email
-      setCurrentStep(2);
-      await triggerSendEmailOtp(email.trim().toLowerCase());
+      
+      // Dispatch Brevo OTP first - ONLY advance to Step 2 if successfully dispatched!
+      const success = await triggerSendEmailOtp(email.trim().toLowerCase());
+      if (success) {
+        setCurrentStep(2);
+      }
       return;
     }
 
@@ -462,7 +473,7 @@ export const SignupPage: React.FC = () => {
 
       navigate(redirectPath);
     } catch (err: any) {
-      setStepError(err.message || 'Failed to complete registration. Please try again.');
+      setStepError(extractErrorMessage(err, 'Failed to complete registration. Please try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -1126,10 +1137,10 @@ export const SignupPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleNext}
-                  disabled={submitting}
+                  disabled={submitting || otpSending || otpVerifying}
                   className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-semibold text-white bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 rounded-xl transition-all shadow-[0_0_20px_-3px_rgba(139,92,246,0.6)] cursor-pointer disabled:opacity-50"
                 >
-                  {submitting ? (
+                  {submitting || otpSending || otpVerifying ? (
                     <RefreshCw className="w-4 h-4 animate-spin text-white" />
                   ) : currentStep === 1 ? (
                     <>

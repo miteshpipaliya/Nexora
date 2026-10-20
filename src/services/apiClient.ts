@@ -1,16 +1,90 @@
 /**
  * Robust API Client for NEXORA
  * Guarantees safe JSON parsing, checks Content-Type, catches HTML/plain-text server error responses,
- * and prevents JSON SyntaxError exceptions from leaking to the user interface.
+ * normalizes error payloads, and prevents "[object Object]" exceptions from leaking to the UI.
  */
 
 export interface ApiResponse<T = any> {
   success?: boolean;
   data?: T;
-  error?: string;
+  error?: string | any;
   message?: string;
   code?: string;
   [key: string]: any;
+}
+
+/**
+ * Universal safe error message extractor that GUARANTEES a human-readable string.
+ * Never returns "[object Object]".
+ */
+export function extractErrorMessage(err: unknown, fallback = 'An unexpected error occurred. Please try again.'): string {
+  if (!err) return fallback;
+  if (typeof err === 'string') {
+    const trimmed = err.trim();
+    if (trimmed && trimmed !== '[object Object]') return trimmed;
+    return fallback;
+  }
+
+  if (typeof err === 'object') {
+    const e = err as any;
+
+    // Check direct message string
+    if (typeof e.message === 'string' && e.message.trim() && e.message !== '[object Object]') {
+      return e.message.trim();
+    }
+
+    // Check direct error field (can be string or nested object)
+    if (typeof e.error === 'string' && e.error.trim() && e.error !== '[object Object]') {
+      return e.error.trim();
+    }
+    if (typeof e.error === 'object' && e.error !== null) {
+      if (typeof e.error.message === 'string' && e.error.message.trim() && e.error.message !== '[object Object]') {
+        return e.error.message.trim();
+      }
+      if (typeof e.error.code === 'string' && e.error.code.trim()) {
+        return `Error (${e.error.code}): please try again.`;
+      }
+    }
+
+    // Check msg or statusText
+    if (typeof e.msg === 'string' && e.msg.trim() && e.msg !== '[object Object]') {
+      return e.msg.trim();
+    }
+    if (typeof e.statusText === 'string' && e.statusText.trim()) {
+      return e.statusText.trim();
+    }
+
+    // Brevo / API specific codes
+    if (e.code === 'BREVO_IP_UNAUTHORIZED') {
+      return 'Email delivery service requires IP authorization in Brevo console.';
+    }
+    if (e.code === 'BREVO_KEY_NOT_FOUND') {
+      return 'Email delivery service is currently being configured. Please use Google Sign-In or try again shortly.';
+    }
+    if (e.code === 'BREVO_SENDER_UNVERIFIED') {
+      return 'Email sender is unverified. Please check Brevo sender settings.';
+    }
+    if (e.code === 'BREVO_QUOTA_EXCEEDED') {
+      return 'Email sending limit reached. Please contact NEXORA administrator.';
+    }
+    if (e.code === 'auth/email-already-in-use') {
+      return 'An account with this email address already exists. Please log in.';
+    }
+    if (e.code === 'auth/network-request-failed') {
+      return 'Network connection failed. Please check your internet connection.';
+    }
+
+    try {
+      const json = JSON.stringify(err);
+      if (json && json !== '{}' && json !== '[]') {
+        return json.slice(0, 200);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return fallback;
 }
 
 export async function safeApiFetch<T = any>(
@@ -42,7 +116,7 @@ export async function safeApiFetch<T = any>(
       throw new Error('Server returned an unreadable response. Please try again.');
     }
   } else {
-    // Non-JSON response (e.g. Vercel plain text 500 "A server error has occurred", HTML 404/502)
+    // Non-JSON response (e.g. Vercel plain text 500, HTML 404/502)
     const textBody = await response.text().catch(() => '');
     console.warn(`[API Non-JSON Response] ${endpoint} Status: ${response.status}:`, textBody.slice(0, 150));
 
@@ -53,9 +127,10 @@ export async function safeApiFetch<T = any>(
       if (response.status >= 500) {
         throw new Error('The server encountered a temporary error. Please try again in a moment.');
       }
-      throw new Error(textBody.trim() || `Request failed with status ${response.status}`);
+      const cleaned = textBody.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150);
+      throw new Error(cleaned || `Request failed with status ${response.status}`);
     }
-    // If ok but not json
+
     try {
       responseData = JSON.parse(textBody);
     } catch {
@@ -64,13 +139,11 @@ export async function safeApiFetch<T = any>(
   }
 
   if (!response.ok) {
-    const errorMessage =
-      responseData?.error ||
-      responseData?.message ||
-      `Request failed (${response.status})`;
-    const err = new Error(errorMessage);
+    const errorMsg = extractErrorMessage(responseData, `Request failed (${response.status})`);
+    const err = new Error(errorMsg);
     (err as any).code = responseData?.code || 'API_ERROR';
     (err as any).status = response.status;
+    (err as any).data = responseData;
     throw err;
   }
 

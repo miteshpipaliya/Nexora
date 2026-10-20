@@ -25,6 +25,8 @@ import { PrivacyPage } from './pages/Legal/PrivacyPage';
 import { TermsPage } from './pages/Legal/TermsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
+import { DynamicCompetitionPage } from './pages/Competitions/DynamicCompetitionPage';
+
 // Scroll to top helper on navigation
 const ScrollToTop: React.FC = () => {
   const { pathname } = useLocation();
@@ -53,12 +55,9 @@ export function App() {
                 <Route path="/" element={<HomePage />} />
                 <Route path="/about" element={<AboutPage />} />
                 
-                {/* Competitions */}
+                {/* Competitions: Dynamic Firestore-backed routes */}
                 <Route path="/competitions" element={<CompetitionsHubPage />} />
-                <Route path="/competitions/zerocode" element={<ZeroCodePage />} />
-                <Route path="/competitions/ctf" element={<CTFPage />} />
-                <Route path="/competitions/hackathon" element={<HackathonPage />} />
-                <Route path="/competitions/coderush" element={<CodeRushPage />} />
+                <Route path="/competitions/:slug" element={<DynamicCompetitionPage />} />
                 
                 {/* Team & Store */}
                 <Route path="/team" element={<TeamPage />} />

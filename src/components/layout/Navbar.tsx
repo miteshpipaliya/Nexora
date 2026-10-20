@@ -3,6 +3,8 @@ import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Shield } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { NexoraLogo } from '../ui/NexoraLogo';
+import { NotificationBell } from '../ui/NotificationBell';
+import { ADMIN_EMAILS } from '../../services/dataService';
 
 export const Navbar: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -35,7 +37,7 @@ export const Navbar: React.FC = () => {
   const isFounderAdmin = Boolean(
     user && 
     isAdmin && 
-    (user.email || '').toLowerCase().trim() === 'miteshpipaliya2202@gmail.com'
+    ADMIN_EMAILS.includes((user.email || '').toLowerCase().trim())
   );
 
   if (isFounderAdmin) {
@@ -84,8 +86,11 @@ export const Navbar: React.FC = () => {
             ))}
           </nav>
 
-          {/* User Status / Join NEXORA */}
+          {/* User Status / Notification Bell / Join NEXORA */}
           <div className="hidden md:flex items-center gap-3 shrink-0">
+            {/* Real-time Broadcast Notification Bell */}
+            <NotificationBell />
+
             {user ? (
               <Link
                 to="/profile"
@@ -107,8 +112,9 @@ export const Navbar: React.FC = () => {
             )}
           </div>
 
-          {/* Mobile Menu Hamburger Button */}
-          <div className="flex md:hidden items-center">
+          {/* Mobile Right Bar: Notification Bell & Hamburger Button */}
+          <div className="flex md:hidden items-center gap-2">
+            <NotificationBell />
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

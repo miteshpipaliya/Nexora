@@ -32,7 +32,7 @@ service cloud.firestore {
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.admin == true ||
-        request.auth.token.email == 'miteshpipaliya2202@gmail.com' ||
+        request.auth.token.email in ['miteshpipaliya2202@gmail.com', 'mitesh.aiml@gmail.com', 'editwithvision@gmail.com'] ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
@@ -70,6 +70,29 @@ service cloud.firestore {
     match /siteContent/{contentId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
+    }
+
+    // Broadcast Notifications (Public/Student Read, Admin Write)
+    match /notifications/{notificationId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Student Notification Read Receipts
+    match /userNotificationReads/{receiptId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Media Upload Metadata
+    match /mediaUploads/{uploadId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // System Config (Initialized flags)
+    match /systemConfig/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // Competition Registrations
