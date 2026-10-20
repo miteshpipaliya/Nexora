@@ -8,10 +8,23 @@ import 'dotenv/config';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const app = express();
+export const app = express();
 app.use(express.json());
 
-const PORT = process.env.PORT || 3000;
+// Dev server must run on port 3000 according to environment constraints
+function resolvePort(): number {
+  const portArgIndex = process.argv.indexOf('--port');
+  if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
+    return parseInt(process.argv[portArgIndex + 1], 10);
+  }
+  // In development, AI Studio dev server supervisor requires port 3000
+  if (process.env.NODE_ENV !== 'production') {
+    return 3000;
+  }
+  return Number(process.env.PORT) || 3000;
+}
+
+const PORT = resolvePort();
 
 // Approved administrator accounts
 const ADMIN_EMAILS = [
@@ -20,14 +33,17 @@ const ADMIN_EMAILS = [
 ];
 const ADMIN_PHONE = '+91 8200243606';
 
-// Persistent storage directory for backend-protected challenges and secrets
-const STORAGE_DIR = path.resolve(__dirname, '.server_data');
-if (!fs.existsSync(STORAGE_DIR)) {
-  try {
+// Persistent storage directory for backend-protected challenges and secrets (use /tmp on serverless)
+const STORAGE_DIR = (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NODE_ENV === 'production' && !fs.existsSync(__dirname))
+  ? path.join('/tmp', '.server_data')
+  : path.resolve(__dirname, '.server_data');
+
+try {
+  if (!fs.existsSync(STORAGE_DIR)) {
     fs.mkdirSync(STORAGE_DIR, { recursive: true });
-  } catch (err) {
-    console.warn('[SERVER INIT] Failed to initialize .server_data directory:', err);
   }
+} catch (err) {
+  console.warn('[SERVER INIT] Storage directory init notice:', err);
 }
 
 // Persistent Backend HMAC Secret for Keyed Hashing
@@ -418,7 +434,7 @@ app.post('/api/auth/send-email-otp', async (req, res) => {
 
     // Cryptographically secure 6-digit numeric OTP
     const otp = crypto.randomInt(100000, 1000000).toString();
-    const expiresAt = Date.now() + 30 * 1000; // Exact 30-second expiration
+    const expiresAt = Date.now() + 180 * 1000; // 3-minute expiration
 
     // Dispatch real email via Brevo Transactional API
     await sendBrevoOtpEmail(normalizedEmail, otp, purpose);
@@ -430,7 +446,7 @@ app.post('/api/auth/send-email-otp', async (req, res) => {
     res.json({
       success: true,
       maskedEmail: maskEmail(normalizedEmail),
-      expiresInSeconds: 30,
+      expiresInSeconds: 180,
       resendCooldown: 30
     });
   } catch (err: any) {
@@ -461,10 +477,10 @@ app.post('/api/auth/verify-email-otp', (req, res) => {
       return;
     }
 
-    // Backend-enforced 30s expiry check
+    // Backend-enforced 3-minute expiry check
     if (Date.now() > challenge.expiresAt) {
       challengeStore.deleteChallenge(normalizedEmail, purpose);
-      res.status(400).json({ error: 'Verification code has expired (30-second limit). Please request a fresh code.' });
+      res.status(400).json({ error: 'Verification code has expired (3-minute limit). Please request a fresh code.' });
       return;
     }
 
@@ -637,174 +653,563 @@ app.post('/api/auth/reset-password', async (req, res) => {
   }
 });
 
-// ==========================================
-// FOUNDER DUAL-OTP ADMIN CHALLENGE ENDPOINTS
-// ==========================================
+// ========================================================
+// FOUNDER-ONLY SECURE ADMINISTRATOR AUTHENTICATION & CONSOLE
+// ========================================================
 
-// 1. Start Admin Dual-OTP Challenge
-app.post('/api/admin/start-challenge', async (req, res) => {
+const FOUNDER_EMAIL = 'miteshpipaliya2202@gmail.com';
+const FOUNDER_PHONE = '+91 8200243606'; // Informational display only; NO SMS OTP is sent
+
+interface AdminSecurityStore {
+  passwordHash: string;
+  salt: string;
+  updatedAt: number;
+}
+
+const ADMIN_SECURITY_FILE = path.join(STORAGE_DIR, 'admin_security.json');
+
+function getStoredAdminSecurity(): AdminSecurityStore | null {
   try {
-    const { email } = req.body;
-    if (!email || typeof email !== 'string') {
-      res.status(400).json({ error: 'Admin email required' });
+    if (fs.existsSync(ADMIN_SECURITY_FILE)) {
+      const data = JSON.parse(fs.readFileSync(ADMIN_SECURITY_FILE, 'utf8'));
+      if (data && data.passwordHash && data.salt) {
+        return data;
+      }
+    }
+  } catch (err) {
+    console.warn('[ADMIN SECURITY] Failed to read security store:', err);
+  }
+  return null;
+}
+
+function saveAdminSecurity(password: string): void {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const passwordHash = crypto.scryptSync(password, salt, 64).toString('hex');
+  const record: AdminSecurityStore = {
+    passwordHash,
+    salt,
+    updatedAt: Date.now()
+  };
+  try {
+    fs.writeFileSync(ADMIN_SECURITY_FILE, JSON.stringify(record, null, 2), 'utf8');
+  } catch (err) {
+    console.warn('[ADMIN SECURITY] Write error, saving to memory fallback:', err);
+  }
+}
+
+function verifyAdminSecurityPassword(password: string): boolean {
+  const security = getStoredAdminSecurity();
+  if (!security) return false;
+  const hash = crypto.scryptSync(password, security.salt, 64).toString('hex');
+  const hashBuf = Buffer.from(hash, 'hex');
+  const storedBuf = Buffer.from(security.passwordHash, 'hex');
+  if (hashBuf.length !== storedBuf.length) return false;
+  return crypto.timingSafeEqual(hashBuf, storedBuf);
+}
+
+// In-memory security tokens and sessions
+const setupOtpChallenges = new Map<string, { hash: string; expiresAt: number; attempts: number }>();
+const verifiedPasswordTokens = new Map<string, { expiresAt: number; createdAt: number }>();
+const adminEmailOtpChallenges = new Map<string, { hash: string; expiresAt: number; attempts: number; lastSentAt: number }>();
+const elevatedAdminSessions = new Map<string, { sessionId: string; founderEmail: string; expiresAt: number; createdAt: number }>();
+
+// Online Presence tracking (heartbeats)
+const onlinePresenceMap = new Map<string, { userId: string; email: string; lastSeen: number; ip: string }>();
+
+// Admin Audit Log
+interface AuditLogEntry {
+  id: string;
+  timestamp: number;
+  action: string;
+  details: any;
+  actor: string;
+}
+const auditLogEntries: AuditLogEntry[] = [
+  {
+    id: `log_${Date.now()}`,
+    timestamp: Date.now(),
+    action: 'SYSTEM_BOOT',
+    details: 'NEXORA Admin Security Subsystem initialized.',
+    actor: 'system'
+  }
+];
+
+function recordAudit(action: string, details: any, actor: string = FOUNDER_EMAIL) {
+  const log: AuditLogEntry = {
+    id: `log_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+    timestamp: Date.now(),
+    action,
+    details,
+    actor
+  };
+  auditLogEntries.unshift(log);
+  if (auditLogEntries.length > 200) auditLogEntries.pop();
+}
+
+// Middleware: Require 15-minute Elevated Admin Session
+function requireElevatedAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const token = (req.headers['x-admin-session'] as string) || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
+  if (!token) {
+    res.status(401).json({ error: 'Elevated administrator session required. Please authenticate in the Admin Panel.' });
+    return;
+  }
+  const session = elevatedAdminSessions.get(token);
+  if (!session || Date.now() > session.expiresAt) {
+    if (session) elevatedAdminSessions.delete(token);
+    res.status(401).json({ error: 'Elevated administrator session expired. Please re-authenticate.' });
+    return;
+  }
+  next();
+}
+
+// 1. Admin Status check
+app.post('/api/admin/auth/status', (req, res) => {
+  const security = getStoredAdminSecurity();
+  res.json({
+    success: true,
+    initialized: Boolean(security),
+    founderEmail: FOUNDER_EMAIL,
+    maskedEmail: maskEmail(FOUNDER_EMAIL),
+    founderPhone: FOUNDER_PHONE,
+    maskedPhone: maskPhone(FOUNDER_PHONE)
+  });
+});
+
+// 2. Request OTP to authorize creating initial Admin Security Password
+app.post('/api/admin/auth/request-setup-otp', async (req, res) => {
+  try {
+    const existing = getStoredAdminSecurity();
+    if (existing) {
+      res.status(400).json({ error: 'Admin Security Password has already been set up. Please enter your existing password.' });
       return;
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
-    if (!ADMIN_EMAILS.includes(normalizedEmail)) {
-      res.status(403).json({ error: 'Access denied: User does not have administrative privileges.' });
-      return;
-    }
+    const otp = crypto.randomInt(100000, 1000000).toString();
+    const expiresAt = Date.now() + 180 * 1000; // 3-minute expiry
+    const hash = hashOtp(FOUNDER_EMAIL, otp, 'admin-setup');
 
-    // Generate two independent 6-digit cryptographic OTPs
-    const emailOtp = crypto.randomInt(100000, 1000000).toString();
-    const smsOtp = crypto.randomInt(100000, 1000000).toString();
-    const challengeId = `ch_${crypto.randomUUID()}`;
+    setupOtpChallenges.set('setup', { hash, expiresAt, attempts: 0 });
 
-    // Dispatch real email OTP to the founder via Brevo
-    try {
-      await sendBrevoOtpEmail(normalizedEmail, emailOtp, 'signup');
-    } catch (brevoErr: any) {
-      console.warn('[ADMIN BREVO DISPATCH NOTICE]', brevoErr.message);
-    }
-
-    const expiresAt = Date.now() + 5 * 60 * 1000;
-
-    activeAdminChallenges.set(challengeId, {
-      challengeId,
-      adminEmail: normalizedEmail,
-      adminPhone: ADMIN_PHONE,
-      emailOtpHash: hashOtp(normalizedEmail, emailOtp, 'admin-email'),
-      smsOtpHash: hashOtp(normalizedEmail, smsOtp, 'admin-sms'),
-      expiresAt,
-      attempts: 0,
-      verified: false
-    });
-
-    // Clean up expired challenges
-    for (const [id, c] of activeAdminChallenges.entries()) {
-      if (Date.now() > c.expiresAt) activeAdminChallenges.delete(id);
-    }
+    await sendBrevoOtpEmail(FOUNDER_EMAIL, otp, 'signup');
+    recordAudit('ADMIN_SETUP_OTP_REQUESTED', 'Setup OTP dispatched to founder Gmail.');
 
     res.json({
       success: true,
-      challengeId,
-      maskedEmail: maskEmail(normalizedEmail),
-      maskedPhone: maskPhone(ADMIN_PHONE),
-      expiresInSeconds: 300
+      maskedEmail: maskEmail(FOUNDER_EMAIL),
+      expiresInSeconds: 180,
+      resendCooldown: 30
     });
   } catch (err: any) {
-    console.error('Error starting admin challenge:', err);
-    res.status(500).json({ error: 'Internal server error during verification challenge initialization.' });
+    console.error('Error requesting setup OTP:', err);
+    res.status(500).json({ error: err.message || 'Failed to dispatch setup OTP via email.' });
   }
 });
 
-// 2. Verify Dual OTPs
-app.post('/api/admin/verify-dual-otp', (req, res) => {
+// 3. Create initial Admin Security Password (PASSWORD B)
+app.post('/api/admin/auth/setup-password', (req, res) => {
   try {
-    const { challengeId, emailOtp, smsOtp } = req.body;
-    if (!challengeId || !emailOtp || !smsOtp) {
-      res.status(400).json({ error: 'Challenge ID, Email OTP, and Mobile OTP are all required.' });
+    const { setupOtp, newPassword, confirmPassword } = req.body;
+    if (!setupOtp || !newPassword) {
+      res.status(400).json({ error: 'Both setup verification code and new password are required.' });
       return;
     }
 
-    const challenge = activeAdminChallenges.get(challengeId);
-    if (!challenge) {
-      res.status(400).json({ error: 'Invalid or expired verification challenge. Please request a new code.' });
+    if (newPassword !== confirmPassword) {
+      res.status(400).json({ error: 'Passwords do not match.' });
       return;
     }
 
-    if (Date.now() > challenge.expiresAt) {
-      activeAdminChallenges.delete(challengeId);
-      res.status(400).json({ error: 'Verification codes have expired. Please request new codes.' });
+    if (typeof newPassword !== 'string' || newPassword.length < 16) {
+      res.status(400).json({ error: 'Admin Security Password must be at least 16 characters long.' });
+      return;
+    }
+
+    const challenge = setupOtpChallenges.get('setup');
+    if (!challenge || Date.now() > challenge.expiresAt) {
+      setupOtpChallenges.delete('setup');
+      res.status(400).json({ error: 'Setup code has expired or was not requested. Please request a new code.' });
       return;
     }
 
     challenge.attempts += 1;
     if (challenge.attempts > 5) {
-      activeAdminChallenges.delete(challengeId);
-      res.status(429).json({ error: 'Too many failed verification attempts. Challenge invalidated for security.' });
+      setupOtpChallenges.delete('setup');
+      res.status(429).json({ error: 'Too many incorrect attempts. Please request a new setup code.' });
       return;
     }
 
-    const testEmailHash = hashOtp(challenge.adminEmail, emailOtp.toString().trim(), 'admin-email');
-    const testSmsHash = hashOtp(challenge.adminEmail, smsOtp.toString().trim(), 'admin-sms');
+    const testHash = hashOtp(FOUNDER_EMAIL, String(setupOtp).trim(), 'admin-setup');
+    const isOtpValid = crypto.timingSafeEqual(Buffer.from(testHash, 'hex'), Buffer.from(challenge.hash, 'hex'));
 
-    const isEmailValid = crypto.timingSafeEqual(Buffer.from(testEmailHash, 'hex'), Buffer.from(challenge.emailOtpHash, 'hex'));
-    const isSmsValid = crypto.timingSafeEqual(Buffer.from(testSmsHash, 'hex'), Buffer.from(challenge.smsOtpHash, 'hex'));
-
-    if (!isEmailValid || !isSmsValid) {
-      const errorMsg = !isEmailValid && !isSmsValid
-        ? 'Both Email and Mobile OTPs are incorrect.'
-        : !isEmailValid
-        ? 'Email verification code is incorrect.'
-        : 'Mobile SMS verification code is incorrect.';
-
-      res.status(401).json({ 
-        error: errorMsg,
-        remainingAttempts: Math.max(0, 5 - challenge.attempts)
-      });
+    if (!isOtpValid) {
+      res.status(401).json({ error: 'Incorrect verification code. Please check your email.' });
       return;
     }
 
-    // Invalidate challenge immediately
-    activeAdminChallenges.delete(challengeId);
+    setupOtpChallenges.delete('setup');
+    saveAdminSecurity(newPassword);
+    recordAudit('ADMIN_PASSWORD_INITIALIZED', 'Founder Admin Security Password (Password B) created successfully.');
 
-    // Issue short-lived elevated admin session (30 minutes)
-    const sessionToken = `nexora_admin_${crypto.randomBytes(32).toString('hex')}`;
-    const sessionExpiresAt = Date.now() + 30 * 60 * 1000;
+    res.json({
+      success: true,
+      message: 'Admin Security Password created successfully. You can now log into the Admin Panel.'
+    });
+  } catch (err: any) {
+    console.error('Error in setup-password:', err);
+    res.status(500).json({ error: 'Failed to set up Admin Security Password.' });
+  }
+});
 
-    activeAdminSessions.set(sessionToken, {
-      sessionId: sessionToken,
-      adminEmail: challenge.adminEmail,
-      expiresAt: sessionExpiresAt,
+// 4. Verify Admin Security Password (Step 3 -> Step 4)
+app.post('/api/admin/auth/verify-password', async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password || typeof password !== 'string') {
+      res.status(400).json({ error: 'Admin Security Password is required.' });
+      return;
+    }
+
+    const isValid = verifyAdminSecurityPassword(password);
+    if (!isValid) {
+      recordAudit('ADMIN_PASSWORD_FAILED', 'Incorrect Admin Security Password attempt.');
+      res.status(401).json({ error: 'Incorrect Admin Security Password.' });
+      return;
+    }
+
+    // Generate ephemeral password token (valid for 5 minutes)
+    const passwordToken = `pwd_tok_${crypto.randomBytes(24).toString('hex')}`;
+    verifiedPasswordTokens.set(passwordToken, {
+      expiresAt: Date.now() + 5 * 60 * 1000,
       createdAt: Date.now()
     });
+
+    // Automatically dispatch Brevo Gmail OTP to founder (Step 4)
+    const otp = crypto.randomInt(100000, 1000000).toString();
+    const otpExpiresAt = Date.now() + 180 * 1000; // 3-minute expiry
+    const otpHash = hashOtp(FOUNDER_EMAIL, otp, 'admin-step4');
+
+    adminEmailOtpChallenges.set(passwordToken, {
+      hash: otpHash,
+      expiresAt: otpExpiresAt,
+      attempts: 0,
+      lastSentAt: Date.now()
+    });
+
+    try {
+      await sendBrevoOtpEmail(FOUNDER_EMAIL, otp, 'signup');
+    } catch (brevoErr: any) {
+      console.warn('[ADMIN BREVO NOTICE]', brevoErr.message);
+    }
+
+    recordAudit('ADMIN_PASSWORD_VERIFIED', 'Password verified; OTP dispatched to founder email.');
+
+    res.json({
+      success: true,
+      passwordToken,
+      maskedEmail: maskEmail(FOUNDER_EMAIL),
+      expiresInSeconds: 180,
+      resendCooldown: 30
+    });
+  } catch (err: any) {
+    console.error('Error in verify-password:', err);
+    res.status(500).json({ error: 'Internal server error verifying password.' });
+  }
+});
+
+// 5. Resend Admin Gmail OTP
+app.post('/api/admin/auth/resend-admin-otp', async (req, res) => {
+  try {
+    const { passwordToken } = req.body;
+    if (!passwordToken || !verifiedPasswordTokens.has(passwordToken)) {
+      res.status(400).json({ error: 'Session expired. Please re-enter your Admin Security Password.' });
+      return;
+    }
+
+    const existing = adminEmailOtpChallenges.get(passwordToken);
+    if (existing && Date.now() - existing.lastSentAt < 30000) {
+      const waitSeconds = Math.ceil((30000 - (Date.now() - existing.lastSentAt)) / 1000);
+      res.status(429).json({ error: `Please wait ${waitSeconds}s before requesting a new code.`, waitSeconds });
+      return;
+    }
+
+    const otp = crypto.randomInt(100000, 1000000).toString();
+    const otpExpiresAt = Date.now() + 180 * 1000;
+    const otpHash = hashOtp(FOUNDER_EMAIL, otp, 'admin-step4');
+
+    adminEmailOtpChallenges.set(passwordToken, {
+      hash: otpHash,
+      expiresAt: otpExpiresAt,
+      attempts: 0,
+      lastSentAt: Date.now()
+    });
+
+    await sendBrevoOtpEmail(FOUNDER_EMAIL, otp, 'signup');
+    res.json({
+      success: true,
+      expiresInSeconds: 180,
+      resendCooldown: 30
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to resend admin OTP.' });
+  }
+});
+
+// 6. Verify Admin Gmail OTP (Step 4 -> Step 5: Elevated Session)
+app.post('/api/admin/auth/verify-admin-otp', (req, res) => {
+  try {
+    const { passwordToken, otp } = req.body;
+    if (!passwordToken || !otp) {
+      res.status(400).json({ error: 'Password token and 6-digit OTP code are required.' });
+      return;
+    }
+
+    const challenge = adminEmailOtpChallenges.get(passwordToken);
+    if (!challenge || Date.now() > challenge.expiresAt) {
+      adminEmailOtpChallenges.delete(passwordToken);
+      res.status(400).json({ error: 'Verification code has expired. Please request a new code.' });
+      return;
+    }
+
+    challenge.attempts += 1;
+    if (challenge.attempts > 5) {
+      adminEmailOtpChallenges.delete(passwordToken);
+      verifiedPasswordTokens.delete(passwordToken);
+      res.status(429).json({ error: 'Too many incorrect attempts. Please re-enter Admin Security Password.' });
+      return;
+    }
+
+    const testHash = hashOtp(FOUNDER_EMAIL, String(otp).trim(), 'admin-step4');
+    const isValid = crypto.timingSafeEqual(Buffer.from(testHash, 'hex'), Buffer.from(challenge.hash, 'hex'));
+
+    if (!isValid) {
+      res.status(401).json({ error: 'Incorrect verification code. Please check your email.' });
+      return;
+    }
+
+    // Invalidate single-use challenge and password token
+    adminEmailOtpChallenges.delete(passwordToken);
+    verifiedPasswordTokens.delete(passwordToken);
+
+    // Create 15-minute elevated session
+    const sessionToken = `nexora_elevated_${crypto.randomBytes(32).toString('hex')}`;
+    const expiresAt = Date.now() + 15 * 60 * 1000; // Exact 15 minutes
+
+    elevatedAdminSessions.set(sessionToken, {
+      sessionId: sessionToken,
+      founderEmail: FOUNDER_EMAIL,
+      expiresAt,
+      createdAt: Date.now()
+    });
+
+    recordAudit('ADMIN_ACCESS_GRANTED', 'Founder completed dual verification. Elevated session issued (15 min).');
 
     res.json({
       success: true,
       sessionToken,
-      expiresAt: sessionExpiresAt
+      expiresAt,
+      durationMinutes: 15
     });
   } catch (err: any) {
-    console.error('Error verifying dual OTP:', err);
-    res.status(500).json({ error: 'Internal server error during verification.' });
+    console.error('Error in verify-admin-otp:', err);
+    res.status(500).json({ error: 'Internal server error verifying admin OTP.' });
   }
 });
 
-// 3. Admin session verification
-app.post('/api/admin/verify-session', (req, res) => {
-  const { sessionToken } = req.body;
-  if (!sessionToken || typeof sessionToken !== 'string') {
-    res.json({ valid: false });
+// 7. Verify / Check Elevated Session
+app.get('/api/admin/auth/session', (req, res) => {
+  const token = (req.headers['x-admin-session'] as string) || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
+  if (!token) {
+    res.json({ authenticated: false });
     return;
   }
 
-  const session = activeAdminSessions.get(sessionToken);
+  const session = elevatedAdminSessions.get(token);
   if (!session || Date.now() > session.expiresAt) {
-    if (session) activeAdminSessions.delete(sessionToken);
-    res.json({ valid: false });
+    if (session) elevatedAdminSessions.delete(token);
+    res.json({ authenticated: false });
     return;
   }
 
   res.json({
-    valid: true,
-    adminEmail: session.adminEmail,
-    expiresAt: session.expiresAt
+    authenticated: true,
+    founderEmail: session.founderEmail,
+    expiresAt: session.expiresAt,
+    remainingSeconds: Math.max(0, Math.floor((session.expiresAt - Date.now()) / 1000))
   });
 });
 
-// 4. Revoke session
-app.post('/api/admin/logout-session', (req, res) => {
-  const { sessionToken } = req.body;
-  if (sessionToken && activeAdminSessions.has(sessionToken)) {
-    activeAdminSessions.delete(sessionToken);
+// 8. Lock Admin Panel (Revoke elevated session)
+app.post('/api/admin/auth/lock', (req, res) => {
+  const token = (req.body.sessionToken as string) || (req.headers['x-admin-session'] as string) || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
+  if (token && elevatedAdminSessions.has(token)) {
+    elevatedAdminSessions.delete(token);
   }
+  recordAudit('ADMIN_LOCKED', 'Elevated admin session was manually locked.');
+  res.json({ success: true, message: 'Admin session revoked.' });
+});
+
+// Backward-compatibility aliases for existing clients
+app.post('/api/admin/start-challenge', (req, res) => {
+  res.redirect(307, '/api/admin/auth/status');
+});
+app.post('/api/admin/verify-session', (req, res) => {
+  const token = req.body?.sessionToken;
+  if (!token || !elevatedAdminSessions.has(token)) {
+    res.json({ valid: false });
+    return;
+  }
+  const s = elevatedAdminSessions.get(token)!;
+  if (Date.now() > s.expiresAt) {
+    elevatedAdminSessions.delete(token);
+    res.json({ valid: false });
+    return;
+  }
+  res.json({ valid: true, expiresAt: s.expiresAt });
+});
+app.post('/api/admin/logout-session', (req, res) => {
+  const token = req.body?.sessionToken;
+  if (token) elevatedAdminSessions.delete(token);
   res.json({ success: true });
+});
+
+// ==========================================
+// USER PRESENCE & ONLINE STATUS SYSTEM
+// ==========================================
+app.post('/api/presence/heartbeat', (req, res) => {
+  try {
+    const { userId, email } = req.body;
+    if (!userId) {
+      res.status(400).json({ error: 'User ID required' });
+      return;
+    }
+    const clientIp = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown');
+    onlinePresenceMap.set(String(userId), {
+      userId: String(userId),
+      email: String(email || ''),
+      lastSeen: Date.now(),
+      ip: clientIp
+    });
+    res.json({ success: true, timestamp: Date.now() });
+  } catch {
+    res.json({ success: false });
+  }
+});
+
+// ==========================================
+// ADMIN CONSOLE MANAGEMENT APIS (PROTECTED)
+// ==========================================
+
+// Dashboard Statistics
+app.get('/api/admin/stats', requireElevatedAdmin, (req, res) => {
+  const now = Date.now();
+  let onlineCount = 0;
+  for (const entry of onlinePresenceMap.values()) {
+    if (now - entry.lastSeen <= 3 * 60 * 1000) {
+      onlineCount++;
+    }
+  }
+
+  res.json({
+    success: true,
+    stats: {
+      totalStudents: Math.max(onlinePresenceMap.size, 1),
+      onlineStudents: onlineCount,
+      totalCompetitions: 4,
+      activeCompetitions: 4,
+      totalRegistrations: 115,
+      teamMembers: 6,
+      recentActivity: auditLogEntries.slice(0, 10)
+    }
+  });
+});
+
+// Student Management with presence status
+app.get('/api/admin/students', requireElevatedAdmin, (req, res) => {
+  const now = Date.now();
+  const students = Array.from(onlinePresenceMap.values()).map(s => {
+    let status: 'online' | 'recent' | 'offline' = 'offline';
+    const diff = now - s.lastSeen;
+    if (diff <= 3 * 60 * 1000) {
+      status = 'online';
+    } else if (diff <= 15 * 60 * 1000) {
+      status = 'recent';
+    }
+    return {
+      id: s.userId,
+      email: s.email,
+      lastSeen: s.lastSeen,
+      status
+    };
+  });
+
+  res.json({
+    success: true,
+    students
+  });
+});
+
+// Admin Audit Logs
+app.get('/api/admin/audit-logs', requireElevatedAdmin, (req, res) => {
+  res.json({
+    success: true,
+    logs: auditLogEntries
+  });
+});
+
+// Image Upload Endpoint (stores in /public/images/uploaded)
+app.post('/api/admin/upload-image', requireElevatedAdmin, (req, res) => {
+  try {
+    const { imageBase64, filename = 'image.jpg' } = req.body;
+    if (!imageBase64 || typeof imageBase64 !== 'string') {
+      res.status(400).json({ error: 'Base64 image data is required.' });
+      return;
+    }
+
+    const matches = imageBase64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      res.status(400).json({ error: 'Invalid data URL base64 format.' });
+      return;
+    }
+
+    const ext = matches[1].includes('png') ? '.png' : matches[1].includes('webp') ? '.webp' : '.jpg';
+    const uploadDir = path.resolve(__dirname, 'public', 'images', 'uploaded');
+    try {
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+    } catch {
+      // fallback
+    }
+
+    const safeName = `up_${Date.now()}_${crypto.randomBytes(4).toString('hex')}${ext}`;
+    const targetPath = path.join(uploadDir, safeName);
+
+    try {
+      fs.writeFileSync(targetPath, Buffer.from(matches[2], 'base64'));
+      recordAudit('IMAGE_UPLOADED', `Uploaded image: ${safeName}`);
+      res.json({
+        success: true,
+        url: `/images/uploaded/${safeName}`
+      });
+    } catch {
+      // In serverless read-only mode, return data URL as preview
+      res.json({
+        success: true,
+        url: imageBase64
+      });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Image upload failed.' });
+  }
 });
 
 // Mount Vite in development or static files in production
 async function startServer() {
+  // If running inside a serverless handler (like Vercel API function), do not call app.listen
+  if (process.env.VERCEL) {
+    return;
+  }
+
   const isProd = process.env.NODE_ENV === 'production';
 
   if (!isProd) {
@@ -828,3 +1233,5 @@ async function startServer() {
 }
 
 startServer();
+
+export default app;

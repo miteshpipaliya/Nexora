@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Code2, ShieldAlert, Cpu, Terminal, Users, Trophy } from 'lucide-react';
 import { INITIAL_EVENTS } from '../../services/mockData';
 import { EventRegistrationModal } from '../../components/forms/EventRegistrationModal';
 import { CompetitionEvent } from '../../types';
 
 export const CompetitionsHubPage: React.FC = () => {
+  const navigate = useNavigate();
   const [selectedEventForModal, setSelectedEventForModal] = useState<CompetitionEvent | null>(null);
+  const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
 
   const getEventIcon = (slug: string) => {
     switch (slug) {
@@ -16,6 +18,10 @@ export const CompetitionsHubPage: React.FC = () => {
       case 'coderush': return Terminal;
       default: return Cpu;
     }
+  };
+
+  const handleImageError = (id: string) => {
+    setBrokenImages((prev) => ({ ...prev, [id]: true }));
   };
 
   return (
@@ -38,28 +44,42 @@ export const CompetitionsHubPage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {INITIAL_EVENTS.map((event) => {
           const Icon = getEventIcon(event.slug);
+          const isBroken = Boolean(brokenImages[event.id]);
+
           return (
             <div
               key={event.id}
-              className="rounded-2xl bg-[#171426] border border-violet-500/20 overflow-hidden flex flex-col justify-between group hover:border-violet-400/50 hover:shadow-[0_0_30px_-5px_rgba(139,92,246,0.2)] transition-all duration-300"
+              role="link"
+              tabIndex={0}
+              aria-label={`Explore ${event.title}`}
+              onClick={() => navigate(`/competitions/${event.slug}`)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  navigate(`/competitions/${event.slug}`);
+                }
+              }}
+              className="rounded-2xl bg-[#171426] border border-violet-500/20 overflow-hidden flex flex-col justify-between group hover:border-violet-400/50 hover:shadow-[0_0_30px_-5px_rgba(139,92,246,0.25)] transition-all duration-300 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
             >
               {/* Event Image */}
               <div className="relative h-56 w-full overflow-hidden bg-violet-950/40">
-                {event.banner_image ? (
+                {event.banner_image && !isBroken ? (
                   <img
                     src={event.banner_image}
                     alt={event.title}
+                    onError={() => handleImageError(event.id)}
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-violet-950/20">
-                    <Icon className="w-16 h-16 text-violet-500/40" />
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-violet-950/60 to-purple-950/40 text-violet-400 p-6 text-center">
+                    <Icon className="w-16 h-16 text-violet-400/70 mb-2" />
+                    <span className="text-xs font-mono text-violet-300/80">{event.title}</span>
                   </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-[#171426] via-transparent to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#171426] via-transparent to-transparent pointer-events-none" />
 
-                <div className="absolute top-4 left-4 right-4 flex items-center justify-between text-xs font-mono user-select-none">
+                <div className="absolute top-4 left-4 right-4 flex items-center justify-between text-xs font-mono user-select-none pointer-events-none">
                   <span className="text-slate-200 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded border border-white/10">
                     {event.category}
                   </span>
@@ -108,16 +128,20 @@ export const CompetitionsHubPage: React.FC = () => {
                     <div className="text-violet-300 font-medium">Uniform Fee: ₹50 per participant</div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <Link
                       to={`/competitions/${event.slug}`}
-                      className="px-4 py-2 text-xs font-medium text-slate-200 bg-[#11101B] border border-violet-500/25 rounded-lg hover:text-white hover:border-violet-400 transition-colors flex items-center gap-1.5"
+                      className="px-4 py-2 text-xs font-medium text-slate-200 bg-[#11101B] border border-violet-500/25 rounded-lg hover:text-white hover:border-violet-400 transition-colors flex items-center gap-1.5 cursor-pointer"
                     >
                       <span>Explore</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </Link>
                     <button
-                      onClick={() => setSelectedEventForModal(event)}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedEventForModal(event);
+                      }}
                       className="px-4 py-2 text-xs font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-500 transition-colors shadow-sm cursor-pointer"
                     >
                       Register

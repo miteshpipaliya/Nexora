@@ -18,7 +18,7 @@ export const INITIAL_EVENTS: CompetitionEvent[] = [
     capacity: 80,
     registered_count: 24,
     fee_per_participant: 50,
-    banner_image: '/src/assets/images/zerocode_event_1792342290235.jpg',
+    banner_image: '/images/competitions/zerocode.jpg',
     prizes: {
       first_place: '₹2,000 Cash Prize',
       special_rewards: 'Top 7 Participants — Exclusive Surprise Gifts'
@@ -59,7 +59,7 @@ export const INITIAL_EVENTS: CompetitionEvent[] = [
     capacity: 60,
     registered_count: 18,
     fee_per_participant: 50,
-    banner_image: '/src/assets/images/ctf_cyber_event_1792342289673.jpg',
+    banner_image: '/images/competitions/ctf.jpg',
     prizes: {
       first_place: '₹2,000 Cash Prize',
       special_rewards: 'Top 7 Participants — Exclusive Surprise Gifts'
@@ -105,7 +105,7 @@ export const INITIAL_EVENTS: CompetitionEvent[] = [
     capacity: 120,
     registered_count: 42,
     fee_per_participant: 50,
-    banner_image: '/src/assets/images/hackathon_event_1792342290154.jpg',
+    banner_image: '/images/competitions/hackathon.jpg',
     prizes: {
       first_place: '₹4,000 — 1st Team',
       second_place: '₹2,500 — 2nd Team',
@@ -155,7 +155,7 @@ export const INITIAL_EVENTS: CompetitionEvent[] = [
     capacity: 100,
     registered_count: 31,
     fee_per_participant: 50,
-    banner_image: '/src/assets/images/nexora_hero_bg_1792342288504.jpg',
+    banner_image: '/images/competitions/coderush.jpg',
     prizes: {
       first_place: '₹2,000 Cash Prize',
       special_rewards: 'Top 7 Participants — Exclusive Surprise Gifts'
@@ -192,7 +192,7 @@ export const FOUNDING_TEAM: TeamMemberProfile[] = [
     institution: 'Birla Vishvakarma Mahavidyalaya (BVM)',
     enrollment_number: '26EL309',
     division: '11',
-    avatar_url: '/src/assets/images/founder_avatar_1792342290175.jpg',
+    avatar_url: '/images/team/mitesh_founder.jpg',
     bio: 'Pioneering student visionary focused on bringing together interdisciplinary creators, developers, and engineers at BVM to build what comes next.',
     is_founder: true,
     is_placeholder: false
@@ -259,7 +259,7 @@ export const INITIAL_DEMO_USER: UserProfile = {
   enrollment_number: '26EL309',
   division: '11',
   phone_number: '+91 98765 43210',
-  avatar_url: '/src/assets/images/founder_avatar_1792342290175.jpg',
+  avatar_url: '/images/team/mitesh_founder.jpg',
   created_at: '2026-09-01T10:00:00Z',
   updated_at: '2026-10-18T10:00:00Z',
   is_admin: true

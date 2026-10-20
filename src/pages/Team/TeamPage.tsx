@@ -25,6 +25,8 @@ export const TeamPage: React.FC = () => {
     setTilt({ x: 0, y: 0 });
   };
 
+  const [avatarError, setAvatarError] = useState(false);
+
   return (
     <div className="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto space-y-20">
       
@@ -71,13 +73,20 @@ export const TeamPage: React.FC = () => {
 
           {/* Profile Photo & Name */}
           <div className="pt-6 pb-6 flex items-center gap-5">
-            <div className="relative w-24 h-24 rounded-2xl overflow-hidden border-2 border-violet-500/50 shadow-[0_0_20px_-5px_rgba(139,92,246,0.6)] shrink-0 bg-[#08080D]">
-              <img
-                src={founder.avatar_url}
-                alt="Mitesh Pipaliya - Founder"
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover"
-              />
+            <div className="relative w-24 h-24 rounded-2xl overflow-hidden border-2 border-violet-500/50 shadow-[0_0_20px_-5px_rgba(139,92,246,0.6)] shrink-0 bg-[#08080D] flex items-center justify-center">
+              {founder.avatar_url && !avatarError ? (
+                <img
+                  src={founder.avatar_url}
+                  alt="Mitesh Pipaliya - Founder"
+                  onError={() => setAvatarError(true)}
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-violet-700 to-purple-900 text-white font-bold text-2xl font-mono">
+                  MP
+                </div>
+              )}
             </div>
             <div className="space-y-1">
               <h2 className="text-2xl font-bold text-white tracking-tight select-text">

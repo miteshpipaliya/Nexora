@@ -59,11 +59,10 @@ export const CosmicHeroObject: React.FC = () => {
       camera.aspect = aspect;
       camera.updateProjectionMatrix();
 
-      // Ensure that both horizontal and vertical views encompass the complete rotating orbital volume
-      // including dynamic tilt and visual padding, preventing clipping on mobile (portrait) and ultrawide.
-      const baseDistance = 10.2;
+      // Ensure the orbital system spans 88-92% of the hero container with proper visual safety margin
+      const baseDistance = 9.2;
       if (aspect < 1) {
-        camera.position.set(0, 0, baseDistance / Math.max(0.65, aspect));
+        camera.position.set(0, 0, baseDistance / Math.max(0.7, aspect));
       } else {
         camera.position.set(0, 0, baseDistance);
       }
@@ -204,13 +203,14 @@ export const CosmicHeroObject: React.FC = () => {
 
     resizeObserver.observe(container);
 
-    // Continuous Smooth Animation Loop
+    // Continuous Smooth Animation Loop without deprecated THREE.Clock
     let animId: number;
-    const clock = new THREE.Clock();
+    let lastTime = performance.now();
 
-    const animate = () => {
+    const animate = (currentTime: number) => {
       animId = requestAnimationFrame(animate);
-      const delta = clock.getDelta();
+      const delta = Math.min((currentTime - lastTime) / 1000, 0.1);
+      lastTime = currentTime;
 
       // Exponential damping for silky smooth parallax
       currentRotX = THREE.MathUtils.damp(currentRotX, targetRotX, 4, delta);
@@ -229,7 +229,7 @@ export const CosmicHeroObject: React.FC = () => {
       renderer.render(scene, camera);
     };
 
-    animate();
+    animId = requestAnimationFrame(animate);
 
     return () => {
       cancelAnimationFrame(animId);

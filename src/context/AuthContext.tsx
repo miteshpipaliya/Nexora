@@ -63,6 +63,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
+  // Periodic user presence heartbeat
+  useEffect(() => {
+    if (!user) return;
+    dataService.sendPresenceHeartbeat();
+    const interval = setInterval(() => {
+      dataService.sendPresenceHeartbeat();
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
+
   const loginWithGoogle = async () => {
     setLoading(true);
     try {

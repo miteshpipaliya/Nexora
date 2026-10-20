@@ -60,6 +60,18 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    // Team Members (Public Read, Admin Write)
+    match /teamMembers/{memberId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Website Content (Public Read, Admin Write)
+    match /siteContent/{contentId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
     // Competition Registrations
     match /registrations/{registrationId} {
       allow get: if (isSignedIn() && existing().user_id == request.auth.uid) || isAdmin();

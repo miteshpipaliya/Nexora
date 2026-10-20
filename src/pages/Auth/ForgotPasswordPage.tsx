@@ -73,7 +73,7 @@ export const ForgotPasswordPage: React.FC = () => {
     try {
       const res = await sendEmailOtp(cleanEmail, 'reset-password');
       setMaskedEmail(res.maskedEmail);
-      setCountdownSeconds(30);
+      setCountdownSeconds(res.expiresInSeconds || 180);
       setResendCooldown(30);
       setOtpDigits(['', '', '', '', '', '']);
       setStage('otp');

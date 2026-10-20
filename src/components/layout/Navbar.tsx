@@ -48,17 +48,7 @@ export const Navbar: React.FC = () => {
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-[#08080D]/80 backdrop-blur-md border-b border-violet-500/15">
-      {/* Top Banner Ribbon */}
-      <div className="w-full bg-[#11101B]/80 border-b border-violet-500/10 px-4 py-1 text-center text-[11px] text-slate-400 flex items-center justify-center gap-2 select-none">
-        <span className="text-violet-400 font-medium">BVM Initiative:</span>
-        <span>Student Technology Community · Birla Vishvakarma Mahavidyalaya</span>
-        <span className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.2 text-[10px] bg-violet-950/70 text-violet-300 border border-violet-500/20 rounded">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          Firebase Cloud Connected
-        </span>
-      </div>
-
+    <header className="sticky top-0 z-40 w-full bg-[#08080D]/90 backdrop-blur-md border-b border-violet-500/15">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between gap-8 h-16">
           

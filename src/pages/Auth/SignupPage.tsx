@@ -190,7 +190,7 @@ export const SignupPage: React.FC = () => {
     try {
       const res = await sendEmailOtp(targetEmail, 'signup');
       setMaskedEmail(res.maskedEmail);
-      setCountdownSeconds(30);
+      setCountdownSeconds(res.expiresInSeconds || 180);
       setOtpDigits(['', '', '', '', '', '']);
       setOtpSuccess('Verification code sent to your email.');
     } catch (err: any) {
@@ -209,7 +209,7 @@ export const SignupPage: React.FC = () => {
     }
 
     if (countdownSeconds <= 0) {
-      setOtpError('This verification code has expired (30-second limit). Please request a new code.');
+      setOtpError('This verification code has expired (3-minute limit). Please request a new code.');
       return;
     }
 
