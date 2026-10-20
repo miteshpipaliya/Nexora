@@ -87,7 +87,8 @@ export const SignupPage: React.FC = () => {
   const [otpVerifying, setOtpVerifying] = useState<boolean>(false);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [otpSuccess, setOtpSuccess] = useState<string | null>(null);
-  const [countdownSeconds, setCountdownSeconds] = useState<number>(30);
+  const [countdownSeconds, setCountdownSeconds] = useState<number>(180);
+  const [resendCooldown, setResendCooldown] = useState<number>(30);
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Profile Fields
@@ -126,20 +127,23 @@ export const SignupPage: React.FC = () => {
     }
   }, [currentStep]);
 
-  // Strict 30-Second Countdown Timer for OTP Expiration & Resend Cooldown
+  // 3-Minute Countdown Timer for OTP Expiration
   useEffect(() => {
     if (currentStep !== 2 || countdownSeconds <= 0) return;
     const timer = setInterval(() => {
-      setCountdownSeconds((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          return 0;
-        }
-        return prev - 1;
-      });
+      setCountdownSeconds((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
     return () => clearInterval(timer);
   }, [currentStep, countdownSeconds]);
+
+  // 30-Second Cooldown Timer for Resend
+  useEffect(() => {
+    if (currentStep !== 2 || resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [currentStep, resendCooldown]);
 
   // Resume for Google users with incomplete profiles
   useEffect(() => {
@@ -176,7 +180,11 @@ export const SignupPage: React.FC = () => {
       // First-time Google user -> proceed to academic details (Step 5)
       setCurrentStep(5);
     } catch (err: any) {
-      setStepError(err.message || 'Failed to authenticate with Google.');
+      if (err?.code === 'auth/unauthorized-domain' || err?.isDomainError) {
+        setStepError(`Google Sign-In domain authorization pending for "${window.location.hostname}". Please use our standard student registration below with your email and Brevo OTP!`);
+      } else {
+        setStepError(err.message || 'Failed to authenticate with Google.');
+      }
     } finally {
       setGoogleLoading(false);
     }
@@ -191,6 +199,7 @@ export const SignupPage: React.FC = () => {
       const res = await sendEmailOtp(targetEmail, 'signup');
       setMaskedEmail(res.maskedEmail);
       setCountdownSeconds(res.expiresInSeconds || 180);
+      setResendCooldown(res.resendCooldown || 30);
       setOtpDigits(['', '', '', '', '', '']);
       setOtpSuccess('Verification code sent to your email.');
     } catch (err: any) {
@@ -467,7 +476,9 @@ export const SignupPage: React.FC = () => {
   const progressPercent = Math.round((currentStepDisplay / totalSteps) * 100);
 
   // Formatted countdown timer string MM:SS
-  const timerDisplay = `00:${countdownSeconds.toString().padStart(2, '0')}`;
+  const timerMinutes = Math.floor(countdownSeconds / 60);
+  const timerRemainingSec = countdownSeconds % 60;
+  const timerDisplay = `${timerMinutes.toString().padStart(2, '0')}:${timerRemainingSec.toString().padStart(2, '0')}`;
 
   return (
     <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -637,10 +648,10 @@ export const SignupPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => triggerSendEmailOtp(email.trim().toLowerCase())}
-                  disabled={countdownSeconds > 0 || otpSending}
+                  disabled={resendCooldown > 0 || otpSending}
                   className="text-violet-400 hover:text-violet-300 font-semibold disabled:opacity-40 cursor-pointer"
                 >
-                  {otpSending ? 'Sending...' : countdownSeconds > 0 ? `Resend OTP (${countdownSeconds}s)` : 'Resend OTP'}
+                  {otpSending ? 'Sending...' : resendCooldown > 0 ? `Resend OTP (${resendCooldown}s)` : 'Resend OTP'}
                 </button>
               </div>
 

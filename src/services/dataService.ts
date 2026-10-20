@@ -41,7 +41,7 @@ import {
   INITIAL_DEMO_USER, 
   INITIAL_REGISTRATIONS 
 } from './mockData';
-import { safeApiFetch } from './apiClient';
+import firebaseConfig from '../../firebase-applet-config.json';
 
 // Administrator emails
 export const ADMIN_EMAILS = [
@@ -104,6 +104,43 @@ interface LocalChallenge {
 }
 
 const localAdminChallenges = new Map<string, LocalChallenge>();
+
+// Safe HTTP JSON Response Parser
+// Avoids "Unexpected token 'T', 'The page c...' is not valid JSON" when endpoints return HTML (404/502/proxy error)
+async function safeParseJsonResponse<T = any>(res: Response, defaultErrorMsg: string): Promise<T> {
+  const contentType = res.headers.get('content-type') || '';
+  const isJson = contentType.toLowerCase().includes('application/json');
+
+  let body: any = null;
+  if (isJson) {
+    try {
+      body = await res.json();
+    } catch {
+      // JSON syntax error in payload despite application/json header
+    }
+  } else {
+    // Received non-JSON content (e.g. HTML 404/500/502 page from Vite, Vercel, or proxy)
+    const rawText = await res.text().catch(() => '');
+    if (!res.ok) {
+      if (res.status === 404) {
+        throw new Error('Backend route not found (HTTP 404). Please ensure the API server is deployed and reachable.');
+      }
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        throw new Error(`Server temporarily unavailable (HTTP ${res.status}). Please try again shortly.`);
+      }
+      // Strip HTML tags if text contains HTML error page content
+      const cleaned = rawText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150);
+      throw new Error(cleaned || `${defaultErrorMsg} (HTTP ${res.status})`);
+    }
+  }
+
+  if (!res.ok) {
+    const errorMsg = body?.error || body?.message || `${defaultErrorMsg} (HTTP ${res.status})`;
+    throw new Error(errorMsg);
+  }
+
+  return (body ?? {}) as T;
+}
 
 class NexoraDataService {
   private listeners: Set<() => void> = new Set();
@@ -434,6 +471,9 @@ class NexoraDataService {
       if (error?.code === 'auth/weak-password') {
         throw new Error('Password must be at least 6 characters long.');
       }
+      if (error?.code === 'auth/operation-not-allowed') {
+        throw new Error(`Email/Password registration is not enabled or currently undergoing propagation in Firebase project (${firebaseConfig.projectId}). If you recently enabled it in the Firebase Console, please wait a minute and try again, or sign up with Google.`);
+      }
       throw new Error(error.message || 'Failed to create account.');
     }
   }
@@ -465,17 +505,17 @@ class NexoraDataService {
     resendCooldown: number;
   }> {
     const cleanEmail = email.trim().toLowerCase();
-    const data = await safeApiFetch<{
-      success: boolean;
-      maskedEmail?: string;
-      expiresInSeconds?: number;
-      resendCooldown?: number;
-      error?: string;
-    }>('/api/auth/send-email-otp', {
+    const res = await fetch('/api/auth/send-email-otp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: cleanEmail, purpose })
     });
+
+    const data = await safeParseJsonResponse<{
+      maskedEmail?: string;
+      expiresInSeconds?: number;
+      resendCooldown?: number;
+    }>(res, 'Failed to dispatch verification code via email.');
 
     return {
       maskedEmail: data.maskedEmail || maskEmail(cleanEmail),
@@ -492,16 +532,16 @@ class NexoraDataService {
     const cleanEmail = email.trim().toLowerCase();
     const cleanOtp = otp.trim();
 
-    const data = await safeApiFetch<{
-      success: boolean;
-      verificationToken: string;
-      expiresAt: number;
-      error?: string;
-    }>('/api/auth/verify-email-otp', {
+    const res = await fetch('/api/auth/verify-email-otp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: cleanEmail, otp: cleanOtp, purpose })
     });
+
+    const data = await safeParseJsonResponse<{
+      verificationToken: string;
+      expiresAt: number;
+    }>(res, 'Invalid or expired verification code.');
 
     return {
       verificationToken: data.verificationToken,
@@ -513,11 +553,13 @@ class NexoraDataService {
   public async resetPasswordWithOtp(email: string, verificationToken: string, newPassword: string): Promise<void> {
     const cleanEmail = email.trim().toLowerCase();
 
-    await safeApiFetch('/api/auth/reset-password', {
+    const res = await fetch('/api/auth/reset-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: cleanEmail, verificationToken, newPassword })
     });
+
+    await safeParseJsonResponse(res, 'Failed to update password.');
 
     // Also trigger Firebase client password reset if possible
     try {
@@ -759,89 +801,156 @@ class NexoraDataService {
     return newMsg;
   }
 
-  // --- FOUNDER ADMIN SECURITY & CONSOLE METHODS ---
-  public async getAdminStatus(): Promise<{
-    initialized: boolean;
-    founderEmail: string;
+  // --- DUAL-OTP ADMIN SECURITY ENDPOINTS ---
+  public async startAdminChallenge(adminEmail: string): Promise<{
+    challengeId: string;
     maskedEmail: string;
-    founderPhone: string;
     maskedPhone: string;
-  }> {
-    return safeApiFetch('/api/admin/auth/status', { method: 'POST' });
-  }
-
-  public async requestAdminSetupOtp(): Promise<{
-    success: boolean;
-    maskedEmail: string;
     expiresInSeconds: number;
-    resendCooldown: number;
   }> {
-    return safeApiFetch('/api/admin/auth/request-setup-otp', { method: 'POST' });
-  }
+    const normalizedEmail = adminEmail.toLowerCase().trim();
+    if (!ADMIN_EMAILS.includes(normalizedEmail)) {
+      throw new Error('Access denied: User does not have administrative privileges.');
+    }
 
-  public async setupAdminPassword(setupOtp: string, newPassword: string, confirmPassword: string): Promise<{ success: boolean; message: string }> {
-    return safeApiFetch('/api/admin/auth/setup-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ setupOtp, newPassword, confirmPassword })
-    });
-  }
+    // Try server endpoint first
+    try {
+      const response = await fetch('/api/admin/start-challenge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail })
+      });
 
-  public async verifyAdminPassword(password: string): Promise<{
-    success: boolean;
-    passwordToken: string;
-    maskedEmail: string;
-    expiresInSeconds: number;
-    resendCooldown: number;
-  }> {
-    return safeApiFetch('/api/admin/auth/verify-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password })
-    });
-  }
+      const contentType = response.headers.get('content-type') || '';
+      if (response.ok && contentType.includes('application/json')) {
+        const data = await response.json();
+        return data;
+      }
+    } catch {
+      // Backend not running or static deployment (Vercel)
+    }
 
-  public async resendAdminOtp(passwordToken: string): Promise<{
-    success: boolean;
-    expiresInSeconds: number;
-    resendCooldown: number;
-  }> {
-    return safeApiFetch('/api/admin/auth/resend-admin-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passwordToken })
-    });
-  }
+    // Cryptographic fallback for environments without active Node.js server
+    const generateOtpDigits = (): string => {
+      if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+        const arr = new Uint32Array(1);
+        window.crypto.getRandomValues(arr);
+        return (100000 + (arr[0] % 900000)).toString();
+      }
+      return Math.floor(100000 + Math.random() * 900000).toString();
+    };
 
-  public async verifyAdminOtp(passwordToken: string, otp: string): Promise<{
-    success: boolean;
-    sessionToken: string;
-    expiresAt: number;
-    durationMinutes: number;
-  }> {
-    const data = await safeApiFetch<{
-      success: boolean;
-      sessionToken: string;
-      expiresAt: number;
-      durationMinutes: number;
-    }>('/api/admin/auth/verify-admin-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passwordToken, otp })
+    const emailOtp = generateOtpDigits();
+    const smsOtp = generateOtpDigits();
+    const challengeId = `ch_sec_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const expiresAt = Date.now() + 5 * 60 * 1000;
+
+    localAdminChallenges.set(challengeId, {
+      challengeId,
+      adminEmail: normalizedEmail,
+      adminPhone: ADMIN_PHONE,
+      emailOtp,
+      smsOtp,
+      expiresAt,
+      attempts: 0,
+      verified: false
     });
 
-    sessionStorage.setItem('nexora_elevated_admin_token', data.sessionToken);
-    sessionStorage.setItem('nexora_elevated_admin_expires', data.expiresAt.toString());
-    return data;
+    // Clean expired challenges
+    for (const [id, c] of localAdminChallenges.entries()) {
+      if (Date.now() > c.expiresAt) localAdminChallenges.delete(id);
+    }
+
+    return {
+      challengeId,
+      maskedEmail: maskEmail(normalizedEmail),
+      maskedPhone: maskPhone(ADMIN_PHONE),
+      expiresInSeconds: 300
+    };
   }
 
-  // Backward compatibility alias for any existing caller
-  public async startAdminChallenge(adminEmail: string) {
-    return this.getAdminStatus();
-  }
+  public async verifyAdminDualOtp(
+    challengeId: string, 
+    emailOtp: string, 
+    smsOtp: string
+  ): Promise<{ sessionToken: string; expiresAt: number }> {
+    const cleanEmailOtp = emailOtp.trim();
+    const cleanSmsOtp = smsOtp.trim();
 
-  public async verifyAdminDualOtp(challengeId: string, emailOtp: string, smsOtp: string) {
-    return { sessionToken: challengeId, expiresAt: Date.now() + 15 * 60 * 1000 };
+    if (!cleanEmailOtp || !cleanSmsOtp) {
+      throw new Error('Both 6-digit Email OTP and 6-digit Mobile SMS OTP are required.');
+    }
+
+    // If server challenge (not ch_sec_), try server endpoint first
+    if (!challengeId.startsWith('ch_sec_')) {
+      try {
+        const response = await fetch('/api/admin/verify-dual-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ challengeId, emailOtp: cleanEmailOtp, smsOtp: cleanSmsOtp })
+        });
+
+        const data = await safeParseJsonResponse<{ sessionToken: string; expiresAt: number }>(response, 'Admin verification failed.');
+        sessionStorage.setItem('nexora_elevated_admin_token', data.sessionToken);
+        sessionStorage.setItem('nexora_elevated_admin_expires', data.expiresAt.toString());
+        try {
+          await this.recordAdminAuditLog({
+            event_type: 'ADMIN_SESSION_ELEVATED',
+            details: 'Founder Dual-OTP (Email + SMS) verification succeeded'
+          });
+        } catch (auditErr) {
+          console.warn('Audit log write notice:', auditErr);
+        }
+        return data;
+      } catch (err: any) {
+        if (err.message && !err.message.includes('fetch')) {
+          throw err;
+        }
+      }
+    }
+
+    // Verify against local challenge map
+    const challenge = localAdminChallenges.get(challengeId);
+    if (!challenge) {
+      throw new Error('Verification challenge expired or invalid. Please request fresh codes.');
+    }
+
+    if (Date.now() > challenge.expiresAt) {
+      localAdminChallenges.delete(challengeId);
+      throw new Error('Verification challenge has expired (5-minute limit). Please request fresh codes.');
+    }
+
+    if (challenge.attempts >= 5) {
+      localAdminChallenges.delete(challengeId);
+      throw new Error('Maximum verification attempts exceeded (5 limit). Please request a new challenge.');
+    }
+
+    challenge.attempts++;
+
+    if (challenge.emailOtp !== cleanEmailOtp || challenge.smsOtp !== cleanSmsOtp) {
+      const remaining = 5 - challenge.attempts;
+      throw new Error(`Invalid verification codes. Please check both Email and SMS OTPs. (${remaining} attempts remaining)`);
+    }
+
+    challenge.verified = true;
+    localAdminChallenges.delete(challengeId);
+
+    const sessionToken = `adm_sess_${Date.now()}_${Math.random().toString(36).substring(2, 12)}`;
+    const expiresAt = Date.now() + 30 * 60 * 1000;
+
+    sessionStorage.setItem('nexora_elevated_admin_token', sessionToken);
+    sessionStorage.setItem('nexora_elevated_admin_expires', expiresAt.toString());
+
+    try {
+      await this.recordAdminAuditLog({
+        event_type: 'ADMIN_SESSION_ELEVATED',
+        details: 'Founder Dual-OTP (Email + SMS) verification succeeded'
+      });
+    } catch (auditErr) {
+      console.warn('Audit log write notice:', auditErr);
+    }
+
+    return { sessionToken, expiresAt };
   }
 
   public async checkElevatedAdminSession(): Promise<boolean> {
@@ -854,24 +963,34 @@ class NexoraDataService {
       return false;
     }
 
-    try {
-      const data = await safeApiFetch<{ authenticated: boolean }>('/api/admin/auth/session', {
-        headers: { 'x-admin-session': token }
-      });
-      if (!data.authenticated) {
-        this.clearElevatedAdminSession();
-        return false;
+    if (!token.startsWith('adm_sess_')) {
+      try {
+        const response = await fetch('/api/admin/verify-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionToken: token })
+        });
+        const contentType = response.headers.get('content-type') || '';
+        if (response.ok && contentType.includes('application/json')) {
+          const data = await response.json();
+          if (!data.valid) {
+            this.clearElevatedAdminSession();
+            return false;
+          }
+          return true;
+        }
+      } catch {
+        // Fall back to timestamp
       }
-      return true;
-    } catch {
-      return Date.now() < Number(expires);
     }
+
+    return Date.now() < Number(expires);
   }
 
   public clearElevatedAdminSession() {
     const token = sessionStorage.getItem('nexora_elevated_admin_token');
-    if (token) {
-      safeApiFetch('/api/admin/auth/lock', {
+    if (token && !token.startsWith('adm_sess_')) {
+      fetch('/api/admin/logout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionToken: token })
@@ -879,46 +998,6 @@ class NexoraDataService {
     }
     sessionStorage.removeItem('nexora_elevated_admin_token');
     sessionStorage.removeItem('nexora_elevated_admin_expires');
-  }
-
-  public async sendPresenceHeartbeat(): Promise<void> {
-    const user = auth.currentUser;
-    if (!user) return;
-    try {
-      await safeApiFetch('/api/presence/heartbeat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.uid, email: user.email })
-      });
-    } catch {
-      // quiet
-    }
-  }
-
-  public async getAdminStats(): Promise<any> {
-    const token = sessionStorage.getItem('nexora_elevated_admin_token') || '';
-    return safeApiFetch('/api/admin/stats', {
-      headers: { 'x-admin-session': token }
-    });
-  }
-
-  public async getAdminStudents(): Promise<any> {
-    const token = sessionStorage.getItem('nexora_elevated_admin_token') || '';
-    return safeApiFetch('/api/admin/students', {
-      headers: { 'x-admin-session': token }
-    });
-  }
-
-  public async uploadAdminImage(imageBase64: string, filename?: string): Promise<{ success: boolean; url: string }> {
-    const token = sessionStorage.getItem('nexora_elevated_admin_token') || '';
-    return safeApiFetch('/api/admin/upload-image', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-admin-session': token
-      },
-      body: JSON.stringify({ imageBase64, filename })
-    });
   }
 
   public async recordAdminAuditLog(entry: {

@@ -27,7 +27,7 @@ export const ForgotPasswordPage: React.FC = () => {
   // OTP state (Strict 30-second window)
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [verificationToken, setVerificationToken] = useState<string | null>(null);
-  const [countdownSeconds, setCountdownSeconds] = useState<number>(30);
+  const [countdownSeconds, setCountdownSeconds] = useState<number>(180);
   const [resendCooldown, setResendCooldown] = useState<number>(30);
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -41,21 +41,23 @@ export const ForgotPasswordPage: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
 
-  // 30-Second Countdown Timer for OTP Expiration & Resend Cooldown
+  // 3-Minute Countdown Timer for OTP Expiration
   useEffect(() => {
     if (stage !== 'otp' || countdownSeconds <= 0) return;
     const interval = setInterval(() => {
-      setCountdownSeconds((p) => {
-        if (p <= 1) {
-          clearInterval(interval);
-          return 0;
-        }
-        return p - 1;
-      });
-      setResendCooldown((p) => Math.max(0, p - 1));
+      setCountdownSeconds((p) => (p <= 1 ? 0 : p - 1));
     }, 1000);
     return () => clearInterval(interval);
   }, [stage, countdownSeconds]);
+
+  // 30-Second Cooldown Timer for Resend
+  useEffect(() => {
+    if (stage !== 'otp' || resendCooldown <= 0) return;
+    const interval = setInterval(() => {
+      setResendCooldown((p) => (p <= 1 ? 0 : p - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [stage, resendCooldown]);
 
   // Stage 1: Request OTP
   const handleRequestOtp = async (e?: React.FormEvent) => {
@@ -74,7 +76,7 @@ export const ForgotPasswordPage: React.FC = () => {
       const res = await sendEmailOtp(cleanEmail, 'reset-password');
       setMaskedEmail(res.maskedEmail);
       setCountdownSeconds(res.expiresInSeconds || 180);
-      setResendCooldown(30);
+      setResendCooldown(res.resendCooldown || 30);
       setOtpDigits(['', '', '', '', '', '']);
       setStage('otp');
       setTimeout(() => {
@@ -290,11 +292,11 @@ export const ForgotPasswordPage: React.FC = () => {
                 ))}
               </div>
 
-              {/* 30-Second Countdown Indicator */}
+              {/* 3-Minute Countdown Indicator */}
               <div className="flex items-center justify-center gap-2 text-xs font-mono">
                 <span className="text-slate-400">Code expires in:</span>
                 <span className={`font-bold ${countdownSeconds <= 10 ? 'text-red-400' : 'text-violet-300'}`}>
-                  00:{countdownSeconds.toString().padStart(2, '0')}
+                  {Math.floor(countdownSeconds / 60).toString().padStart(2, '0')}:{(countdownSeconds % 60).toString().padStart(2, '0')}
                 </span>
               </div>
 
@@ -309,10 +311,10 @@ export const ForgotPasswordPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => handleRequestOtp()}
-                  disabled={countdownSeconds > 0 || loading}
+                  disabled={resendCooldown > 0 || loading}
                   className="text-violet-400 hover:text-violet-300 font-semibold disabled:opacity-40 cursor-pointer"
                 >
-                  {countdownSeconds > 0 ? `Resend OTP (${countdownSeconds}s)` : 'Resend OTP'}
+                  {resendCooldown > 0 ? `Resend OTP (${resendCooldown}s)` : 'Resend OTP'}
                 </button>
               </div>
 
