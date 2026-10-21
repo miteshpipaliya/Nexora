@@ -63,33 +63,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  // Periodic user presence heartbeat - safely isolated so failures never crash React
+  // Periodic user presence heartbeat
   useEffect(() => {
-    if (!user?.id) return;
-    let isMounted = true;
-
-    const safeHeartbeat = async () => {
-      try {
-        if (typeof dataService?.sendPresenceHeartbeat === 'function') {
-          await dataService.sendPresenceHeartbeat();
-        }
-      } catch {
-        // Safe failover: presence failure must NEVER crash any React component
-      }
-    };
-
-    safeHeartbeat();
+    if (!user) return;
+    try {
+      dataService.sendPresenceHeartbeat?.();
+    } catch (err) {
+      console.warn('[Presence] Heartbeat error:', err);
+    }
     const interval = setInterval(() => {
-      if (isMounted) {
-        safeHeartbeat();
+      try {
+        dataService.sendPresenceHeartbeat?.();
+      } catch (err) {
+        console.warn('[Presence] Interval heartbeat error:', err);
       }
     }, 60000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [user?.id]);
+    return () => clearInterval(interval);
+  }, [user]);
 
   const loginWithGoogle = async () => {
     setLoading(true);

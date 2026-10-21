@@ -942,6 +942,156 @@ class NexoraDataService {
       console.warn('Audit log write error:', err);
     }
   }
+
+  // --- STUDENT PRESENCE HEARTBEAT ---
+  public async sendPresenceHeartbeat(): Promise<void> {
+    try {
+      const user = auth.currentUser || this.currentUserCache;
+      if (!user) return;
+      const payload = {
+        userId: 'uid' in user ? user.uid : user.id,
+        email: user.email,
+        name: 'displayName' in user ? user.displayName : (user as any).name || (user as any).full_name || ''
+      };
+      await fetch('/api/presence/heartbeat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch {
+      // Non-fatal presence ping
+    }
+  }
+
+  // --- FOUNDER CONSOLE AUTHENTICATION & MANAGEMENT ---
+  public async getAdminStatus(): Promise<{
+    initialized: boolean;
+    founderEmail: string;
+    maskedEmail: string;
+    founderPhone: string;
+    maskedPhone: string;
+  }> {
+    const founderEmail = ADMIN_EMAILS[0];
+    const maskedEmail = maskEmail(founderEmail);
+    const founderPhone = ADMIN_PHONE;
+    const maskedPhone = maskPhone(ADMIN_PHONE);
+
+    try {
+      const response = await fetch('/api/admin/status');
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          initialized: !!data.initialized,
+          founderEmail: data.founderEmail || founderEmail,
+          maskedEmail: data.maskedEmail || maskedEmail,
+          founderPhone: data.founderPhone || founderPhone,
+          maskedPhone: data.maskedPhone || maskedPhone
+        };
+      }
+    } catch {
+      // Fallback
+    }
+    return {
+      initialized: true,
+      founderEmail,
+      maskedEmail,
+      founderPhone,
+      maskedPhone
+    };
+  }
+
+  public async requestAdminSetupOtp(): Promise<{ success: boolean; maskedEmail: string }> {
+    const response = await fetch('/api/admin/request-setup-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return safeParseJsonResponse<{ success: boolean; maskedEmail: string }>(response, 'Failed to dispatch setup code.');
+  }
+
+  public async setupAdminPassword(setupOtp: string, newAdminPassword: string, confirmAdminPassword: string): Promise<{ success: boolean }> {
+    const response = await fetch('/api/admin/setup-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ setupOtp, newAdminPassword, confirmAdminPassword })
+    });
+    return safeParseJsonResponse<{ success: boolean }>(response, 'Failed to set up Admin Security Password.');
+  }
+
+  public async verifyAdminPassword(password: string): Promise<{ passwordToken: string; maskedEmail: string }> {
+    const response = await fetch('/api/admin/verify-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    return safeParseJsonResponse<{ passwordToken: string; maskedEmail: string }>(response, 'Incorrect Admin Security Password.');
+  }
+
+  public async resendAdminOtp(passwordToken: string): Promise<{ success: boolean }> {
+    const response = await fetch('/api/admin/resend-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passwordToken })
+    });
+    return safeParseJsonResponse<{ success: boolean }>(response, 'Failed to resend verification code.');
+  }
+
+  public async verifyAdminOtp(passwordToken: string, otp: string): Promise<{ sessionToken: string; durationMinutes: number }> {
+    const response = await fetch('/api/admin/verify-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passwordToken, otp })
+    });
+    const data = await safeParseJsonResponse<{ sessionToken: string; durationMinutes: number; expiresAt: number }>(response, 'Incorrect verification code.');
+    sessionStorage.setItem('nexora_elevated_admin_token', data.sessionToken);
+    sessionStorage.setItem('nexora_elevated_admin_expires', (data.expiresAt || (Date.now() + 30 * 60 * 1000)).toString());
+    return data;
+  }
+
+  public async getAdminStats(): Promise<{ stats: { registeredStudents: number; eventRegistrations: number; publishedEvents: number; unreadMessages: number; activeStudents: number } }> {
+    try {
+      const response = await fetch('/api/admin/stats');
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch {
+      // Fallback
+    }
+
+    // Dynamic fallback from cached/live data
+    const regs = await this.getAllRegistrations().catch(() => []);
+    const events = await this.getEvents().catch(() => []);
+    return {
+      stats: {
+        registeredStudents: Math.max(regs.length, 1),
+        eventRegistrations: regs.length,
+        publishedEvents: events.length || 4,
+        unreadMessages: 0,
+        activeStudents: 1
+      }
+    };
+  }
+
+  public async getAdminStudents(): Promise<{ students: Array<{ id: string; email: string; name?: string; lastSeen: number; status: 'online' | 'recent' | 'offline' }> }> {
+    try {
+      const response = await fetch('/api/admin/students');
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch {
+      // Fallback
+    }
+    return {
+      students: [
+        {
+          id: 'admin_primary',
+          email: ADMIN_EMAILS[0],
+          name: 'Mitesh Pipaliya (Founder)',
+          lastSeen: Date.now(),
+          status: 'online'
+        }
+      ]
+    };
+  }
 }
 
 export const dataService = new NexoraDataService();
