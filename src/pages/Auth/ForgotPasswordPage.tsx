@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { NexoraLogo } from '../../components/ui/NexoraLogo';
-import { extractErrorMessage } from '../../services/apiClient';
 
 export const ForgotPasswordPage: React.FC = () => {
   const { sendEmailOtp, verifyEmailOtp, resetPasswordWithOtp } = useAuth();
@@ -42,23 +41,16 @@ export const ForgotPasswordPage: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
 
-  // 3-Minute Countdown Timer for OTP Expiration
+  // 3-Minute Expiry & 30-Second Resend Cooldown
   useEffect(() => {
-    if (stage !== 'otp' || countdownSeconds <= 0) return;
+    if (stage !== 'otp') return;
+    if (countdownSeconds <= 0 && resendCooldown <= 0) return;
     const interval = setInterval(() => {
-      setCountdownSeconds((p) => (p <= 1 ? 0 : p - 1));
+      setCountdownSeconds((p) => Math.max(0, p - 1));
+      setResendCooldown((p) => Math.max(0, p - 1));
     }, 1000);
     return () => clearInterval(interval);
-  }, [stage, countdownSeconds]);
-
-  // 30-Second Cooldown Timer for Resend
-  useEffect(() => {
-    if (stage !== 'otp' || resendCooldown <= 0) return;
-    const interval = setInterval(() => {
-      setResendCooldown((p) => (p <= 1 ? 0 : p - 1));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [stage, resendCooldown]);
+  }, [stage, countdownSeconds, resendCooldown]);
 
   // Stage 1: Request OTP
   const handleRequestOtp = async (e?: React.FormEvent) => {
@@ -77,14 +69,14 @@ export const ForgotPasswordPage: React.FC = () => {
       const res = await sendEmailOtp(cleanEmail, 'reset-password');
       setMaskedEmail(res.maskedEmail);
       setCountdownSeconds(res.expiresInSeconds || 180);
-      setResendCooldown(res.resendCooldown || 30);
+      setResendCooldown(30);
       setOtpDigits(['', '', '', '', '', '']);
       setStage('otp');
       setTimeout(() => {
         otpInputRefs.current[0]?.focus();
       }, 150);
     } catch (err: any) {
-      setErrorMsg(extractErrorMessage(err, 'Failed to dispatch verification code. Please try again.'));
+      setErrorMsg(err.message || 'Failed to dispatch verification code. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -107,7 +99,7 @@ export const ForgotPasswordPage: React.FC = () => {
       setVerificationToken(res.verificationToken);
       setStage('new-password');
     } catch (err: any) {
-      setErrorMsg(extractErrorMessage(err, 'Invalid or expired verification code.'));
+      setErrorMsg(err.message || 'Invalid or expired verification code.');
     } finally {
       setLoading(false);
     }
@@ -177,7 +169,7 @@ export const ForgotPasswordPage: React.FC = () => {
       await resetPasswordWithOtp(email.trim().toLowerCase(), verificationToken, newPassword);
       setStage('success');
     } catch (err: any) {
-      setErrorMsg(extractErrorMessage(err, 'Failed to update password. Please restart password recovery.'));
+      setErrorMsg(err.message || 'Failed to update password. Please restart password recovery.');
     } finally {
       setLoading(false);
     }
@@ -293,11 +285,11 @@ export const ForgotPasswordPage: React.FC = () => {
                 ))}
               </div>
 
-              {/* 3-Minute Countdown Indicator */}
+              {/* 3-Minute Expiration Countdown Indicator */}
               <div className="flex items-center justify-center gap-2 text-xs font-mono">
                 <span className="text-slate-400">Code expires in:</span>
-                <span className={`font-bold ${countdownSeconds <= 10 ? 'text-red-400' : 'text-violet-300'}`}>
-                  {Math.floor(countdownSeconds / 60).toString().padStart(2, '0')}:{(countdownSeconds % 60).toString().padStart(2, '0')}
+                <span className={`font-bold ${countdownSeconds <= 15 ? 'text-red-400' : 'text-violet-300'}`}>
+                  {`${Math.floor(countdownSeconds / 60).toString().padStart(2, '0')}:${(countdownSeconds % 60).toString().padStart(2, '0')}`}
                 </span>
               </div>
 

@@ -23,7 +23,6 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { NexoraLogo } from '../../components/ui/NexoraLogo';
 import { AcademicYear } from '../../types';
-import { extractErrorMessage } from '../../services/apiClient';
 
 const COLLEGES = [
   'Birla Vishvakarma Mahavidyalaya (BVM)',
@@ -128,23 +127,16 @@ export const SignupPage: React.FC = () => {
     }
   }, [currentStep]);
 
-  // 3-Minute Countdown Timer for OTP Expiration
+  // 3-Minute Expiry Timer & 30-Second Resend Cooldown
   useEffect(() => {
-    if (currentStep !== 2 || countdownSeconds <= 0) return;
+    if (currentStep !== 2) return;
+    if (countdownSeconds <= 0 && resendCooldown <= 0) return;
     const timer = setInterval(() => {
-      setCountdownSeconds((prev) => (prev <= 1 ? 0 : prev - 1));
+      setCountdownSeconds((prev) => Math.max(0, prev - 1));
+      setResendCooldown((prev) => Math.max(0, prev - 1));
     }, 1000);
     return () => clearInterval(timer);
-  }, [currentStep, countdownSeconds]);
-
-  // 30-Second Cooldown Timer for Resend
-  useEffect(() => {
-    if (currentStep !== 2 || resendCooldown <= 0) return;
-    const timer = setInterval(() => {
-      setResendCooldown((prev) => (prev <= 1 ? 0 : prev - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [currentStep, resendCooldown]);
+  }, [currentStep, countdownSeconds, resendCooldown]);
 
   // Resume for Google users with incomplete profiles
   useEffect(() => {
@@ -181,11 +173,7 @@ export const SignupPage: React.FC = () => {
       // First-time Google user -> proceed to academic details (Step 5)
       setCurrentStep(5);
     } catch (err: any) {
-      if (err?.code === 'auth/unauthorized-domain' || err?.isDomainError) {
-        setStepError(`Google Sign-In domain authorization pending for "${window.location.hostname}". Please use our standard student registration below with your email and Brevo OTP!`);
-      } else {
-        setStepError(err.message || 'Failed to authenticate with Google.');
-      }
+      setStepError(err.message || 'Failed to authenticate with Google.');
     } finally {
       setGoogleLoading(false);
     }
@@ -203,12 +191,12 @@ export const SignupPage: React.FC = () => {
       setCountdownSeconds(res.expiresInSeconds || 180);
       setResendCooldown(res.resendCooldown || 30);
       setOtpDigits(['', '', '', '', '', '']);
-      setOtpSuccess('Verification code sent to your email.');
+      setOtpSuccess('Verification code dispatched to your email.');
       return true;
     } catch (err: any) {
-      const msg = extractErrorMessage(err, 'Could not dispatch verification email. Please check your email address.');
-      setOtpError(msg);
-      setStepError(msg);
+      const errorMsg = err.message || 'Could not dispatch verification email. Please check your email address.';
+      setOtpError(errorMsg);
+      setStepError(errorMsg);
       return false;
     } finally {
       setOtpSending(false);
@@ -219,12 +207,12 @@ export const SignupPage: React.FC = () => {
   const handleVerifyOtp = async () => {
     const fullOtp = otpDigits.join('');
     if (fullOtp.length !== 6) {
-      setOtpError('Please enter all 6 digits of your verification code.');
+      setOtpError('Please enter all 6 digits.');
       return;
     }
 
     if (countdownSeconds <= 0) {
-      setOtpError('This verification code has expired (3-minute limit). Please click "Resend OTP" below.');
+      setOtpError('This verification code has expired (3-minute limit). Please request a new code.');
       return;
     }
 
@@ -239,8 +227,7 @@ export const SignupPage: React.FC = () => {
         setCurrentStep(3); // Advance to Full Name
       }, 400);
     } catch (err: any) {
-      const msg = extractErrorMessage(err, 'Incorrect verification code. Please check your email or request a new code.');
-      setOtpError(msg);
+      setOtpError(err.message || 'Incorrect verification code. Please try again.');
     } finally {
       setOtpVerifying(false);
     }
@@ -248,7 +235,6 @@ export const SignupPage: React.FC = () => {
 
   // Handle digit box typing
   const handleDigitChange = (index: number, val: string) => {
-    if (otpError) setOtpError(null);
     const cleanVal = val.replace(/\D/g, '');
     if (!cleanVal) {
       const newDigits = [...otpDigits];
@@ -301,10 +287,9 @@ export const SignupPage: React.FC = () => {
         setStepError('Please enter a valid student or personal email address.');
         return;
       }
-      
-      // Dispatch Brevo OTP first - ONLY advance to Step 2 if successfully dispatched!
-      const success = await triggerSendEmailOtp(email.trim().toLowerCase());
-      if (success) {
+      // Only advance to OTP screen if backend successfully dispatches Brevo email
+      const sent = await triggerSendEmailOtp(email.trim().toLowerCase());
+      if (sent) {
         setCurrentStep(2);
       }
       return;
@@ -473,7 +458,7 @@ export const SignupPage: React.FC = () => {
 
       navigate(redirectPath);
     } catch (err: any) {
-      setStepError(extractErrorMessage(err, 'Failed to complete registration. Please try again.'));
+      setStepError(err.message || 'Failed to complete registration. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -487,9 +472,9 @@ export const SignupPage: React.FC = () => {
   const progressPercent = Math.round((currentStepDisplay / totalSteps) * 100);
 
   // Formatted countdown timer string MM:SS
-  const timerMinutes = Math.floor(countdownSeconds / 60);
-  const timerRemainingSec = countdownSeconds % 60;
-  const timerDisplay = `${timerMinutes.toString().padStart(2, '0')}:${timerRemainingSec.toString().padStart(2, '0')}`;
+  const otpMins = Math.floor(countdownSeconds / 60);
+  const otpSecs = countdownSeconds % 60;
+  const timerDisplay = `${otpMins.toString().padStart(2, '0')}:${otpSecs.toString().padStart(2, '0')}`;
 
   return (
     <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -618,20 +603,12 @@ export const SignupPage: React.FC = () => {
                 </div>
               )}
 
-              {/* 3-Minute Countdown Indicator */}
+              {/* 30-Second Countdown Indicator */}
               <div className="flex items-center justify-center gap-2 text-xs font-mono">
-                {countdownSeconds > 0 ? (
-                  <>
-                    <span className="text-slate-400">Code expires in:</span>
-                    <span className={`font-bold ${countdownSeconds <= 15 ? 'text-red-400' : 'text-violet-300'}`}>
-                      {timerDisplay}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-red-400 font-medium">
-                    Code expired. Please click "Resend OTP" below.
-                  </span>
-                )}
+                <span className="text-slate-400">Code expires in:</span>
+                <span className={`font-bold ${countdownSeconds <= 10 ? 'text-red-400' : 'text-violet-300'}`}>
+                  {timerDisplay}
+                </span>
               </div>
 
               {/* Six Separate Digit Input Boxes */}
@@ -1145,11 +1122,14 @@ export const SignupPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleNext}
-                  disabled={submitting || otpSending || otpVerifying}
+                  disabled={submitting || (currentStep === 1 && otpSending)}
                   className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-semibold text-white bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 rounded-xl transition-all shadow-[0_0_20px_-3px_rgba(139,92,246,0.6)] cursor-pointer disabled:opacity-50"
                 >
-                  {submitting || otpSending || otpVerifying ? (
-                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                  {submitting || (currentStep === 1 && otpSending) ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                      <span>{currentStep === 1 ? 'Dispatching OTP...' : 'Processing...'}</span>
+                    </>
                   ) : currentStep === 1 ? (
                     <>
                       <span>Send Verification Code</span>
