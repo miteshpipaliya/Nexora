@@ -47,7 +47,7 @@ export const LocalImageUploader: React.FC<LocalImageUploaderProps> = ({
     setProgress(10);
 
     try {
-      const res = await dataService.uploadLocalImage(file, folder, (pct) => {
+      const res = await dataService.uploadLocalImage(file, folder, (pct: number) => {
         setProgress(pct);
       });
       onImageUploaded(res.url);
