@@ -54,6 +54,7 @@ import {
 } from '../../types';
 import { NexoraLogo } from '../../components/ui/NexoraLogo';
 import { LocalImageUploader } from '../../components/admin/LocalImageUploader';
+import { PrizePoolEditor } from '../../components/admin/PrizePoolEditor';
 import { FOUNDING_TEAM } from '../../services/mockData';
 
 export const AdminPage: React.FC = () => {
@@ -242,27 +243,27 @@ export const AdminPage: React.FC = () => {
     if (!elevatedAdminVerified) return;
 
     // 1. Subscribe to events
-    const unsubEvents = dataService.subscribeEvents((allEvents) => {
+    const unsubEvents = dataService.subscribeEvents((allEvents: CompetitionEvent[]) => {
       setEvents(allEvents);
     });
 
     // 2. Subscribe to registrations
-    const unsubRegs = dataService.subscribeRegistrations((allRegs) => {
+    const unsubRegs = dataService.subscribeRegistrations((allRegs: RegistrationRecord[]) => {
       setRegistrations(allRegs);
     });
 
     // 3. Subscribe to notifications
-    const unsubNotifs = dataService.subscribeNotifications('all', (allNotifs) => {
+    const unsubNotifs = dataService.subscribeNotifications('all', (allNotifs: InAppNotification[]) => {
       setNotifications(allNotifs);
     });
 
     // 4. Subscribe to contact messages
-    const unsubMsgs = dataService.subscribeContactMessages((allMsgs) => {
+    const unsubMsgs = dataService.subscribeContactMessages((allMsgs: ContactMessage[]) => {
       setMessages(allMsgs);
     });
 
     // 5. Subscribe to site content
-    const unsubContent = dataService.subscribeSiteContent((content) => {
+    const unsubContent = dataService.subscribeSiteContent((content: SiteContent) => {
       setSiteContent(content);
     });
 
@@ -313,7 +314,7 @@ export const AdminPage: React.FC = () => {
     setStatsError(null);
     try {
       const [stats, allRegs, allEvents, allStudents, notifs, msgs, logs] = await Promise.all([
-        dataService.getRealDashboardStats().catch((err) => {
+        dataService.getRealDashboardStats().catch((err: any) => {
           setStatsError(err.message || 'Could not fetch database stats');
           return null;
         }),
@@ -2259,18 +2260,14 @@ export const AdminPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* First Place Prize */}
-              <div>
-                <label className="block text-slate-300 font-mono mb-1">1st Place Prize</label>
-                <input
-                  type="text"
-                  placeholder="e.g. ₹2,000 Cash Prize + Gold Certificate"
-                  value={newEventData.prizes?.first_place || '₹2,000 Cash Prize'}
-                  onChange={(e) => setNewEventData({ 
+              {/* Configurable Multi-Rank Prize Pools (Phase 7) */}
+              <div className="col-span-full">
+                <PrizePoolEditor
+                  prizes={newEventData.prizes}
+                  onChange={(updatedPrizes) => setNewEventData({ 
                     ...newEventData, 
-                    prizes: { ...newEventData.prizes, first_place: e.target.value } 
+                    prizes: updatedPrizes 
                   })}
-                  className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
                 />
               </div>
             </div>
@@ -2469,17 +2466,14 @@ export const AdminPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* 1st Place Prize */}
-              <div>
-                <label className="block text-slate-300 font-mono mb-1">1st Place Prize</label>
-                <input
-                  type="text"
-                  value={editingEvent.prizes?.first_place || ''}
-                  onChange={(e) => setEditingEvent({
+              {/* Configurable Multi-Rank Prize Pools (Phase 7) */}
+              <div className="col-span-full">
+                <PrizePoolEditor
+                  prizes={editingEvent.prizes}
+                  onChange={(updatedPrizes) => setEditingEvent({
                     ...editingEvent,
-                    prizes: { ...editingEvent.prizes, first_place: e.target.value }
+                    prizes: updatedPrizes
                   })}
-                  className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
                 />
               </div>
             </div>

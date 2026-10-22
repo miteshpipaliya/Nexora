@@ -22,7 +22,7 @@ export const NotificationBell: React.FC = () => {
     } catch {}
 
     if (user?.id) {
-      dataService.getReadNotificationIds(user.id).then((ids) => {
+      dataService.getReadNotificationIds(user.id).then((ids: Set<string>) => {
         if (ids.size > 0) {
           setReadIds((prev) => {
             const merged = new Set([...prev, ...ids]);
@@ -38,10 +38,10 @@ export const NotificationBell: React.FC = () => {
 
   // Subscribe to real-time published notifications
   useEffect(() => {
-    const unsubscribe = dataService.subscribeNotifications('all', (allNotifs) => {
+    const unsubscribe = dataService.subscribeNotifications('all', (allNotifs: InAppNotification[]) => {
       // Filter only Published notifications that haven't expired
       const now = Date.now();
-      const active = allNotifs.filter((n) => {
+      const active = allNotifs.filter((n: InAppNotification) => {
         if (n.status !== 'Published') return false;
         if (n.expires_at) {
           const exp = new Date(n.expires_at).getTime();

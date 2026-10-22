@@ -39,8 +39,8 @@ export const DynamicCompetitionPage: React.FC = () => {
     if (!slug) return;
 
     // Real-time listener so any admin edit propagates immediately
-    const unsubscribe = dataService.subscribeEvents((allEvents) => {
-      const match = allEvents.find((e) => e.slug.toLowerCase() === slug.toLowerCase());
+    const unsubscribe = dataService.subscribeEvents((allEvents: CompetitionEvent[]) => {
+      const match = allEvents.find((e: CompetitionEvent) => e.slug.toLowerCase() === slug.toLowerCase());
       if (match) {
         setEvent(match);
         setNotFound(false);
@@ -255,33 +255,71 @@ export const DynamicCompetitionPage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-4 bg-[#08080D]/70 rounded-xl border border-amber-500/30 space-y-1">
-            <span className="text-[10px] font-mono text-amber-400 uppercase tracking-wider">1st Place Winner</span>
-            <div className="text-lg font-bold text-white">{event.prizes?.first_place || '₹2,000 Cash Prize'}</div>
-            <p className="text-[11px] text-slate-400">Official Gold Certificate of Excellence</p>
-          </div>
+          {event.prizes?.ranked_prizes && event.prizes.ranked_prizes.filter(p => p.enabled).length > 0 ? (
+            <>
+              {event.prizes.ranked_prizes
+                .filter(p => p.enabled)
+                .sort((a, b) => a.rank - b.rank)
+                .map((prize) => {
+                  const isFirst = prize.rank === 1;
+                  return (
+                    <div 
+                      key={prize.rank} 
+                      className={`p-4 bg-[#08080D]/70 rounded-xl space-y-1 ${
+                        isFirst ? 'border border-amber-500/30' : 'border border-violet-500/20'
+                      }`}
+                    >
+                      <span className={`text-[10px] font-mono uppercase tracking-wider ${
+                        isFirst ? 'text-amber-400' : 'text-violet-300'
+                      }`}>
+                        {prize.label || `${prize.rank}${prize.rank === 1 ? 'st' : prize.rank === 2 ? 'nd' : prize.rank === 3 ? 'rd' : 'th'} Place`}
+                      </span>
+                      <div className="text-lg font-bold text-white">{prize.amount}</div>
+                      <p className="text-[11px] text-slate-400">
+                        {prize.description || (isFirst ? 'Official Gold Certificate of Excellence' : prize.rank === 2 ? 'Silver Certificate of Distinction' : prize.rank === 3 ? 'Bronze Certificate of Merit' : 'Certificate of Achievement')}
+                      </p>
+                    </div>
+                  );
+                })}
+              {event.prizes?.special_rewards && (
+                <div className="p-4 bg-[#08080D]/70 rounded-xl border border-violet-500/20 space-y-1">
+                  <span className="text-[10px] font-mono text-violet-400 uppercase tracking-wider">All Participants</span>
+                  <div className="text-base font-bold text-white">{event.prizes.special_rewards}</div>
+                  <p className="text-[11px] text-slate-400">Verified Certificate of Participation</p>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="p-4 bg-[#08080D]/70 rounded-xl border border-amber-500/30 space-y-1">
+                <span className="text-[10px] font-mono text-amber-400 uppercase tracking-wider">1st Place Winner</span>
+                <div className="text-lg font-bold text-white">{event.prizes?.first_place || '₹2,000 Cash Prize'}</div>
+                <p className="text-[11px] text-slate-400">Official Gold Certificate of Excellence</p>
+              </div>
 
-          {event.prizes?.second_place && (
-            <div className="p-4 bg-[#08080D]/70 rounded-xl border border-violet-500/20 space-y-1">
-              <span className="text-[10px] font-mono text-violet-300 uppercase tracking-wider">2nd Place</span>
-              <div className="text-lg font-bold text-white">{event.prizes.second_place}</div>
-              <p className="text-[11px] text-slate-400">Silver Certificate of Distinction</p>
-            </div>
+              {event.prizes?.second_place && (
+                <div className="p-4 bg-[#08080D]/70 rounded-xl border border-violet-500/20 space-y-1">
+                  <span className="text-[10px] font-mono text-violet-300 uppercase tracking-wider">2nd Place</span>
+                  <div className="text-lg font-bold text-white">{event.prizes.second_place}</div>
+                  <p className="text-[11px] text-slate-400">Silver Certificate of Distinction</p>
+                </div>
+              )}
+
+              {event.prizes?.third_place && (
+                <div className="p-4 bg-[#08080D]/70 rounded-xl border border-violet-500/20 space-y-1">
+                  <span className="text-[10px] font-mono text-violet-300 uppercase tracking-wider">3rd Place</span>
+                  <div className="text-lg font-bold text-white">{event.prizes.third_place}</div>
+                  <p className="text-[11px] text-slate-400">Bronze Certificate of Merit</p>
+                </div>
+              )}
+
+              <div className="p-4 bg-[#08080D]/70 rounded-xl border border-violet-500/20 space-y-1">
+                <span className="text-[10px] font-mono text-violet-400 uppercase tracking-wider">All Participants</span>
+                <div className="text-base font-bold text-white">{event.prizes?.special_rewards || 'Top Performer Gifts'}</div>
+                <p className="text-[11px] text-slate-400">Verified Certificate of Participation</p>
+              </div>
+            </>
           )}
-
-          {event.prizes?.third_place && (
-            <div className="p-4 bg-[#08080D]/70 rounded-xl border border-violet-500/20 space-y-1">
-              <span className="text-[10px] font-mono text-violet-300 uppercase tracking-wider">3rd Place</span>
-              <div className="text-lg font-bold text-white">{event.prizes.third_place}</div>
-              <p className="text-[11px] text-slate-400">Bronze Certificate of Merit</p>
-            </div>
-          )}
-
-          <div className="p-4 bg-[#08080D]/70 rounded-xl border border-violet-500/20 space-y-1">
-            <span className="text-[10px] font-mono text-violet-400 uppercase tracking-wider">All Participants</span>
-            <div className="text-base font-bold text-white">{event.prizes?.special_rewards || 'Top Performer Gifts'}</div>
-            <p className="text-[11px] text-slate-400">Verified Certificate of Participation</p>
-          </div>
         </div>
       </div>
 

@@ -37,8 +37,8 @@ export const LocalImageUploader: React.FC<LocalImageUploaderProps> = ({
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Image exceeds 5MB size limit. Please select a smaller or compressed image.');
+    if (file.size > 25 * 1024 * 1024) {
+      setError('Image exceeds 25MB size limit. Please select a compressed image.');
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }

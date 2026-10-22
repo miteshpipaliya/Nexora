@@ -29,6 +29,14 @@ export interface UserProfile {
   last_active?: string | number;
 }
 
+export interface RankedPrize {
+  rank: number;
+  label: string;
+  amount: string;
+  description?: string;
+  enabled: boolean;
+}
+
 export interface CompetitionEvent {
   id: string;
   slug: string;
@@ -63,6 +71,7 @@ export interface CompetitionEvent {
     second_place?: string;
     third_place?: string;
     special_rewards?: string;
+    ranked_prizes?: RankedPrize[];
   };
   rules: string[];
   judging_criteria: { label: string; percentage: number; description: string }[];

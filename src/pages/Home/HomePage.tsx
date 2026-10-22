@@ -25,15 +25,15 @@ export const HomePage: React.FC = () => {
 
   useEffect(() => {
     // Real-time events subscription
-    const unsubEvents = dataService.subscribeEvents((allEvents) => {
+    const unsubEvents = dataService.subscribeEvents((allEvents: CompetitionEvent[]) => {
       const published = allEvents.filter(
-        (e) => e.status !== 'Draft' && e.status !== 'Archived'
+        (e: CompetitionEvent) => e.status !== 'Draft' && e.status !== 'Archived'
       );
       setEvents(published);
     });
 
     // Real-time site content subscription
-    const unsubContent = dataService.subscribeSiteContent((content) => {
+    const unsubContent = dataService.subscribeSiteContent((content: SiteContent) => {
       setSiteContent(content);
     });
 

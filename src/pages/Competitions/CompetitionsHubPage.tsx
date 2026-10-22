@@ -14,10 +14,10 @@ export const CompetitionsHubPage: React.FC = () => {
 
   useEffect(() => {
     // Real-time Firestore subscription
-    const unsubscribe = dataService.subscribeEvents((allEvents) => {
+    const unsubscribe = dataService.subscribeEvents((allEvents: CompetitionEvent[]) => {
       // Filter out Draft and Archived competitions from public view
       const published = allEvents.filter(
-        (e) => e.status !== 'Draft' && e.status !== 'Archived'
+        (e: CompetitionEvent) => e.status !== 'Draft' && e.status !== 'Archived'
       );
       setEvents(published);
       setLoading(false);
