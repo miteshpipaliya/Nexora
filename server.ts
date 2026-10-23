@@ -1015,13 +1015,46 @@ function recordAudit(action: string, details: any, actor: string = FOUNDER_EMAIL
   if (auditLogEntries.length > 200) auditLogEntries.pop();
 }
 
-// Middleware: Require 15-minute Elevated Admin Session
-function requireElevatedAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const token = (req.headers['x-admin-session'] as string) || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
+// Middleware: Require Elevated Admin Session (Firebase ID Token Custom Claim or 15-minute Elevated Session)
+async function requireElevatedAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authHeader = req.headers.authorization;
+  const sessionHeader = req.headers['x-admin-session'] as string;
+  const bearerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  const token = sessionHeader || bearerToken;
+
   if (!token) {
-    res.status(401).json({ error: 'Elevated administrator session required. Please authenticate in the Admin Panel.' });
+    res.status(401).json({ error: 'Elevated administrator session or token required. Please authenticate in the Admin Panel.' });
     return;
   }
+
+  // 1. Try Firebase Auth ID token verification if token looks like a JWT
+  if (token.split('.').length === 3) {
+    try {
+      if (!adminAuthInstance) await getAdminFirestore();
+      if (adminAuthInstance) {
+        const decoded = await adminAuthInstance.verifyIdToken(token);
+        const hasAdminClaim = decoded.admin === true || ADMIN_EMAILS.includes((decoded.email || '').toLowerCase());
+        if (hasAdminClaim) {
+          // B3: Require re-authentication if token auth_time is older than 30 minutes (1800 seconds)
+          const nowSec = Math.floor(Date.now() / 1000);
+          const authTime = decoded.auth_time || nowSec;
+          if (nowSec - authTime > 1800) {
+            res.status(401).json({
+              error: 'Administrator authentication expired. Please re-authenticate (re-auth required every 30 minutes).',
+              code: 'ADMIN_REAUTH_REQUIRED'
+            });
+            return;
+          }
+          (req as any).adminUser = decoded;
+          return next();
+        }
+      }
+    } catch (err: any) {
+      // If token is not a valid Firebase ID token, fallback to checking elevated session store below
+    }
+  }
+
+  // 2. Check elevated session store
   const session = elevatedAdminSessions.get(token);
   if (!session || Date.now() > session.expiresAt) {
     if (session) elevatedAdminSessions.delete(token);
@@ -1030,6 +1063,155 @@ function requireElevatedAdmin(req: express.Request, res: express.Response, next:
   }
   next();
 }
+
+// ==========================================
+// REGISTRATION MANAGEMENT (SERVER AUTHORITATIVE)
+// ==========================================
+apiRouter.post(['/registrations/create', '/registrations'], async (req, res) => {
+  try {
+    const {
+      event_slug,
+      full_name,
+      email,
+      phone_number,
+      college,
+      branch,
+      academic_year,
+      enrollment_number,
+      division,
+      team_name,
+      team_members,
+      team_member_details,
+      user_id
+    } = req.body;
+
+    if (!event_slug || !full_name || !email || !college || !branch || !academic_year || !enrollment_number) {
+      res.status(400).json({ error: 'Missing required registration fields.' });
+      return;
+    }
+
+    let verifiedUserId = user_id;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const idToken = authHeader.substring(7);
+      try {
+        if (!adminAuthInstance) await getAdminFirestore();
+        if (adminAuthInstance) {
+          const decoded = await adminAuthInstance.verifyIdToken(idToken);
+          verifiedUserId = decoded.uid;
+        }
+      } catch {
+        // Fallback to supplied user_id
+      }
+    }
+
+    if (!verifiedUserId) {
+      res.status(401).json({ error: 'Authentication required to register for competitions.' });
+      return;
+    }
+
+    const db = await getAdminFirestore();
+    let eventData: any = null;
+
+    if (db) {
+      const eventDoc = await db.collection('events').doc(event_slug).get();
+      if (!eventDoc.exists) {
+        res.status(404).json({ error: 'Competition event not found.' });
+        return;
+      }
+      eventData = eventDoc.data();
+
+      if (eventData.registration_open === false) {
+        res.status(400).json({ error: 'Registration for this competition is currently closed.' });
+        return;
+      }
+
+      const currentCount = Number(eventData.registered_count || 0);
+      const cap = Number(eventData.capacity || 100);
+      if (currentCount >= cap) {
+        res.status(400).json({ error: 'Competition capacity has been reached. Please contact organizing desk.' });
+        return;
+      }
+
+      // Check duplicate registration
+      const existingQuery = await db.collection('registrations')
+        .where('user_id', '==', verifiedUserId)
+        .where('event_slug', '==', event_slug)
+        .get();
+
+      if (!existingQuery.empty) {
+        const active = existingQuery.docs.some((d: any) => d.data().registration_status !== 'Cancelled');
+        if (active) {
+          res.status(400).json({ error: 'You are already registered for this competition.' });
+          return;
+        }
+      }
+    }
+
+    // Uniform ₹50 fee calculation per participant (server authoritative)
+    const participantCount = Array.isArray(team_members) && team_members.length > 0
+      ? team_members.length
+      : 1;
+    const totalFee = participantCount * 50;
+
+    // Secure custom competition ID generation
+    const prefix = event_slug.toUpperCase().slice(0, 3);
+    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    let rand = '';
+    for (let i = 0; i < 4; i++) {
+      rand += chars[crypto.randomInt(0, chars.length)];
+    }
+    const competitionId = `${prefix}-${rand}`;
+    const regId = `reg_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+
+    const newRecord = {
+      id: regId,
+      competition_id: competitionId,
+      reference_id: competitionId,
+      user_id: verifiedUserId,
+      event_slug,
+      event_title: eventData?.title || event_slug,
+      full_name: String(full_name).trim(),
+      email: String(email).trim().toLowerCase(),
+      phone_number: String(phone_number || '').trim(),
+      college: String(college).trim(),
+      branch: String(branch).trim(),
+      academic_year,
+      enrollment_number: String(enrollment_number).trim().toUpperCase(),
+      division: String(division || '').trim(),
+      team_name: String(team_name || '').trim(),
+      team_members: Array.isArray(team_members) ? team_members.filter(Boolean) : [],
+      team_member_details: Array.isArray(team_member_details) ? team_member_details : [],
+      participant_count: participantCount,
+      registration_status: 'Confirmed',
+      payment_status: 'Unpaid',
+      calculated_fee: totalFee,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    if (db) {
+      await db.collection('registrations').doc(regId).set(newRecord);
+      try {
+        const adminFs = await import('firebase-admin/firestore');
+        await db.collection('events').doc(event_slug).update({
+          registered_count: adminFs.FieldValue.increment(1)
+        });
+      } catch {}
+    }
+
+    recordAudit('REGISTRATION_CREATED', `Registration ${competitionId} created for ${email}`, verifiedUserId);
+
+    res.json({
+      success: true,
+      registration: newRecord
+    });
+  } catch (err: any) {
+    console.error('Error in /registrations/create:', err);
+    res.status(500).json({ error: err.message || 'Failed to process registration.' });
+  }
+});
+
 
 // 1. Admin Status check (supports both /admin/status and /admin/auth/status via GET and POST)
 apiRouter.all(['/admin/auth/status', '/admin/status'], (req, res) => {

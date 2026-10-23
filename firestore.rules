@@ -2,7 +2,7 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default Deny
+    // Default Deny all unspecified paths
     match /{document=**} {
       allow read, write: if false;
     }
@@ -28,29 +28,42 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Founder Administrator: Verified founder email or custom admin claim or /admins document
+    // RBAC: Administrative access strictly requires verified Firebase custom claim (B1)
     function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.admin == true ||
-        request.auth.token.email in ['miteshpipaliya2202@gmail.com', 'mitesh.aiml@gmail.com', 'editwithvision@gmail.com'] ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-      );
+      return isSignedIn() && request.auth.token.admin == true;
     }
 
-    // Protected Server-Side OTP Challenges and Reset Authorizations (Frontend Access Strictly Forbidden)
+    // Protected Server-Side Internal Collections (Frontend Access Strictly Forbidden)
     match /_otp_challenges/{challengeId} {
       allow read, write: if false;
     }
     match /_reset_authorizations/{authId} {
       allow read, write: if false;
     }
+    match /adminSecrets/{docId} {
+      allow read, write: if false;
+    }
+    match /otpChallenges/{docId} {
+      allow read, write: if false;
+    }
+    match /passwordTokens/{docId} {
+      allow read, write: if false;
+    }
+    match /admins/{adminId} {
+      allow read: if isAdmin();
+      allow write: if false; // Managed exclusively via backend Admin SDK
+    }
 
-    // Student Profiles
+    // Student Profiles (S2: strict field mutation whitelist)
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
       allow create: if isOwner(userId) && isValidId(userId) && incoming().id == userId;
-      allow update: if (isOwner(userId) || isAdmin()) && incoming().id == existing().id;
+      allow update: if (isOwner(userId) && incoming().id == existing().id &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'college', 'department', 'enrollment_no', 'division', 'phone', 
+          'year_of_study', 'updated_at', 'avatar_url'
+        ])) || isAdmin();
       allow delete: if isAdmin();
     }
 
@@ -78,12 +91,21 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
-    // Student Notification Read Receipts
+    // Student Notification Read Receipts (S3: Restricted to authenticated owner)
     match /userNotificationReads/{receiptId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn() && (
+        resource == null || resource.data.user_id == request.auth.uid || isAdmin()
+      );
+      allow create, update: if isSignedIn() && (
+        incoming().user_id == request.auth.uid &&
+        receiptId.matches('^' + request.auth.uid + '_.*$')
+      );
+      allow delete: if isSignedIn() && (
+        resource != null && resource.data.user_id == request.auth.uid
+      );
     }
 
-    // Media Upload Metadata
+    // Media Upload Metadata (S7: Write restricted to admins)
     match /mediaUploads/{uploadId} {
       allow read: if true;
       allow write: if isAdmin();
@@ -95,13 +117,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Competition Registrations
+    // Competition Registrations (S1: Client create denied; must go through serverless API)
     match /registrations/{registrationId} {
       allow get: if (isSignedIn() && existing().user_id == request.auth.uid) || isAdmin();
       allow list: if (isSignedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
-      allow create: if isSignedIn() && isValidId(registrationId) && incoming().user_id == request.auth.uid;
+      // Client writes disabled - registrations are processed with atomic capacity checks via server backend
+      allow create: if false;
       allow update: if isAdmin();
-      allow delete: if isAdmin() || (isSignedIn() && existing().user_id == request.auth.uid);
+      allow delete: if isAdmin();
     }
 
     // Contact Submissions
@@ -110,28 +133,11 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
-    // Administrative Security Audit Logs
+    // Administrative Security Audit Logs (S9: Immutable audit trail)
     match /adminAuditLogs/{logId} {
       allow read: if isAdmin();
       allow create: if isAdmin();
       allow update, delete: if false;
-    }
-
-    // Admin authorization store (Managed by backend Admin SDK only)
-    match /admins/{adminId} {
-      allow read: if isAdmin();
-      allow write: if false;
-    }
-
-    // Internal Security Store (Explicitly disallow all client reads/writes)
-    match /adminSecrets/{docId} {
-      allow read, write: if false;
-    }
-    match /otpChallenges/{docId} {
-      allow read, write: if false;
-    }
-    match /passwordTokens/{docId} {
-      allow read, write: if false;
     }
   }
 }

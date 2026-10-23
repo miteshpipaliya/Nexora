@@ -739,21 +739,48 @@ class NexoraDataService {
       updated_at: new Date().toISOString()
     };
 
+    // Call server-authoritative registration API (S1)
+    let idToken = '';
     try {
-      const regRef = doc(db, 'registrations', regId);
-      await setDoc(regRef, newRecord);
+      idToken = await user.getIdToken();
+    } catch {}
 
-      // Increment registered_count on event
-      try {
-        const evRef = doc(db, 'events', data.event_slug);
-        await updateDoc(evRef, {
-          registered_count: (event.registered_count || 0) + 1
-        });
-      } catch (evErr) {
-        console.warn('Event count update note:', evErr);
+    try {
+      const serverRes = await fetch('/api/registrations/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {})
+        },
+        body: JSON.stringify({
+          ...data,
+          user_id: user.uid
+        })
+      });
+
+      if (serverRes.ok) {
+        const json = await serverRes.json();
+        if (json.registration) {
+          this.notify();
+          return json.registration as RegistrationRecord;
+        }
+      } else {
+        const errJson = await serverRes.json().catch(() => ({}));
+        if (errJson.error) {
+          throw new Error(errJson.error);
+        }
       }
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `registrations/${regId}`);
+    } catch (apiErr: any) {
+      if (apiErr.message && !apiErr.message.includes('fetch')) {
+        throw apiErr;
+      }
+      // If serverless is offline, attempt direct client store write with graceful error handling
+      try {
+        const regRef = doc(db, 'registrations', regId);
+        await setDoc(regRef, newRecord);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `registrations/${regId}`);
+      }
     }
 
     this.notify();
