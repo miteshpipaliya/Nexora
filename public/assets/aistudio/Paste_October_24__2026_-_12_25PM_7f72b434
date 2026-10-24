@@ -1,0 +1,176 @@
+Nexora Launch Sprint Prompt: 7 Fixes + Scheduled Broadcast Popups
+Paste everything from Section 0 down into your coding agent (Claude Code recommended) at the repo root. If the session ends, start a new one and paste only: Resume the Nexora sprint from docs/SPRINT_STATE.md and follow docs/SPRINT_PROMPT.md.
+0. ROLE, MISSION, DEFINITION OF DONE
+You are a principal full-stack engineer and release manager. Repo: github.com/miteshpipaliya/Nexora (React 19, Vite, Tailwind 4, Firebase Auth/Firestore, Express app exported from server.ts and run as a Vercel serverless function through api/index.ts, Brevo email). Start from the latest main.
+Mission, in this order: (1) complete the 7 fixes in Section 4 (WP1 to WP7); (2) rebuild broadcast notifications into scheduled, delayed, site-wide popups (Section 5, WP8); (3) keep the entire website working at every step (Section 6). Done means every acceptance test below passes with pasted command output as evidence, the smoke checklist passes, and npm run build plus all tests are green.
+Facts already verified by a human audit (do not re-litigate, but do re-check before editing):
+• Only the main branch exists on GitHub. The previous docs/LAUNCH_STATE.md claimed about 25 branches, an api/_lib/ folder, Zod validation, tests, CI and a 91 percent score. None of that exists. Treat that file as fiction.
+• api/index.ts and api/app.ts import '../server' without an extension in a "type": "module" package. On Vercel this crashes with ERR_MODULE_NOT_FOUND and every /api call returns the plain-text page 'A server error has occurred'.
+• With no Firebase credentials, an un-awaited Firestore call throws an uncaught error and kills the Node process.
+• Admin login state (sessions, password tokens, OTP challenges, presence, audit log) lives in in-memory Maps, which breaks across serverless instances. The admin password is saved to /tmp and is lost on cold start.
+• /registrations/create falls back to the client-sent user_id when no valid token is sent. The client function createRegistration returns a locally built fake record when the API returns a non-JSON error, so students see success while nothing is saved.
+• firestore.rules now whitelists profile keys name, department, enrollment_no, phone, year_of_study, but the app writes full_name, branch, academic_year, enrollment_number, phone_number. Profile saves are denied. Rules also require the custom claim admin == true, but the client never reads or refreshes it.
+• /api/admin/status returns the founder's full email and phone to anyone. /api/health exposes config. The server trusts a client-sent x-matched-path header. A hardcoded fallback HMAC secret is in server.ts. Error responses leak err.message.
+1. RULES (HONESTY FIRST)
+1. Create docs/SPRINT_STATE.md from scratch. Every item starts Open. Never copy statuses from docs/LAUNCH_STATE.md; delete that file in the first commit.
+2. Mark an item Verified only with evidence: the exact command and its real output, pasted in the state file. If you could not run something, write NOT RUN and keep the item Open.
+3. Never cite a file, branch or test that does not exist. Run scripts/audit-claims.sh (create it in WP0) before every merge: it extracts every backticked path from docs/SPRINT_STATE.md and fails if any is missing.
+4. Do not remove or hide any existing feature, page, route or admin function. Every change must leave the site working (Section 6).
+5. Fail closed. Never trust the client for roles, user id, email, fee, status, capacity, timestamps or IDs.
+6. Never print, log or commit secrets. Only .env.example with placeholders is committed. Never commit .env or service account JSON.
+7. Allowed new dev dependencies: vitest, jsdom, @testing-library/react, @firebase/rules-unit-testing, firebase-tools. Use zod (already installed) for API validation. Do not add other libraries without writing the reason in docs/DECISIONS.md.
+8. Do not ask the human questions. Pick the safest default, log it in docs/DECISIONS.md, continue. Things only a human can do go into docs/MANUAL_STEPS.md as exact click-by-click steps and the item becomes Manual.
+9. Never commit to main directly and never force-push. One branch per work package, conventional commits. If you have no push or PR access, use local branches and git merge --squash, and say so in DECISIONS.md.
+2. THE LOOP
+REPEAT:
+  1 READ   docs/SPRINT_STATE.md
+  2 AUDIT  re-run the gates and probes in Section 6; downgrade any item whose evidence fails
+  3 PICK   the first work package (WP0..WP9) that still has Open items
+  4 BUILD  new branch from main; implement only that package; small commits
+  5 GATE   run every gate; fix until green. Same gate fails 3 times: mark Blocked with the exact error, move on
+  6 MERGE  PR or squash merge; delete the branch
+  7 RECORD update the state file with evidence
+  8 EXIT   when all of WP1 to WP8 are Verified (or Manual/Blocked with reasons) and the smoke checklist passes
+Maximum 30 iterations. Then write docs/SPRINT_REPORT.md (Section 8).
+3. BRANCH ORDER (all branch from main, merge back to main)
+WP0  chore/sprint-baseline          state files, audit-claims.sh, vitest, smoke script, delete LAUNCH_STATE.md
+WP1  fix/vercel-entry-crash         step 1
+WP2  fix/registration-auth          step 2
+WP3  fix/registration-no-fake-success   step 3
+WP4  fix/rules-client-alignment     step 4
+WP5  fix/public-info-leaks          step 5
+WP6  fix/admin-state-and-crash-guards   step 6
+WP7  fix/server-hardening           step 7
+WP8  feat/scheduled-broadcast-popups    broadcast feature
+WP9  test/smoke-and-docs            smoke checklist, README, final report
+Vercel creates a preview deployment for each pushed branch; note the preview URL in the state file when available.
+4. WORK PACKAGES FOR THE 7 FIXES
+WP0 Baseline
+• Create docs/SPRINT_STATE.md, docs/DECISIONS.md, docs/MANUAL_STEPS.md, scripts/audit-claims.sh.
+• Add vitest (and jsdom, @testing-library/react), scripts test, typecheck (tsc --noEmit), rules:test. Set "engines": {"node": "24.x"}, add .nvmrc with 24, change start to node server.js (built output).
+• scripts/smoke.mjs: Node script taking BASE_URL, runs the HTTP probes in Section 6 and exits non-zero on any failure.
+• scripts/verify-vercel-build.sh: copies the repo to a temp dir, adds a fake .vercel/project.json, runs npx vercel@latest build --yes, then imports .vercel/output/functions/api/index.func/api/index.js in Node with VERCEL=1 and requests /api/health through an http server. It must print LOADED OK and a 200 response.
+• Acceptance: bash scripts/audit-claims.sh passes; npm test runs.
+WP1 (Step 1) Fix the Vercel entry crash
+• In api/index.ts change the import to import app from '../server.js';. Delete api/app.ts (Vercel deploys every file in api/ as a function; it is a duplicate).
+• Keep vercel.json rewrite /api/(.*) to /api/index.ts and add "functions": {"api/index.ts": {"maxDuration": 30}}.
+• Acceptance: bash scripts/verify-vercel-build.sh prints LOADED OK and /api/health returns 200 from the built function directory (paste output). Before the fix the same script must show ERR_MODULE_NOT_FOUND; run it once on main first and paste that as the before-evidence.
+WP2 (Step 2) Registration authentication and integrity
+Rewrite POST /api/registrations/create (keep the path; also keep /api/registrations as alias) in server.ts:
+1. Require Authorization: Bearer <Firebase ID token>. Verify with the Admin SDK verifyIdToken. No fallback to a body user_id. Missing or invalid token: 401. Unverified email (email_verified false): 403. Admin SDK or Firestore unavailable: 503 with a generic message. Never succeed without writing.
+2. uid and email come only from the token. Ignore body user_id and email.
+3. Validate the body with zod: event_slug matches ^[a-z0-9-]{1,60}$; strings trimmed with length caps (names 100, college 150, branch 100, enrollment 30, phone 20); academic_year is the existing enum; team_members at most 10 items of at most 100 chars; team_member_details at most 10 objects with capped fields. Reject unknown keys. Route body limit 100 kb (set the global express.json limit to 100kb; only a future upload route may exceed it).
+4. Run everything in one Firestore transaction: read the event; 404 if missing; 409-style errors for closed, full and duplicate. Deterministic registration doc id ${uid}_${event_slug}; if a non-Cancelled one exists return 409 with 'You are already registered.'.
+5. Competition ID: 6 characters from 23456789ABCDEFGHJKLMNPQRSTUVWXYZ after the 3-letter prefix; claim uniqueness by creating competitionIds/{id} inside the same transaction; retry up to 5 times on collision.
+6. Fee computed server-side from the event document (bvm_fee, external_fee, per participant; defaults 50 and 70). First read the Terms page and the site copy; if they say 50/70, use that; otherwise change the copy to match the code. Record the choice in DECISIONS.md. Store payment_status: 'Unpaid' only; clients can never set it.
+7. Increment registered_count in the same transaction. Audit the action with actor = uid.
+8. Return only the created registration, never internal data. Errors use the generic error helper from WP7.
+• Acceptance (vitest with a mocked Admin SDK, plus pasted curl output against a local server): no token returns 401; a valid token but body user_id: 'VICTIM' stores the token uid; a full event returns 409 and creates nothing; two parallel requests create exactly one registration; fee equals the server calculation even when the body says otherwise.
+WP3 (Step 3) Remove the fake-success path on the client
+• In src/services/dataService.ts createRegistration (about line 700 to 780): delete the locally built record fallback and the direct setDoc to registrations. Never send user_id. Any non-2xx response, any non-JSON body, a thrown fetch error or a response without registration must throw an Error: use the server's error text when it is JSON, otherwise 'Registration service is unavailable. Nothing was saved. Please try again.'. Only return json.registration from a 2xx response.
+• Audit every other method for the same anti-pattern (returns local data when a write failed): contact messages, notifications, profile, events, registrations. Fix each so a failed write throws and the UI shows an error toast.
+• Make the registration modal display that error and keep the form filled.
+• Acceptance: a vitest test mocks fetch to return an HTML 500 and a JSON 400, and asserts createRegistration rejects with no record returned and no Firestore write. Paste output.
+WP4 (Step 4) Align rules, claims and the client
+1. Rules users/{id}: allow create and update only when the keys are a subset of ['id','full_name','email','college','branch','academic_year','enrollment_number','division','phone_number','avatar_url','created_at','updated_at'], id immutable, email == request.auth.token.email, string lengths capped. Remove the client writing email_verified and is_admin (grep and remove from setDoc payloads). Keep registrations create/update denied for clients (server only); owner read allowed.
+2. Claims on the client: in AuthContext read getIdTokenResult() after login and call getIdToken(true) when the Admin page opens. isAdmin = claims.admin === true. Remove ADMIN_EMAILS and ADMIN_PHONE from src entirely (Navbar, AdminPage, dataService, AuthContext). If a signed-in user has the founder email but no claim, the Admin page shows: 'Your account has no admin permission yet. Run npm run admin:claim -- your@email, then sign out and sign in again.' instead of failing silently.
+3. scripts/set-admin-claim.ts: read FIREBASE_SERVICE_ACCOUNT (raw or base64 JSON) as the only env name, take the project id from the service account, add npm script admin:claim. Unify the server and script env names.
+4. Rules tests with @firebase/rules-unit-testing (emulator): a student can update full_name, branch, academic_year, enrollment_number, phone_number; cannot write is_admin; an unverified user with an admin email and no claim cannot write events or notifications; the admin claim can; clients cannot create registrations or contactMessages directly; userNotificationReads is limited to the owner.
+• Acceptance: npm run rules:test output pasted. If Java or the emulator cannot run in your environment, mark NOT RUN, keep the tests committed, and add the run command to MANUAL_STEPS.
+WP5 (Step 5) Close the public information leaks
+• GET/POST /api/admin/status and /api/admin/auth/status return only { success: true, initialized }. Move masked-email display to the client from a constant mask. Remove founder email and phone from every unauthenticated response.
+• /api/health public response is only { status: 'ok' }. Move the detailed checks to GET /api/admin/health behind requireElevatedAdmin.
+• Acceptance: curl output pasted showing both public routes contain no email, phone, project id, sender, secret flags or storage mode.
+WP6 (Step 6) Stateless admin sessions and crash guards
+1. Replace the in-memory maps. Elevated session = HMAC-signed token {purpose:'admin-session', sub, exp, jti} verified without stored state. passwordToken is also a signed token with the OTP hash and exp inside. Setup OTP uses the same approach.
+2. Attempts and single use: keep a Firestore doc _admin_challenges/{jti} (Admin SDK, transaction) with attempts; max 5; deleted on success. Lock/logout writes _revoked_sessions/{jti}; requireElevatedAdmin rejects revoked ids.
+3. Move the admin password hash (scrypt) to Firestore doc _admin_security/founder; ADMIN_SECURITY_PASSWORD stays as an optional override. Nothing is written to /tmp or disk in production.
+4. Persist the audit log to the adminAuditLogs collection through the Admin SDK instead of the in-memory array; /api/admin/audit-logs reads from there.
+5. Rate limits stored in Firestore counters (documents with a window start): verify-password and setup 5 per 15 minutes per IP plus 20 per hour globally; send-email-otp keeps its per-IP limit and adds 3 per 15 minutes per email; verify-email-otp 10 per 15 minutes per IP.
+6. Crash guards: process.on('unhandledRejection') and process.on('uncaughtException') log structured JSON and do not exit in serverless. getAdminFirestore() throws a typed ConfigError that routes turn into 503 with a clear server log line. Wrap every fire-and-forget promise with .catch. Replace every empty catch {} in server.ts with at least a structured log (about 11 places). Validate required env at first use and list the missing names in the log (never in the response).
+7. Admin dashboard stats come from real Firestore counts (students, registrations, events, notifications), not constants. Delete the hardcoded 115, 4 and 6. Presence: require a verified ID token, throttle to one write per user per minute, store only uid and lastSeen in Firestore, and never store IP or email.
+• Acceptance: a test starts the app with the Admin SDK unavailable and shows it stays alive and returns 503; a test shows verify-admin-otp works when the two requests are handled by two separate app instances sharing the mocked Firestore; wrong OTP 6 times invalidates the challenge; an expired token fails; after lock the old token fails.
+WP7 (Step 7) Server hardening
+• Delete the middleware that rewrites req.url from x-matched-path or x-forwarded-uri. Mount the router only at /api (remove the root mount, except behind !isServerless for local dev if needed).
+• Remove the hardcoded fallback secret. In production, if OTP_HMAC_SECRET is missing or shorter than 32 characters, throw ConfigError at first use (503). Never generate a random per-boot secret.
+• dotenv: load .env only when NODE_ENV !== 'production', never with override: true.
+• Error responses: add a request-id middleware. 5xx responses are { error: 'Something went wrong. Please try again.', requestId }. 4xx messages come only from a whitelist you write in code. Never return err.message, Brevo messages, IPs or Google error text. Log details server-side with the requestId.
+• app.disable('x-powered-by'). Add headers in vercel.json: X-Content-Type-Options nosniff, X-Frame-Options DENY, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy (camera, microphone, geolocation denied), Strict-Transport-Security. Do not add a Content-Security-Policy in this sprint unless you load the built app and confirm there are no violations.
+• Rate-limit key: use the platform's client IP header only, parsed to one address.
+• Acceptance: curl output shows a 500 test route returns the generic message plus requestId; a request with a forged x-matched-path is not rerouted; startup without OTP_HMAC_SECRET in production gives 503, not a random secret.
+5. WP8: SCHEDULED, DELAYED BROADCAST POPUPS
+5.1 Why the broadcast is broken (confirmed in code)
+1. Announcements only appear in the small bell dropdown (src/components/ui/NotificationBell.tsx). There is no popup anywhere.
+2. createNotification in dataService.ts drops publish_at and expires_at, and the admin modal in AdminPage.tsx has no scheduling fields, so there is no scheduler.
+3. The subscription listens to the whole notifications collection for everyone, and rules say allow read: if true, so Drafts and future announcements are readable by any visitor.
+4. Publishing needs the admin custom claim, which the client never refreshes, so it can fail with permission denied.
+5.2 Required behaviour
+• Delay: after the admin posts, the announcement shows as a popup to every user on the site (signed in or not) popup_delay_seconds later. Default 120 seconds (2 minutes), admin-adjustable from 0 to 60 minutes.
+• Scheduler: the admin chooses Post now or Schedule for a date and time (datetime-local input labelled IST, Asia/Kolkata; store UTC). The popup time is display_at = scheduled_for + popup_delay_seconds.
+• It must reach users already on the site: a user sitting on any page when display_at arrives sees the popup without refreshing. Users who open the site later still see an unseen popup if it went live in the last 24 hours (Urgent: 72 hours) and has not expired.
+• Once per user per device: dismissing marks it seen in localStorage and, if signed in, in userNotificationReads. Other tabs close it too.
+• Nothing leaks early: until display_at, the content is unreadable by non-admins (enforced by rules, not the UI).
+5.3 Data model
+notifications/{id}: id, title (max 120), message (max 1000), category (existing enum), priority (Normal, High, Urgent), audience ('all' or a competition slug), status (Draft, Published, Archived), show_popup (bool, default true), scheduled_for (Timestamp), popup_delay_seconds (int 0 to 3600), display_at (Timestamp), expires_at (Timestamp or null), link_url, link_text, created_at (serverTimestamp), created_by (uid).
+siteMeta/broadcastSchedule: { items: [{ id, display_at_ms }], updated_at }, public read, admin write. It carries no content; clients listen to this one document and set timers. The admin client updates it in the same writeBatch as the notification; items older than 2 days are pruned on each write.
+5.4 Rules
+match /notifications/{id} {
+  allow read: if isAdmin() || (
+    resource.data.status == 'Published' &&
+    resource.data.display_at <= request.time &&
+    (resource.data.get('expires_at', null) == null || resource.data.expires_at > request.time));
+  allow create: if isAdmin() && validNotification() &&
+    request.resource.data.scheduled_for >= request.time - duration.value(10, 'm');
+  allow update: if isAdmin() && validNotification();
+  allow delete: if isAdmin();
+}
+match /siteMeta/broadcastSchedule { allow read: if true; allow write: if isAdmin(); }
+validNotification() checks types and caps, link_url matches ^(https?://|/), popup_delay_seconds is an int in 0..3600, and display_at == scheduled_for + duration.value(popup_delay_seconds, 's'). Add the composite index status ASC, display_at DESC to firestore.indexes.json (create the file and firebase.json if missing).
+5.5 Client implementation
+• src/shared/lib/serverClock.ts: on app load, call GET /api/health and compute skewMs from the Date response header (fallback 0). serverNow() = Date.now() + skewMs. All 'is it live yet' decisions use serverNow(); queries use Timestamp.fromMillis(serverNow() - 30000) so a fast client clock cannot make the query exceed request.time.
+• src/shared/lib/safeUrl.ts: allows only http(s) and same-site paths starting with a single slash. Use it for every notification link in the popup, the bell and AdminPage (this also closes the javascript: XSS).
+• src/features/notifications/useBroadcastPopups.ts, mounted once in App.tsx inside AuthProvider and outside Routes. Behaviour:
+    1. onSnapshot on siteMeta/broadcastSchedule. For each item still in the future, setTimeout to display_at_ms - skewMs (re-arm every 15 minutes and on visibilitychange so long timers and sleeping laptops stay accurate). At fire time getDoc(notifications/id); if it is denied because of clock error, retry every 10 seconds for up to 3 minutes.
+    2. On load, one query for missed items: status Published, display_at between serverNow-24h and serverNow-30s, limit 10; enqueue those not yet seen.
+    3. Skip when show_popup is false, when expired, when already seen, or when audience is a competition slug and the signed-in user is not registered for it (they still see it in the bell).
+    4. Queue: show one popup at a time ordered Urgent, High, Normal then oldest first; advance after dismiss. Suppress popups on /admin, /login, /signup and /forgot-password; keep them queued and show them after the user leaves those pages.
+    5. If a snapshot or fetch fails, fall back to polling every 60 seconds; never throw into the UI.
+• src/features/notifications/BroadcastPopup.tsx: accessible modal (role dialog, aria-modal, labelled title, focus trap, Esc to close for Normal and High, Urgent also closes with the button but never auto-closes), backdrop, priority and category badge, title, message, optional action button using link_text and safeUrl (internal paths use the router navigate), close button, respects prefers-reduced-motion, matches the existing violet dark design, mobile friendly.
+• Seen tracking: localStorage key nexora_seen_broadcasts (cap 200 ids) plus a userNotificationReads receipt when signed in; cross-tab sync with the storage event.
+• Bell: replace the whole-collection listener with a query (status Published, display_at <= serverNow-30s, orderBy display_at desc, limit 50). An item enters the bell at the same moment its popup shows. Keep unread badges and the existing UI.
+• The bell and popup must work for signed-out visitors.
+5.6 Admin UI (AdminPage.tsx broadcast modal and list)
+• Add to the modal: Send mode (Post now or Schedule), a datetime-local field (IST), Popup delay in minutes (default 2), Expires (optional), Show as popup toggle (default on), and a live line such as 'Will appear to all users at 4:32 PM IST (2 min after posting)'. Add a Preview button that renders the real BroadcastPopup with the typed content. Keep Action Link and Button Text; validate the link with safeUrl before saving.
+• createNotification(data) must save every field above using serverTimestamp for created_at, compute display_at, and write the notification and the schedule index in one writeBatch. Failures throw and the toast shows the real reason; if the error is permission-denied, the toast says the admin claim or token needs refreshing and triggers getIdToken(true) once, then retries once.
+• The Broadcasts list shows a status chip: Scheduled (with a live countdown), Live, Expired, Archived. Admins can edit or cancel a Scheduled item before its display_at (update the schedule index too), archive a Live one, and delete. Deleting or archiving also removes the item from the schedule index.
+• Publishing sets status Published immediately even for future display_at; visibility is controlled by rules and display_at, not by a later status change.
+5.7 Tests and acceptance for WP8
+• Unit tests for computeDisplayAt, isLive, the queue ordering, seen tracking and safeUrl (javascript:, data:, vbscript:, //evil.com rejected).
+• Component test with fake timers: schedule a notification 2 minutes ahead, advance 119 seconds (no popup), advance 2 more seconds (popup visible), dismiss it (never shown again after a re-mount), and verify two queued items show one after the other.
+• Rules tests: anonymous and student reads of a future notification are denied; the admin can read it; reads succeed once display_at is in the past; a notification with a mismatched display_at is rejected; non-admin writes are rejected.
+• Manual proof, written in docs/SMOKE_TEST.md: as admin post 'Test' with a 2-minute delay while a second browser (signed out) sits on the home page; the popup appears there within about 15 seconds of the 2-minute mark with no refresh; dismiss it; reload; it does not return; the bell shows it.
+6. KEEP EVERYTHING WORKING
+Do-not-break flows (check each before and after every merge; write results in docs/SMOKE_TEST.md): home and navigation; about; competitions list and a competition page; sign up with email OTP; log in with email and with Google; forgot and reset password; registration for an event (individual and team); profile view and edit; notifications bell; contact form; store page; team page; privacy and terms pages; 404 page; admin login (password, then OTP, then session); admin create, edit and delete of events, notifications and team entries; admin reply to a contact message; logout.
+Gates for every branch (all must pass, with pasted output):
+1. npx tsc --noEmit
+2. npm test
+3. npm run build
+4. npm run rules:test (or NOT RUN with the reason)
+5. bash scripts/verify-vercel-build.sh shows LOADED OK
+6. bash scripts/audit-claims.sh passes
+7. git diff contains no secrets (grep for key patterns, private keys, service account JSON)
+Probes re-run on every AUDIT step (scripts/smoke.mjs against a locally started app):
+1. /api/health returns only status ok.
+2. /api/admin/status contains no email or phone.
+3. /api/admin/stats without a session returns 401.
+4. POST /api/registrations/create with no token returns 401.
+5. A forged x-matched-path header does not reroute the request.
+6. A 500 test response never contains err.message text.
+7. A request body over 100 kb is rejected.
+8. grep of src and api finds no ADMIN_EMAILS, ADMIN_PHONE or the hardcoded fallback secret.
+If a change would break a flow, fix the change; never delete the flow. If you must temporarily disable something, hide it behind a visible message and record it in DECISIONS.md.
+7. ENVIRONMENT VARIABLES
+Update .env.example (placeholders only) and MANUAL_STEPS.md with: FIREBASE_SERVICE_ACCOUNT (raw or base64 service account JSON), OTP_HMAC_SECRET (random, 32+ chars), ADMIN_SECURITY_PASSWORD (optional, 16+), BREVO_API_KEY, BREVO_SENDER_EMAIL, BREVO_SENDER_NAME, FIREBASE_API_KEY. Manual steps the human must do: set these in Vercel for Production and Preview, turn off Brevo's authorised-IP restriction (Vercel IPs change), create the service account, run npm run admin:claim -- founder@email, deploy the rules and indexes with firebase deploy --only firestore:rules,firestore:indexes, sign out and in again, and rotate the Brevo key and OTP secret if the .env file was ever shared.
+8. FINAL REPORT
+Write docs/SPRINT_REPORT.md and print a summary: each work package with status and pasted evidence; every Manual item in the order a human must do it; every Blocked item with its exact error; the results of the Section 6 smoke checklist; known gaps for the next sprint (Firebase Storage uploads, CSP header, route-level code splitting, payment gateway, monitoring with Sentry, Firestore backups, CI workflow). Be honest: a package whose acceptance test was not run is not Verified.
+Begin now: read this prompt into docs/SPRINT_PROMPT.md, create the state files, delete docs/LAUNCH_STATE.md, and start the loop at WP0.

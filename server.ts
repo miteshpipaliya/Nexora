@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import { z } from 'zod';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,18 +19,21 @@ if (fs.existsSync(localEnvPath)) {
 }
 
 export const app = express();
-app.use(express.json({ limit: '25mb' }));
 
-// Path recovery middleware for Vercel Serverless Function rewrites
+// Standard Security Headers and Request ID Tracking (WP6 & WP7)
 app.use((req, res, next) => {
-  const xMatched = (req.headers['x-matched-path'] as string) || (req.headers['x-forwarded-uri'] as string);
-  if (xMatched) {
-    req.url = xMatched;
-  } else if (req.url.startsWith('/api/index')) {
-    req.url = req.url.replace(/^\/api\/index(\.ts|\.js)?/, '') || '/';
-  }
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  const reqId = (req.headers['x-request-id'] as string) || crypto.randomUUID();
+  res.setHeader('X-Request-Id', reqId);
+  (req as any).id = reqId;
   next();
 });
+
+// Standard strict 100kb JSON body payload limit (WP7: prevent DoS/overflow)
+app.use(express.json({ limit: '100kb' }));
 
 export const apiRouter = express.Router();
 
@@ -600,14 +604,26 @@ const activeAdminChallenges = new Map<string, AdminDualChallenge>();
 const activeAdminSessions = new Map<string, AdminSession>();
 
 // ==========================================
-// SYSTEM HEALTH & READINESS ENDPOINT
+// SYSTEM HEALTH & READINESS ENDPOINTS (WP5: SANITIZED PUBLIC HEALTH)
 // ==========================================
-apiRouter.get('/health', async (req, res) => {
+apiRouter.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'NEXORA Production Backend API',
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+    serverTimeMs: Date.now()
+  });
+});
+
+// Protected Admin Health Diagnostic (Requires Elevated Administrator Credentials)
+apiRouter.get(['/admin/health', '/admin/diagnostics'], requireElevatedAdmin, async (req, res) => {
   const brevoKey = process.env.BREVO_API_KEY?.trim();
   const firebaseKey = process.env.FIREBASE_API_KEY?.trim();
   const hmacSecret = process.env.OTP_HMAC_SECRET?.trim();
   const hasSa = Boolean(
     process.env.FIREBASE_SERVICE_ACCOUNT || 
+    process.env.FIREBASE_SERVICE_ACCOUNT_KEY ||
     (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY)
   );
 
@@ -621,11 +637,12 @@ apiRouter.get('/health', async (req, res) => {
 
   res.json({
     status: 'ok',
-    service: 'NEXORA Production Backend API',
+    service: 'NEXORA Production Backend API (Admin Diagnostics)',
     timestamp: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
     serverless: isServerless,
     environment: process.env.NODE_ENV || 'production',
+    serverTimeMs: Date.now(),
     checks: {
       brevoEmail: {
         configured: Boolean(brevoKey && brevoKey.length > 8),
@@ -1064,11 +1081,86 @@ async function requireElevatedAdmin(req: express.Request, res: express.Response,
   next();
 }
 
+// Registration Payload Validation Schema (WP2)
+const RegistrationPayloadSchema = z.object({
+  event_slug: z.string().min(1, 'Event slug is required'),
+  full_name: z.string().min(2, 'Full name must have at least 2 characters'),
+  email: z.string().email('A valid email address is required'),
+  phone_number: z.string().min(6, 'Valid phone number is required'),
+  college: z.string().min(1, 'College is required'),
+  branch: z.string().min(1, 'Branch is required'),
+  academic_year: z.string().min(1, 'Academic year is required'),
+  enrollment_number: z.string().min(1, 'Enrollment number is required'),
+  division: z.string().optional().default(''),
+  team_name: z.string().optional().default(''),
+  team_members: z.array(z.string()).optional().default([]),
+  team_member_details: z.array(z.any()).optional().default([])
+});
+
 // ==========================================
-// REGISTRATION MANAGEMENT (SERVER AUTHORITATIVE)
+// REGISTRATION MANAGEMENT (SERVER AUTHORITATIVE - WP2)
 // ==========================================
 apiRouter.post(['/registrations/create', '/registrations'], async (req, res) => {
+  const reqId = (req as any).id || crypto.randomUUID();
   try {
+    // 1. Strict Firebase Bearer token verification (never trust client user_id)
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ 
+        error: 'Authentication required to register for competitions. Please sign in.', 
+        code: 'UNAUTHORIZED',
+        reqId
+      });
+      return;
+    }
+
+    const idToken = authHeader.substring(7).trim();
+    let verifiedUserId = '';
+    let tokenEmail = '';
+
+    try {
+      if (!adminAuthInstance) await getAdminFirestore();
+      if (adminAuthInstance) {
+        const decoded = await adminAuthInstance.verifyIdToken(idToken);
+        verifiedUserId = decoded.uid;
+        tokenEmail = decoded.email || '';
+      } else {
+        // Fallback for local sandbox environments without live service account
+        const parts = idToken.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+          if (payload && (payload.user_id || payload.sub)) {
+            verifiedUserId = payload.user_id || payload.sub;
+            tokenEmail = payload.email || '';
+          }
+        }
+      }
+    } catch (authErr: any) {
+      res.status(401).json({ 
+        error: 'Authentication session expired or invalid. Please sign in again.', 
+        code: 'INVALID_CREDENTIALS',
+        reqId
+      });
+      return;
+    }
+
+    if (!verifiedUserId) {
+      res.status(401).json({ 
+        error: 'Could not verify student identity from token.', 
+        code: 'UNAUTHORIZED',
+        reqId
+      });
+      return;
+    }
+
+    // 2. Zod input schema validation (fail closed on malformed payloads)
+    const parseResult = RegistrationPayloadSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      const issueMsg = parseResult.error.issues.map(i => i.message).join('. ');
+      res.status(400).json({ error: issueMsg || 'Invalid registration payload.', reqId });
+      return;
+    }
+
     const {
       event_slug,
       full_name,
@@ -1081,148 +1173,139 @@ apiRouter.post(['/registrations/create', '/registrations'], async (req, res) => 
       division,
       team_name,
       team_members,
-      team_member_details,
-      user_id
-    } = req.body;
+      team_member_details
+    } = parseResult.data;
 
-    if (!event_slug || !full_name || !email || !college || !branch || !academic_year || !enrollment_number) {
-      res.status(400).json({ error: 'Missing required registration fields.' });
-      return;
-    }
-
-    let verifiedUserId = user_id;
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const idToken = authHeader.substring(7);
-      try {
-        if (!adminAuthInstance) await getAdminFirestore();
-        if (adminAuthInstance) {
-          const decoded = await adminAuthInstance.verifyIdToken(idToken);
-          verifiedUserId = decoded.uid;
-        }
-      } catch {
-        // Fallback to supplied user_id
-      }
-    }
-
-    if (!verifiedUserId) {
-      res.status(401).json({ error: 'Authentication required to register for competitions.' });
-      return;
-    }
+    // 3. Deterministic Document ID to mathematically guarantee idempotency
+    const cleanEventSlug = event_slug.toLowerCase().trim();
+    const regDocId = `${verifiedUserId}_${cleanEventSlug}`;
 
     const db = await getAdminFirestore();
-    let eventData: any = null;
+    if (!db) {
+      res.status(503).json({
+        error: 'Database connection currently unavailable. Please try again in a few moments.',
+        code: 'DATABASE_UNAVAILABLE',
+        reqId
+      });
+      return;
+    }
 
-    if (db) {
-      const eventDoc = await db.collection('events').doc(event_slug).get();
-      if (!eventDoc.exists) {
-        res.status(404).json({ error: 'Competition event not found.' });
-        return;
+    const regDocRef = db.collection('registrations').doc(regDocId);
+    const eventDocRef = db.collection('events').doc(cleanEventSlug);
+
+    // 4. Single Atomic Firestore Transaction (checks duplicate, capacity, updates count & creates record)
+    let committedRecord: any = null;
+
+    await db.runTransaction(async (transaction: any) => {
+      const [existingSnap, eventSnap] = await Promise.all([
+        transaction.get(regDocRef),
+        transaction.get(eventDocRef)
+      ]);
+
+      if (existingSnap.exists) {
+        const existingData = existingSnap.data();
+        if (existingData && existingData.registration_status !== 'Cancelled') {
+          const err: any = new Error('You are already registered for this competition.');
+          err.statusCode = 400;
+          throw err;
+        }
       }
-      eventData = eventDoc.data();
 
-      if (eventData.registration_open === false) {
-        res.status(400).json({ error: 'Registration for this competition is currently closed.' });
-        return;
+      if (!eventSnap.exists) {
+        const err: any = new Error('Competition event not found.');
+        err.statusCode = 404;
+        throw err;
+      }
+
+      const eventData = eventSnap.data();
+      if (eventData.registration_open === false || eventData.status === 'Archived' || eventData.status === 'Draft') {
+        const err: any = new Error('Registration for this competition is currently closed.');
+        err.statusCode = 400;
+        throw err;
       }
 
       const currentCount = Number(eventData.registered_count || 0);
-      const cap = Number(eventData.capacity || 100);
-      if (currentCount >= cap) {
-        res.status(400).json({ error: 'Competition capacity has been reached. Please contact organizing desk.' });
-        return;
+      const capacity = Number(eventData.capacity || 100);
+      if (currentCount >= capacity) {
+        const err: any = new Error('Competition capacity has been reached. Please contact NEXORA organizing desk.');
+        err.statusCode = 400;
+        throw err;
       }
 
-      // Check duplicate registration
-      const existingQuery = await db.collection('registrations')
-        .where('user_id', '==', verifiedUserId)
-        .where('event_slug', '==', event_slug)
-        .get();
+      // Server-authoritative fee calculation
+      const participantCount = Array.isArray(team_members) && team_members.length > 0
+        ? team_members.length
+        : 1;
+      const feePerParticipant = Number(eventData.fee_per_participant) || 50;
+      const calculatedFee = participantCount * feePerParticipant;
 
-      if (!existingQuery.empty) {
-        const active = existingQuery.docs.some((d: any) => d.data().registration_status !== 'Cancelled');
-        if (active) {
-          res.status(400).json({ error: 'You are already registered for this competition.' });
-          return;
-        }
+      // Unique human-readable competition ticket ID (e.g. ZC-B7K4)
+      const prefix = cleanEventSlug.toUpperCase().slice(0, 3);
+      const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+      let rand = '';
+      for (let i = 0; i < 4; i++) {
+        rand += chars[crypto.randomInt(0, chars.length)];
       }
-    }
+      const competitionId = `${prefix}-${rand}`;
 
-    // Uniform ₹50 fee calculation per participant (server authoritative)
-    const participantCount = Array.isArray(team_members) && team_members.length > 0
-      ? team_members.length
-      : 1;
-    const totalFee = participantCount * 50;
+      committedRecord = {
+        id: regDocId,
+        competition_id: competitionId,
+        reference_id: competitionId,
+        user_id: verifiedUserId,
+        event_slug: cleanEventSlug,
+        event_title: eventData.title || cleanEventSlug,
+        full_name: full_name.trim(),
+        email: (tokenEmail || email).trim().toLowerCase(),
+        phone_number: phone_number.trim(),
+        college: college.trim(),
+        branch: branch.trim(),
+        academic_year,
+        enrollment_number: enrollment_number.trim().toUpperCase(),
+        division: division.trim(),
+        team_name: team_name.trim(),
+        team_members: Array.isArray(team_members) ? team_members.filter(Boolean) : [],
+        team_member_details: Array.isArray(team_member_details) ? team_member_details : [],
+        participant_count: participantCount,
+        registration_status: 'Confirmed',
+        payment_status: 'Unpaid',
+        calculated_fee: calculatedFee,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
 
-    // Secure custom competition ID generation
-    const prefix = event_slug.toUpperCase().slice(0, 3);
-    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-    let rand = '';
-    for (let i = 0; i < 4; i++) {
-      rand += chars[crypto.randomInt(0, chars.length)];
-    }
-    const competitionId = `${prefix}-${rand}`;
-    const regId = `reg_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+      transaction.set(regDocRef, committedRecord);
+      transaction.update(eventDocRef, {
+        registered_count: currentCount + 1,
+        updated_at: new Date().toISOString()
+      });
+    });
 
-    const newRecord = {
-      id: regId,
-      competition_id: competitionId,
-      reference_id: competitionId,
-      user_id: verifiedUserId,
-      event_slug,
-      event_title: eventData?.title || event_slug,
-      full_name: String(full_name).trim(),
-      email: String(email).trim().toLowerCase(),
-      phone_number: String(phone_number || '').trim(),
-      college: String(college).trim(),
-      branch: String(branch).trim(),
-      academic_year,
-      enrollment_number: String(enrollment_number).trim().toUpperCase(),
-      division: String(division || '').trim(),
-      team_name: String(team_name || '').trim(),
-      team_members: Array.isArray(team_members) ? team_members.filter(Boolean) : [],
-      team_member_details: Array.isArray(team_member_details) ? team_member_details : [],
-      participant_count: participantCount,
-      registration_status: 'Confirmed',
-      payment_status: 'Unpaid',
-      calculated_fee: totalFee,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    if (db) {
-      await db.collection('registrations').doc(regId).set(newRecord);
-      try {
-        const adminFs = await import('firebase-admin/firestore');
-        await db.collection('events').doc(event_slug).update({
-          registered_count: adminFs.FieldValue.increment(1)
-        });
-      } catch {}
-    }
-
-    recordAudit('REGISTRATION_CREATED', `Registration ${competitionId} created for ${email}`, verifiedUserId);
+    recordAudit('REGISTRATION_CREATED', `Registration ${committedRecord.competition_id} confirmed for ${committedRecord.email}`, verifiedUserId);
 
     res.json({
       success: true,
-      registration: newRecord
+      registration: committedRecord,
+      reqId
     });
   } catch (err: any) {
-    console.error('Error in /registrations/create:', err);
-    res.status(500).json({ error: err.message || 'Failed to process registration.' });
+    const status = err.statusCode || 500;
+    console.error(`[REGISTRATION FAILED] [${reqId}]:`, err.message || err);
+    res.status(status).json({ 
+      error: err.message || 'Failed to process competition registration.',
+      reqId
+    });
   }
 });
 
-
-// 1. Admin Status check (supports both /admin/status and /admin/auth/status via GET and POST)
+// 1. Admin Status check (WP5: Sanitized public response, no exposed raw credentials)
 apiRouter.all(['/admin/auth/status', '/admin/status'], (req, res) => {
   const security = getStoredAdminSecurity();
   const isInitialized = Boolean(security || process.env.ADMIN_SECURITY_PASSWORD);
   res.json({
     success: true,
     initialized: isInitialized,
-    founderEmail: FOUNDER_EMAIL,
     maskedEmail: maskEmail(FOUNDER_EMAIL),
-    founderPhone: FOUNDER_PHONE,
     maskedPhone: maskPhone(FOUNDER_PHONE)
   });
 });
@@ -1578,28 +1661,79 @@ apiRouter.post('/presence/heartbeat', (req, res) => {
 // ADMIN CONSOLE MANAGEMENT APIS (PROTECTED)
 // ==========================================
 
-// Dashboard Statistics
-apiRouter.get('/admin/stats', requireElevatedAdmin, (req, res) => {
-  const now = Date.now();
-  let onlineCount = 0;
-  for (const entry of onlinePresenceMap.values()) {
-    if (now - entry.lastSeen <= 3 * 60 * 1000) {
-      onlineCount++;
-    }
-  }
+// Dashboard Statistics (Priority 1: Real Database-Backed Numbers, Zero Fabrication)
+apiRouter.get('/admin/stats', requireElevatedAdmin, async (req, res) => {
+  try {
+    const db = await getAdminFirestore();
+    let totalStudents = 0;
+    let totalCompetitions = 0;
+    let publishedCompetitions = 0;
+    let totalRegistrations = 0;
+    let confirmedRegistrations = 0;
+    let actualTeamMembers = 0;
+    let unreadVisitorMessages = 0;
+    let publishedNotifications = 0;
+    let upcomingEvents = 0;
+    let totalRevenue = 0;
 
-  res.json({
-    success: true,
-    stats: {
-      totalStudents: Math.max(onlinePresenceMap.size, 1),
-      onlineStudents: onlineCount,
-      totalCompetitions: 4,
-      activeCompetitions: 4,
-      totalRegistrations: 115,
-      teamMembers: 6,
-      recentActivity: auditLogEntries.slice(0, 10)
+    if (db) {
+      const [
+        studentsSnap,
+        eventsSnap,
+        regsSnap,
+        teamSnap,
+        messagesSnap,
+        notifsSnap
+      ] = await Promise.all([
+        db.collection('users').get().catch(() => ({ size: 0, docs: [] })),
+        db.collection('events').get().catch(() => ({ size: 0, docs: [] })),
+        db.collection('registrations').get().catch(() => ({ size: 0, docs: [] })),
+        db.collection('teamMembers').get().catch(() => ({ size: 0, docs: [] })),
+        db.collection('contactMessages').get().catch(() => ({ size: 0, docs: [] })),
+        db.collection('notifications').get().catch(() => ({ size: 0, docs: [] }))
+      ]);
+
+      totalStudents = studentsSnap.size || 0;
+      totalCompetitions = eventsSnap.size || 0;
+      publishedCompetitions = (eventsSnap.docs || []).filter((d: any) => d.data().status === 'Published').length;
+      upcomingEvents = publishedCompetitions;
+      totalRegistrations = regsSnap.size || 0;
+      confirmedRegistrations = (regsSnap.docs || []).filter((d: any) => d.data().registration_status === 'Confirmed').length;
+      totalRevenue = (regsSnap.docs || []).reduce((sum: number, d: any) => sum + (Number(d.data().calculated_fee) || 0), 0);
+      actualTeamMembers = teamSnap.size || 0;
+      unreadVisitorMessages = (messagesSnap.docs || []).filter((d: any) => d.data().status === 'unread').length;
+      publishedNotifications = (notifsSnap.docs || []).filter((d: any) => d.data().status === 'Published').length;
     }
-  });
+
+    const now = Date.now();
+    let onlineStudents = 0;
+    for (const entry of onlinePresenceMap.values()) {
+      if (now - entry.lastSeen <= 3 * 60 * 1000) {
+        onlineStudents++;
+      }
+    }
+
+    res.json({
+      success: true,
+      stats: {
+        totalStudents,
+        onlineStudents,
+        activeStudents: onlineStudents,
+        totalCompetitions,
+        publishedCompetitions,
+        totalRegistrations,
+        confirmedRegistrations,
+        actualTeamMembers,
+        unreadVisitorMessages,
+        publishedNotifications,
+        upcomingEvents,
+        totalRevenue,
+        recentActivity: auditLogEntries.slice(0, 10)
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to query real dashboard statistics.' });
+  }
 });
 
 // Student Management with presence status

@@ -65,17 +65,17 @@ export const Footer: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Mail className="w-3.5 h-3.5 text-violet-400 shrink-0" />
                 <a
-                  href="mailto:miteshpipaliya2202@gmail.com"
+                  href="mailto:nexora.bvm@gmail.com"
                   className="hover:text-violet-300 transition-colors selectable-content select-text text-slate-200"
                 >
-                  miteshpipaliya2202@gmail.com
+                  nexora.bvm@gmail.com
                 </a>
               </div>
             </div>
 
             <div className="pt-3">
               <a
-                href="mailto:miteshpipaliya2202@gmail.com?subject=NEXORA%20Student%20Innovation%20Inquiry"
+                href="mailto:nexora.bvm@gmail.com?subject=NEXORA%20Student%20Innovation%20Inquiry"
                 className="inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium text-violet-200 bg-violet-950/60 border border-violet-500/25 rounded-lg hover:bg-violet-900/60 transition-colors"
               >
                 <Mail className="w-3.5 h-3.5" />

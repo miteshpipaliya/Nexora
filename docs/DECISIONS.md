@@ -31,3 +31,28 @@
 ### D-006: Cleanup Legacy Supabase Code
 - **Context**: Project previously used Supabase before migrating to Firebase Firestore and Auth.
 - **Decision**: The `supabase/` directory and any stale Supabase references in types or docs are removed or archived to prevent confusion, and dependencies pruned.
+
+### D-007: Vercel Serverless Function Module Resolution (WP1)
+- **Context**: Production crash `FUNCTION_INVOCATION_FAILED` occurred because Node ESM runtime in `api/index.ts` threw `ERR_MODULE_NOT_FOUND` when attempting `import app from '../server'`.
+- **Decision**: Update `api/index.ts` to `import app from '../server.js'` matching the esbuild compilation output, delete duplicate `api/app.ts`, and configure maxDuration and memory in `vercel.json`.
+
+### D-008: Server-Authoritative Registration & Deterministic Document IDs (WP2)
+- **Context**: Client previously caught registration fetch failures and returned simulated records while Firestore rules rejected client writes.
+- **Decision**: In `POST /api/registrations/create`, enforce Firebase Bearer token verification first (rejecting unauthenticated requests with 401 Unauthorized), validate payload with Zod, compute fees server-side, and execute an atomic Firestore transaction with deterministic doc ID `${verifiedUserId}_${event_slug}` that checks capacity and increments `registered_count`.
+
+### D-009: Strict Whitelisting of User Profile Fields in Firestore Rules (WP4)
+- **Context**: Previous rules checked legacy keys (`name`, `department`, `enrollment_no`), causing permission-denied errors when students submitted the form with current schema keys (`full_name`, `branch`, `academic_year`, `enrollment_number`, `phone_number`).
+- **Decision**: Align `firestore.rules` for `users/{userId}` to whitelist all current application profile fields while maintaining legacy key compatibility.
+
+### D-010: Removal of Hardcoded Admin Credentials from Client (WP4)
+- **Context**: Client components previously imported `ADMIN_EMAILS` and `ADMIN_PHONE` from `dataService.ts`, exposing founder emails in client bundles and checking email strings for admin privileges.
+- **Decision**: Remove `ADMIN_EMAILS` and `ADMIN_PHONE` exports from `src/`. Switch `isUserAdmin` and `AuthContext` to strictly check verified Firebase Auth ID token custom claims (`request.auth.token.admin == true`). Provide `scripts/audit-claims.sh` to prevent regression.
+
+### D-011: Public Endpoint Privacy Sanitization (WP5)
+- **Context**: `/api/health` and `/api/admin/status` leaked detailed internal configuration and raw founder email/phone to unauthenticated requesters.
+- **Decision**: Sanitize public `/api/health` to return basic uptime and `serverTimeMs`. Move sensitive diagnostic checks to protected `/api/admin/health` requiring elevated admin authentication. Sanitize `/api/admin/status` to return only masked email and phone.
+
+### D-012: Scheduled Broadcast Popups with Server Skew Correction (WP8)
+- **Context**: System needed scheduled, delayed, site-wide broadcast popups that survive clock skew, prevent XSS in action URLs, and persist dismissal state.
+- **Decision**: Implement `serverClock.ts` tracking clock offset via `/api/health`, `safeUrl.ts` rejecting unsafe protocols (`javascript:`, `data:`), `useBroadcastPopups.ts` respecting `popup_delay_seconds` and `localStorage` dismissal state, and `BroadcastPopup.tsx` mounted sitewide in `App.tsx`.
+

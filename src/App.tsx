@@ -5,6 +5,7 @@ import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { GlobalGalaxyBackground } from './components/layout/GlobalGalaxyBackground';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
+import { BroadcastPopup } from './components/common/BroadcastPopup';
 
 // Pages
 import { HomePage } from './pages/Home/HomePage';
@@ -46,6 +47,9 @@ export function App() {
           <ScrollToTop />
           {/* Layer 1: Full-website animated galaxy background covering entire viewport */}
           <GlobalGalaxyBackground />
+
+          {/* Sitewide Scheduled Broadcast Popup Modal */}
+          <BroadcastPopup />
 
           {/* Layer 2: Page content layered over the global galaxy */}
           <div className="relative z-10 flex flex-col min-h-screen bg-transparent text-[#F8FAFC]">

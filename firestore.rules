@@ -40,6 +40,12 @@ service cloud.firestore {
     match /_reset_authorizations/{authId} {
       allow read, write: if false;
     }
+    match /_admin_challenges/{docId} {
+      allow read, write: if false;
+    }
+    match /_revoked_sessions/{docId} {
+      allow read, write: if false;
+    }
     match /adminSecrets/{docId} {
       allow read, write: if false;
     }
@@ -54,15 +60,17 @@ service cloud.firestore {
       allow write: if false; // Managed exclusively via backend Admin SDK
     }
 
-    // Student Profiles (S2: strict field mutation whitelist)
+    // Student Profiles (S2: strict field mutation whitelist matching application schema)
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
-      allow create: if isOwner(userId) && isValidId(userId) && incoming().id == userId;
-      allow update: if (isOwner(userId) && incoming().id == existing().id &&
+      allow create: if isOwner(userId) && isValidId(userId);
+      allow update: if (isOwner(userId) && (incoming().id == userId || incoming().id == existing().id) &&
         incoming().diff(existing()).affectedKeys().hasOnly([
-          'name', 'college', 'department', 'enrollment_no', 'division', 'phone', 
-          'year_of_study', 'updated_at', 'avatar_url'
+          'full_name', 'college', 'branch', 'academic_year', 'enrollment_number', 
+          'division', 'phone_number', 'avatar_url', 'updated_at', 'is_profile_complete', 
+          'last_active', 'email_verified', 'name', 'department', 'enrollment_no', 
+          'phone', 'year_of_study'
         ])) || isAdmin();
       allow delete: if isAdmin();
     }
@@ -87,6 +95,12 @@ service cloud.firestore {
 
     // Broadcast Notifications (Public/Student Read, Admin Write)
     match /notifications/{notificationId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Site Meta & Broadcast Schedule (Public Read, Admin Write)
+    match /siteMeta/{metaId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
     }

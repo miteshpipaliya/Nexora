@@ -41,7 +41,7 @@ import {
   Edit2
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { dataService, ADMIN_EMAILS, ADMIN_PHONE } from '../../services/dataService';
+import { dataService } from '../../services/dataService';
 import { 
   RegistrationRecord, 
   CompetitionEvent, 
@@ -802,8 +802,8 @@ export const AdminPage: React.FC = () => {
         </div>
         <h1 className="text-2xl font-bold text-white">Founder Access Required</h1>
         <p className="text-sm text-slate-300 leading-relaxed font-light">
-          The NEXORA Admin Console is restricted strictly to verified founder accounts:
-          <span className="block mt-2 font-mono text-xs text-violet-300">{ADMIN_EMAILS.join(' or ')}</span>
+          The NEXORA Admin Console is restricted strictly to verified administrator accounts.
+          <span className="block mt-2 font-mono text-xs text-violet-300">Custom Admin Claim Required</span>
         </p>
         <Link
           to="/login"
@@ -2636,6 +2636,61 @@ export const AdminPage: React.FC = () => {
                     onChange={(e) => setNewNotification({ ...newNotification, link_text: e.target.value })}
                     className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
                   />
+                </div>
+              </div>
+
+              {/* Scheduled Broadcast & Sitewide Popup Controls (WP8) */}
+              <div className="p-3 bg-violet-950/30 border border-violet-500/20 rounded-xl space-y-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="is_popup"
+                    checked={Boolean(newNotification.is_popup)}
+                    onChange={(e) => setNewNotification({ ...newNotification, is_popup: e.target.checked })}
+                    className="rounded border-violet-500/30 bg-[#08080D] text-violet-600 focus:ring-violet-400"
+                  />
+                  <label htmlFor="is_popup" className="text-white font-semibold cursor-pointer">
+                    Show as Sitewide Scheduled Popup Modal
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-400 font-mono text-[11px] mb-1">Schedule Display Time</label>
+                    <input
+                      type="datetime-local"
+                      value={newNotification.scheduled_for ? newNotification.scheduled_for.slice(0, 16) : ''}
+                      onChange={(e) => setNewNotification({
+                        ...newNotification,
+                        scheduled_for: e.target.value ? new Date(e.target.value).toISOString() : undefined,
+                        display_at: e.target.value ? new Date(e.target.value).toISOString() : undefined
+                      })}
+                      className="w-full px-3 py-1.5 bg-[#08080D] border border-violet-500/30 rounded-lg text-white font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 font-mono text-[11px] mb-1">Popup Delay (Seconds)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={60}
+                      placeholder="2"
+                      value={typeof newNotification.popup_delay_seconds === 'number' ? newNotification.popup_delay_seconds : 2}
+                      onChange={(e) => setNewNotification({ ...newNotification, popup_delay_seconds: Number(e.target.value) })}
+                      className="w-full px-3 py-1.5 bg-[#08080D] border border-violet-500/30 rounded-lg text-white font-mono text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Live Preview Card */}
+              <div className="p-3 bg-[#08080D] border border-violet-500/20 rounded-xl space-y-1.5">
+                <span className="text-[10px] font-mono text-slate-500 uppercase block">Live Student Preview</span>
+                <div className="text-white font-bold text-sm">
+                  {newNotification.title || 'Announcement Title'}
+                </div>
+                <div className="text-slate-400 text-xs line-clamp-2">
+                  {newNotification.message || 'Announcement message preview...'}
                 </div>
               </div>
             </div>

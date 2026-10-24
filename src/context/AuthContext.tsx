@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { UserProfile } from '../types';
 import { dataService } from '../services/dataService';
+import { auth } from '../services/firebase';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -36,10 +37,23 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isAdminClaim, setIsAdminClaim] = useState<boolean>(false);
   const [elevatedAdminVerified, setElevatedAdminVerified] = useState<boolean>(false);
 
   const refreshUser = async () => {
     try {
+      const fbUser = auth.currentUser;
+      if (fbUser) {
+        try {
+          const tokenResult = await fbUser.getIdTokenResult();
+          setIsAdminClaim(Boolean(tokenResult?.claims?.admin === true));
+        } catch {
+          setIsAdminClaim(false);
+        }
+      } else {
+        setIsAdminClaim(false);
+      }
+
       const current = await dataService.getCurrentUser();
       setUser(current);
       if (current) {
@@ -152,7 +166,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await dataService.resetPasswordWithOtp(email, token, newPass);
   };
 
-  const isAdmin = dataService.isUserAdmin(user);
+  const isAdmin = Boolean(isAdminClaim || user?.is_admin || dataService.isUserAdmin(user));
 
   return (
     <AuthContext.Provider

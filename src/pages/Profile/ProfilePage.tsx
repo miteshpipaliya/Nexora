@@ -450,8 +450,8 @@ export const ProfilePage: React.FC = () => {
             </div>
           </div>
 
-          {/* CARD 2: Admin Security Password (Founder Only) */}
-          {user && user.email?.toLowerCase().trim() === 'miteshpipaliya2202@gmail.com' && isAdmin && (
+          {/* CARD 2: Admin Security Password (Admin Access) */}
+          {user && isAdmin && (
             <div className="p-6 rounded-2xl bg-[#171426] border border-violet-500/30 shadow-[0_0_20px_-5px_rgba(139,92,246,0.2)] space-y-4 flex flex-col justify-between">
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-xs font-mono text-emerald-400">

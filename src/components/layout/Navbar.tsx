@@ -4,7 +4,6 @@ import { Menu, X, Shield } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { NexoraLogo } from '../ui/NexoraLogo';
 import { NotificationBell } from '../ui/NotificationBell';
-import { ADMIN_EMAILS } from '../../services/dataService';
 
 export const Navbar: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -33,12 +32,8 @@ export const Navbar: React.FC = () => {
     { label: 'Profile', path: '/profile' }
   ];
 
-  // Strictly enforce: Admin navigation visible ONLY when authenticated as founder account
-  const isFounderAdmin = Boolean(
-    user && 
-    isAdmin && 
-    ADMIN_EMAILS.includes((user.email || '').toLowerCase().trim())
-  );
+  // Strictly enforce: Admin navigation visible when authenticated user has verified admin custom claim
+  const isFounderAdmin = Boolean(user && isAdmin);
 
   if (isFounderAdmin) {
     navLinks.push({ label: 'Admin', path: '/admin' });

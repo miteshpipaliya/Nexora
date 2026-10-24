@@ -54,14 +54,6 @@ import {
 } from './mockData';
 import { safeApiFetch } from './apiClient';
 
-// Administrator emails
-export const ADMIN_EMAILS = [
-  'miteshpipaliya2202@gmail.com',
-  'mitesh.aiml@gmail.com',
-  'editwithvision@gmail.com'
-];
-export const ADMIN_PHONE = '+91 8200243606';
-
 // Cryptographically secure competition ID generator (Format: ZC-XXXX, CTF-XXXX, HN-XXXX, CR-XXXX, or custom)
 export function generateCompetitionId(eventSlug: string): string {
   const prefixMap: Record<string, string> = {
@@ -167,13 +159,12 @@ class NexoraDataService {
 
   public isUserAdmin(emailOrUser?: string | UserProfile | null): boolean {
     if (!emailOrUser) {
-      if (!this.currentUserCache) return false;
-      return ADMIN_EMAILS.includes(this.currentUserCache.email.toLowerCase().trim());
+      return Boolean(this.currentUserCache?.is_admin);
     }
     if (typeof emailOrUser === 'string') {
-      return ADMIN_EMAILS.includes(emailOrUser.toLowerCase().trim());
+      return Boolean(this.currentUserCache?.email === emailOrUser && this.currentUserCache?.is_admin);
     }
-    return Boolean(emailOrUser.is_admin || ADMIN_EMAILS.includes(emailOrUser.email.toLowerCase().trim()));
+    return Boolean(emailOrUser.is_admin);
   }
 
   // --- AUTHENTICATION METHODS ---
@@ -195,11 +186,16 @@ class NexoraDataService {
 
   private async fetchUserProfile(uid: string, fbUser: any): Promise<UserProfile> {
     const userDocRef = doc(db, 'users', uid);
+    let isAdmin = false;
+    try {
+      const tokenResult = await fbUser.getIdTokenResult?.();
+      isAdmin = Boolean(tokenResult?.claims?.admin === true);
+    } catch {}
+
     try {
       const snap = await getDoc(userDocRef);
       if (snap.exists()) {
         const data = snap.data();
-        const isAdmin = ADMIN_EMAILS.includes((fbUser.email || '').toLowerCase().trim());
         return {
           id: uid,
           full_name: data.full_name || fbUser.displayName || 'NEXORA Member',
@@ -221,11 +217,12 @@ class NexoraDataService {
     } catch (err) {
       console.warn('Could not read user profile from Firestore:', err);
     }
-    return this.buildFallbackProfile(fbUser);
+    const fallback = this.buildFallbackProfile(fbUser);
+    fallback.is_admin = isAdmin;
+    return fallback;
   }
 
   private buildFallbackProfile(fbUser: any): UserProfile {
-    const isAdmin = ADMIN_EMAILS.includes((fbUser.email || '').toLowerCase().trim());
     return {
       id: fbUser.uid,
       full_name: fbUser.displayName || (fbUser.email ? fbUser.email.split('@')[0] : 'NEXORA Member'),
@@ -239,7 +236,7 @@ class NexoraDataService {
       avatar_url: fbUser.photoURL || '',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      is_admin: isAdmin,
+      is_admin: false,
       email_verified: fbUser.emailVerified,
       is_profile_complete: false
     };
@@ -251,11 +248,15 @@ class NexoraDataService {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
       
+      let isAdmin = false;
+      try {
+        const tokenResult = await user.getIdTokenResult();
+        isAdmin = Boolean(tokenResult?.claims?.admin === true);
+      } catch {}
+      
       // Check or create profile in Firestore
       const userDocRef = doc(db, 'users', user.uid);
       const snap = await getDoc(userDocRef);
-
-      const isAdmin = ADMIN_EMAILS.includes((user.email || '').toLowerCase().trim());
 
       let profile: UserProfile;
 
@@ -413,7 +414,11 @@ class NexoraDataService {
         }
       }
 
-      const isAdmin = ADMIN_EMAILS.includes(data.email.trim().toLowerCase());
+      let isAdmin = false;
+      try {
+        const tokenRes = await user.getIdTokenResult();
+        isAdmin = Boolean(tokenRes?.claims?.admin === true);
+      } catch {}
 
       const profilePayload: UserProfile = {
         id: user.uid,
@@ -739,52 +744,40 @@ class NexoraDataService {
       updated_at: new Date().toISOString()
     };
 
-    // Call server-authoritative registration API (S1)
+    // Call server-authoritative registration API (S1: Fail-Closed)
     let idToken = '';
     try {
-      idToken = await user.getIdToken();
+      idToken = await user.getIdToken(true);
     } catch {}
 
-    try {
-      const serverRes = await fetch('/api/registrations/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {})
-        },
-        body: JSON.stringify({
-          ...data,
-          user_id: user.uid
-        })
-      });
+    if (!idToken) {
+      throw new Error('Valid authentication credentials are required to register for competitions. Please sign in again.');
+    }
 
-      if (serverRes.ok) {
-        const json = await serverRes.json();
-        if (json.registration) {
-          this.notify();
-          return json.registration as RegistrationRecord;
-        }
-      } else {
-        const errJson = await serverRes.json().catch(() => ({}));
-        if (errJson.error) {
-          throw new Error(errJson.error);
-        }
-      }
-    } catch (apiErr: any) {
-      if (apiErr.message && !apiErr.message.includes('fetch')) {
-        throw apiErr;
-      }
-      // If serverless is offline, attempt direct client store write with graceful error handling
-      try {
-        const regRef = doc(db, 'registrations', regId);
-        await setDoc(regRef, newRecord);
-      } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, `registrations/${regId}`);
-      }
+    const serverRes = await fetch('/api/registrations/create', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`
+      },
+      body: JSON.stringify({
+        ...data,
+        user_id: user.uid
+      })
+    });
+
+    if (!serverRes.ok) {
+      const errJson = await serverRes.json().catch(() => ({}));
+      throw new Error(errJson.error || `Registration failed with server status ${serverRes.status}`);
+    }
+
+    const json = await serverRes.json();
+    if (!json.registration) {
+      throw new Error('Server did not return a confirmed registration record.');
     }
 
     this.notify();
-    return newRecord;
+    return json.registration as RegistrationRecord;
   }
 
   // --- CONTACT INQUIRIES ---
@@ -1025,7 +1018,13 @@ class NexoraDataService {
     }
   }
 
-  public subscribeNotifications(audience: string, callback: (notifs: InAppNotification[]) => void): () => void {
+  public subscribeNotifications(
+    audienceOrCallback: string | ((notifs: InAppNotification[]) => void),
+    maybeCallback?: (notifs: InAppNotification[]) => void
+  ): () => void {
+    const audience = typeof audienceOrCallback === 'string' ? audienceOrCallback : 'all';
+    const callback = typeof audienceOrCallback === 'function' ? audienceOrCallback : (maybeCallback || (() => {}));
+
     try {
       const q = collection(db, 'notifications');
       const unsubscribe = onSnapshot(q, (snap) => {
@@ -1370,6 +1369,11 @@ class NexoraDataService {
       link_url: notifData.link_url?.trim() || '',
       link_text: notifData.link_text?.trim() || 'Learn More',
       image_url: notifData.image_url?.trim() || '',
+      is_popup: Boolean(notifData.is_popup),
+      display_at: notifData.display_at || notifData.scheduled_for || new Date().toISOString(),
+      scheduled_for: notifData.scheduled_for || notifData.display_at || new Date().toISOString(),
+      popup_delay_seconds: typeof notifData.popup_delay_seconds === 'number' ? notifData.popup_delay_seconds : 2,
+      expires_at: notifData.expires_at || undefined,
       created_at: new Date().toISOString()
     };
 

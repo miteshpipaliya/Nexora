@@ -195,6 +195,8 @@ export const SignupPage: React.FC = () => {
       return true;
     } catch (err: any) {
       const errorMsg = err.message || 'Could not dispatch verification email. Please check your email address.';
+      setCountdownSeconds(0);
+      setResendCooldown(0);
       setOtpError(errorMsg);
       setStepError(errorMsg);
       return false;
