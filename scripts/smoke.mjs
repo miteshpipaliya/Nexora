@@ -90,6 +90,30 @@ async function run() {
     failed++;
   }
 
+  // Test 5: POST /api/admin/auth/sync-claim rejects unauthenticated callers
+  console.log('Test 5: POST /api/admin/auth/sync-claim unauthenticated protection');
+  const syncRes = await testEndpoint('Sync Claim Unauth', '/api/admin/auth/sync-claim', {
+    method: 'POST'
+  });
+  if (syncRes.status === 401) {
+    console.log('  PASS: /api/admin/auth/sync-claim correctly rejected unauthenticated request with 401.');
+    passed++;
+  } else {
+    console.error(`  FAIL: Expected 401 Unauthorized from sync-claim, got ${syncRes.status}`);
+    failed++;
+  }
+
+  // Test 6: GET /api/admin/health requires elevated admin credentials
+  console.log('Test 6: GET /api/admin/health protection');
+  const adminHealthRes = await testEndpoint('Admin Health Protected', '/api/admin/health');
+  if (adminHealthRes.status === 401) {
+    console.log('  PASS: /api/admin/health correctly protected behind elevated admin check with 401.');
+    passed++;
+  } else {
+    console.error(`  FAIL: Expected 401 Unauthorized from /api/admin/health, got ${adminHealthRes.status}`);
+    failed++;
+  }
+
   console.log(`\n[SMOKE RESULTS] Passed: ${passed}, Failed: ${failed}`);
   if (failed > 0) {
     process.exit(1);

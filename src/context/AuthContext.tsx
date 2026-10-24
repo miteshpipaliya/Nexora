@@ -44,9 +44,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const fbUser = auth.currentUser;
       if (fbUser) {
+        let hasClaim = false;
         try {
-          const tokenResult = await fbUser.getIdTokenResult();
-          setIsAdminClaim(Boolean(tokenResult?.claims?.admin === true));
+          let tokenResult = await fbUser.getIdTokenResult();
+          hasClaim = Boolean(tokenResult?.claims?.admin === true);
+
+          // If user does not yet have verified admin claim, request server sync
+          if (!hasClaim) {
+            try {
+              const rawToken = await fbUser.getIdToken();
+              const syncRes = await fetch('/api/admin/auth/sync-claim', {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${rawToken}`,
+                  'Content-Type': 'application/json'
+                }
+              });
+              if (syncRes.ok) {
+                const syncData = await syncRes.json();
+                if (syncData.admin) {
+                  tokenResult = await fbUser.getIdTokenResult(true);
+                  hasClaim = Boolean(tokenResult?.claims?.admin === true);
+                }
+              }
+            } catch {
+              // Non-fatal if offline or network glitch
+            }
+          }
+          setIsAdminClaim(hasClaim);
         } catch {
           setIsAdminClaim(false);
         }

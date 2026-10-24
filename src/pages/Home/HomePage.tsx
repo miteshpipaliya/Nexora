@@ -52,7 +52,7 @@ export const HomePage: React.FC = () => {
     {
       icon: Cpu,
       title: 'Compete',
-      description: 'Test your problem-solving abilities and algorithmic agility in collegiate hackathons, CTFs, and rapid AI development challenges.'
+      description: 'Test your problem-solving abilities and algorithmic agility in collegiate programming sprints, CTFs, robotics arenas, and rapid AI development challenges.'
     },
     {
       icon: Users2,
@@ -213,10 +213,10 @@ export const HomePage: React.FC = () => {
               Inaugural Portfolio
             </div>
             <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight user-select-none">
-              Four High-Impact Competitions
+              Six Flagship Competitions
             </h2>
             <p className="text-sm text-slate-400 max-w-xl font-light">
-              From prompt-driven rapid AI development to collaborative engineering hackathons and cryptography challenges.
+              From prompt-driven rapid AI development and competitive algorithms to robotics arenas, cryptography, and technical trivia showdowns.
             </p>
           </div>
           <Link

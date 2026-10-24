@@ -998,6 +998,7 @@ const setupOtpChallenges = new Map<string, { hash: string; expiresAt: number; at
 const verifiedPasswordTokens = new Map<string, { expiresAt: number; createdAt: number }>();
 const adminEmailOtpChallenges = new Map<string, { hash: string; expiresAt: number; attempts: number; lastSentAt: number }>();
 const elevatedAdminSessions = new Map<string, { sessionId: string; founderEmail: string; expiresAt: number; createdAt: number }>();
+const revokedAdminSessionTokens = new Set<string>();
 
 // Online Presence tracking (heartbeats)
 const onlinePresenceMap = new Map<string, { userId: string; email: string; lastSeen: number; ip: string }>();
@@ -1071,14 +1072,20 @@ async function requireElevatedAdmin(req: express.Request, res: express.Response,
     }
   }
 
-  // 2. Check elevated session store
-  const session = elevatedAdminSessions.get(token);
-  if (!session || Date.now() > session.expiresAt) {
-    if (session) elevatedAdminSessions.delete(token);
-    res.status(401).json({ error: 'Elevated administrator session expired. Please re-authenticate.' });
-    return;
+  // 2. Check elevated session store (stateless HMAC signed token or in-memory map)
+  if (!revokedAdminSessionTokens.has(token)) {
+    const signedCheck = verifySignedToken(token, 'admin-elevated', FOUNDER_EMAIL);
+    if (signedCheck) {
+      return next();
+    }
+    const session = elevatedAdminSessions.get(token);
+    if (session && Date.now() <= session.expiresAt) {
+      return next();
+    }
   }
-  next();
+
+  res.status(401).json({ error: 'Elevated administrator session expired or revoked. Please re-authenticate.' });
+  return;
 }
 
 // Registration Payload Validation Schema (WP2)
@@ -1552,9 +1559,9 @@ apiRouter.post(['/admin/auth/verify-admin-otp', '/admin/auth/verify-otp', '/admi
     adminEmailOtpChallenges.delete(passwordToken);
     verifiedPasswordTokens.delete(passwordToken);
 
-    // Create 15-minute elevated session
-    const sessionToken = `nexora_elevated_${crypto.randomBytes(32).toString('hex')}`;
+    // Create 15-minute elevated session with HMAC signing to survive serverless restarts
     const expiresAt = Date.now() + 15 * 60 * 1000; // Exact 15 minutes
+    const sessionToken = createSignedToken({ email: FOUNDER_EMAIL, purpose: 'admin-elevated', exp: expiresAt });
 
     elevatedAdminSessions.set(sessionToken, {
       sessionId: sessionToken,
@@ -1585,29 +1592,123 @@ apiRouter.all(['/admin/auth/session', '/admin/session'], (req, res) => {
     return;
   }
 
-  const session = elevatedAdminSessions.get(token);
-  if (!session || Date.now() > session.expiresAt) {
-    if (session) elevatedAdminSessions.delete(token);
-    res.json({ authenticated: false });
-    return;
+  if (!revokedAdminSessionTokens.has(token)) {
+    const verified = verifySignedToken(token, 'admin-elevated', FOUNDER_EMAIL);
+    if (verified) {
+      try {
+        const parts = token.split('.');
+        const payload = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+        const expiresAt = payload.exp || (Date.now() + 15 * 60 * 1000);
+        res.json({
+          authenticated: true,
+          founderEmail: FOUNDER_EMAIL,
+          expiresAt,
+          remainingSeconds: Math.max(0, Math.floor((expiresAt - Date.now()) / 1000))
+        });
+        return;
+      } catch {}
+    }
+
+    const session = elevatedAdminSessions.get(token);
+    if (session && Date.now() <= session.expiresAt) {
+      res.json({
+        authenticated: true,
+        founderEmail: session.founderEmail,
+        expiresAt: session.expiresAt,
+        remainingSeconds: Math.max(0, Math.floor((session.expiresAt - Date.now()) / 1000))
+      });
+      return;
+    }
   }
 
-  res.json({
-    authenticated: true,
-    founderEmail: session.founderEmail,
-    expiresAt: session.expiresAt,
-    remainingSeconds: Math.max(0, Math.floor((session.expiresAt - Date.now()) / 1000))
-  });
+  res.json({ authenticated: false });
 });
 
 // 8. Lock Admin Panel (Revoke elevated session)
 apiRouter.post(['/admin/auth/lock', '/admin/lock'], (req, res) => {
   const token = (req.body.sessionToken as string) || (req.headers['x-admin-session'] as string) || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
-  if (token && elevatedAdminSessions.has(token)) {
+  if (token) {
+    revokedAdminSessionTokens.add(token);
     elevatedAdminSessions.delete(token);
   }
   recordAudit('ADMIN_LOCKED', 'Elevated admin session was manually locked.');
   res.json({ success: true, message: 'Admin session revoked.' });
+});
+
+// 9. Founder Admin Claim Syncing (Immediate recovery of Admin Navigation for miteshpipaliya2202@gmail.com)
+apiRouter.post(['/admin/auth/sync-claim', '/admin/sync-claim'], async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ error: 'Authentication required. Bearer ID token is missing.' });
+      return;
+    }
+
+    const idToken = authHeader.substring(7).trim();
+    let uid = '';
+    let email = '';
+
+    try {
+      if (!adminAuthInstance) await getAdminFirestore();
+      if (adminAuthInstance) {
+        const decoded = await adminAuthInstance.verifyIdToken(idToken);
+        uid = decoded.uid;
+        email = (decoded.email || '').toLowerCase().trim();
+      } else {
+        const parts = idToken.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+          uid = payload.user_id || payload.sub || '';
+          email = (payload.email || '').toLowerCase().trim();
+        }
+      }
+    } catch (tokenErr: any) {
+      res.status(401).json({ error: 'Invalid or expired Firebase ID token.' });
+      return;
+    }
+
+    if (!uid || email !== FOUNDER_EMAIL.toLowerCase().trim()) {
+      res.status(403).json({ error: 'Access denied: Custom admin claims can only be granted to the verified founder email.' });
+      return;
+    }
+
+    // Set custom claim { admin: true } via Firebase Admin Auth SDK
+    let claimAssigned = false;
+    try {
+      if (!adminAuthInstance) await getAdminFirestore();
+      if (adminAuthInstance) {
+        await adminAuthInstance.setCustomUserClaims(uid, { admin: true });
+        claimAssigned = true;
+      }
+    } catch (claimErr: any) {
+      console.warn('[ADMIN CLAIM ERROR]', claimErr.message);
+    }
+
+    // Update user profile in Firestore to ensure is_admin: true
+    try {
+      const db = await getAdminFirestore();
+      if (db) {
+        await db.collection('users').doc(uid).set({
+          is_admin: true,
+          updated_at: new Date().toISOString()
+        }, { merge: true });
+      }
+    } catch (dbErr: any) {
+      console.warn('[FIRESTORE USER ADMIN UPDATE ERROR]', dbErr.message);
+    }
+
+    recordAudit('ADMIN_CLAIM_SYNCED', `Verified founder ID token for ${email}. Custom claim { admin: true } provisioned.`, email);
+
+    res.json({
+      success: true,
+      admin: true,
+      email,
+      claimAssigned
+    });
+  } catch (err: any) {
+    console.error('Error in /admin/auth/sync-claim:', err);
+    res.status(500).json({ error: 'Internal server error while syncing administrator claims.' });
+  }
 });
 
 // Backward-compatibility aliases for existing clients
@@ -1616,21 +1717,32 @@ apiRouter.post('/admin/start-challenge', (req, res) => {
 });
 apiRouter.post('/admin/verify-session', (req, res) => {
   const token = req.body?.sessionToken;
-  if (!token || !elevatedAdminSessions.has(token)) {
+  if (!token || revokedAdminSessionTokens.has(token)) {
     res.json({ valid: false });
     return;
   }
-  const s = elevatedAdminSessions.get(token)!;
-  if (Date.now() > s.expiresAt) {
-    elevatedAdminSessions.delete(token);
-    res.json({ valid: false });
+  const verified = verifySignedToken(token, 'admin-elevated', FOUNDER_EMAIL);
+  if (verified) {
+    const parts = token.split('.');
+    try {
+      const payload = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+      res.json({ valid: true, expiresAt: payload.exp });
+      return;
+    } catch {}
+  }
+  const s = elevatedAdminSessions.get(token);
+  if (s && Date.now() <= s.expiresAt) {
+    res.json({ valid: true, expiresAt: s.expiresAt });
     return;
   }
-  res.json({ valid: true, expiresAt: s.expiresAt });
+  res.json({ valid: false });
 });
 apiRouter.post('/admin/logout-session', (req, res) => {
   const token = req.body?.sessionToken;
-  if (token) elevatedAdminSessions.delete(token);
+  if (token) {
+    revokedAdminSessionTokens.add(token);
+    elevatedAdminSessions.delete(token);
+  }
   res.json({ success: true });
 });
 

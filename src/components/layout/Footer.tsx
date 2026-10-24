@@ -118,13 +118,19 @@ export const Footer: React.FC = () => {
                 <Link to="/competitions/zerocode" className="hover:text-white transition-colors">ZeroCode Challenge</Link>
               </li>
               <li>
+                <Link to="/competitions/coderush" className="hover:text-white transition-colors">CodeRush Algorithmic</Link>
+              </li>
+              <li>
+                <Link to="/competitions/pathfinder" className="hover:text-white transition-colors">PathFinder Labyrinth</Link>
+              </li>
+              <li>
                 <Link to="/competitions/ctf" className="hover:text-white transition-colors">Capture The Flag (CTF)</Link>
               </li>
               <li>
-                <Link to="/competitions/hackathon" className="hover:text-white transition-colors">NEXORA Hackathon</Link>
+                <Link to="/competitions/roborace" className="hover:text-white transition-colors">RoboRace Arena</Link>
               </li>
               <li>
-                <Link to="/competitions/coderush" className="hover:text-white transition-colors">CodeRush Algorithmic</Link>
+                <Link to="/competitions/brainbattle" className="hover:text-white transition-colors">BrainBattle Quiz</Link>
               </li>
               <li>
                 <Link to="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>

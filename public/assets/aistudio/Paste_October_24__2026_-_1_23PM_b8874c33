@@ -1,0 +1,531 @@
+# NEXORA — FULL REPOSITORY AUDIT, ADMIN RECOVERY, AND PRODUCTION REPAIR
+
+You have access to the GitHub repository:
+
+https://github.com/miteshpipaliya/Nexora
+
+Production website:
+
+https://www.nexora-bvm.online
+
+Default branch: `main`
+
+Founder/admin email: `miteshpipaliya2202@gmail.com`
+
+Project stack includes React, TypeScript, Vite, React Router, Express, Vercel serverless functions, Firebase Authentication, Firestore, Firebase Storage, and Brevo transactional email.
+
+## YOUR MISSION
+
+Perform a comprehensive, evidence-based audit of the entire repository. Identify and fix existing bugs, runtime crashes, broken integrations, authorization errors, API failures, image-loading defects, incomplete functionality, build failures, and likely future regressions.
+
+Do not only write a report or make superficial UI changes. Inspect the existing implementation, fix the root causes, run the available checks, and repeat the audit until the required checks pass or a specific external dependency prevents completion.
+
+**The goal is a stable, fully functional NEXORA website with a secure founder-only admin panel and a complete competition management system.**
+
+Do not claim the website is production-ready unless the required evidence supports that conclusion. Distinguish tests run locally from tests verified on the live website.
+
+---
+
+# PHASE 1 — REPOSITORY INVENTORY AND BASELINE
+
+Inspect the complete repository, not only the files that appear relevant at first glance.
+
+1. Read `package.json`, the lockfile, TypeScript configuration, Vite configuration, `vercel.json`, entry points, routing, all pages, components, contexts, service modules, Firebase configuration, Firestore rules, Storage rules, API handlers, CSS, assets, and tests.
+2. Inspect recent commits and identify what changed in the latest audit-related commit. Compare the previous working version with the current version where useful.
+3. Build a dependency map showing which components import which services and which API endpoints each feature calls.
+4. Search every API route string and match frontend callers to actual backend route definitions.
+5. Search all imported service functions and verify that each function exists, is exported correctly, and has the expected arguments and return type.
+6. Identify duplicate implementations, obsolete aliases, stale imports, missing exports, circular dependencies, invalid assumptions, inconsistent schemas, unused fallback code, and mismatched Firestore document IDs.
+7. Establish a baseline by running the project's available installation, type-check, lint, test, and production-build commands.
+
+Do not blindly downgrade dependencies, use `--force`, disable TypeScript checks, suppress errors, or replace failing features with mock data simply to make the build pass. Resolve dependency conflicts using compatible versions and the existing lockfile.
+
+Create a prioritized report containing:
+- Critical security defects
+- Critical crashes and broken production functionality
+- High-priority authorization and database defects
+- Image upload/rendering defects
+- Medium/low-priority UI defects
+- Performance and future-maintenance risks
+
+For every issue, identify the file, relevant function or component, root cause, reproduction steps, fix, and verification evidence.
+
+---
+
+# PHASE 2 — FIX THE MISSING ADMIN OPTION FIRST
+
+The Admin option is not appearing for the founder account `miteshpipaliya2202@gmail.com`.
+
+Initial repository findings that must be verified and addressed:
+
+- `src/components/layout/Navbar.tsx` conditionally displays the Admin link using the authenticated user and `isAdmin`.
+- `src/context/AuthContext.tsx` derives `isAdmin` from a Firebase custom claim and/or `user.is_admin`.
+- `server.ts` separately defines `FOUNDER_EMAIL` and `ADMIN_EMAILS`.
+- Listing an email in a server-side array does not automatically grant a Firebase custom claim or populate the frontend user's `is_admin` field.
+- `firestore.rules` requires the verified Firebase custom claim `admin == true` for privileged writes.
+
+Investigate the actual Firebase Authentication user, custom claims, user profile, token-refresh behavior, project ID, and backend authorization flow. Do not assume which one is wrong without evidence.
+
+Implement a single coherent, secure administrator authorization system:
+
+1. The only founder who can initialize and manage the privileged admin panel is `miteshpipaliya2202@gmail.com`, unless an explicitly documented, deliberate additional administrator policy already exists.
+2. Verify identity using a Firebase ID token on the server. Verify the token with Firebase Admin SDK, check the exact authorized founder UID/email against server-controlled configuration, and use Firebase custom claims or another server-verified authorization mechanism consistently.
+3. Never authorize an administrator solely because a client sends an email, a user profile contains `is_admin: true`, or a browser changes local storage.
+4. Provision or repair the founder's admin claim through a protected, server-side administrative process. Do not expose a public endpoint that allows arbitrary users to grant themselves admin claims.
+5. After changing custom claims, force a Firebase ID-token refresh and refresh the AuthContext state. Handle initial auth loading without briefly hiding or incorrectly denying the Admin link.
+6. Keep `/admin` protected even when the navigation link is hidden.
+7. On desktop and mobile, display the Admin option to the authorized founder after sign-in. Unauthorized users must not gain access by directly visiting `/admin`.
+8. Separate the general Firebase admin authorization from the additional elevated admin verification process. The elevated session must not bypass the verified founder identity.
+9. Preserve the existing intended security flow: one-time founder security-password setup, followed by the existing password plus Gmail OTP for subsequent access, with a 15-minute elevated session. Do not require the founder to create a new password every time.
+10. If initialization has already occurred, never overwrite the existing password or silently reset admin security state.
+11. Provide a safe diagnostic state for missing credentials, missing claims, incorrect Firebase project, expired session, failed OTP delivery, and denied Firestore permissions. Do not reveal secrets or sensitive server configuration in diagnostics.
+
+Check every related API endpoint, including admin status, password setup, password verification, OTP sending, OTP verification, session validation, session locking, statistics, and all protected admin operations.
+
+The fix is complete only when the founder can sign in, see Admin, complete verification, load real admin data, edit a competition, save it, reload the page, and confirm the change persisted. Also verify that an unauthorized account cannot perform the same actions.
+
+---
+
+# PHASE 3 — REPAIR ADMIN SESSION AND BACKEND SECURITY
+
+Inspect all authentication and authorization code in `server.ts`, `api/index.ts`, `src/context/AuthContext.tsx`, `src/services/dataService.ts`, and related files.
+
+Important risks to investigate:
+
+- Elevated sessions and OTP challenges stored in in-memory Maps.
+- Security files and secrets stored under `/tmp` on Vercel.
+- `checkElevatedAdminSession()` in `src/services/dataService.ts` returns the cached expiry status when the server request fails. This can treat an unverified session as valid during a network failure.
+- Firebase Admin SDK initialization can fall back to initializing an app without service-account credentials.
+- Admin endpoints must consistently validate the appropriate identity and elevated session.
+- API routes may return errors or HTML where the client expects JSON.
+
+Requirements:
+
+1. Use durable, server-controlled storage for sessions, OTP challenges, password initialization metadata, revocation state, and audit records. Use Firestore through Firebase Admin SDK or another appropriate persistent service.
+2. Never treat `/tmp`, browser storage, or a process-local Map as authoritative production persistence.
+3. Fail closed if the server cannot verify an elevated session. Do not treat a network error as proof of authorization.
+4. Apply expiration, attempt limits, resend cooldowns, replay prevention, rate limiting, and atomic verification to authentication challenges.
+5. Verify the Firebase ID token and the elevated admin session where required. Neither one should accidentally substitute for the other.
+6. Validate request payloads with appropriate schemas and reject invalid, oversized, or unexpected inputs.
+7. Apply consistent error handling and appropriate HTTP status codes to every API endpoint.
+8. Ensure a failed email send or failed database update never returns a false success response.
+9. Do not log passwords, OTPs, API keys, service-account private keys, full session tokens, or other credentials.
+10. Verify the exact Firebase project and Firestore database ID from the actual application configuration. Remove hardcoded project/database assumptions when configuration should be authoritative.
+11. Preserve useful request IDs and sanitized operational logs.
+12. Review rate limits and security controls for login, OTP, admin setup, file uploads, contact submissions, and registration endpoints.
+
+Never print secret values into logs, test reports, GitHub commits, or client responses. If credentials have previously been exposed, document the need to rotate them through their provider dashboards.
+
+---
+
+# PHASE 4 — COMPLETE COMPETITION CRUD, MAXIMUM 15
+
+The admin panel must allow the founder to manage competition content without editing source code.
+
+**Hard limit: 15 competitions maximum.** Enforce this in the UI and on the server or trusted database layer. Never allow two simultaneous requests to bypass the limit.
+
+## Initial competition catalogue — exactly six events
+
+The initial public competition catalogue must contain **only these six competitions**:
+
+1. **ZeroCode** — AI-assisted website, application, and digital solution creation using AI tools and low-code/no-code platforms.
+2. **CodeRush** — A timed competitive programming event focused on solving coding problems accurately and quickly.
+3. **PathFinder** — Maze-solving, navigation, route-planning, and logical pathfinding challenges.
+4. **CTF — Capture the Flag** — A safe cybersecurity competition featuring cryptography, web security, digital forensics, and logical puzzles.
+5. **RoboRace** — A robot racing competition testing speed, control, navigation, and reliability.
+6. **BrainBattle** — A rapid-fire team quiz. Each team consists of exactly five students and competes by answering questions quickly and accurately.
+
+Do not automatically create or publish Circuitrix, Signal Hunt, Hackathon, Bridge Mania, or any other competition during initial seeding or migration.
+
+The six initial events must use distinct, relevant images and correct descriptions. Do not create multiple copies of an event to fill the catalogue.
+
+**Important distinction:** Six initial competitions does not mean a six-event maximum. The founder must still be able to create additional competitions later, up to the hard maximum of 15.
+
+## Create
+
+- Create a competition with a unique, validated slug.
+- Collect all supported competition fields.
+- Select or upload a relevant banner image.
+- Configure dates, registration deadline, venue, duration, eligibility, team size, capacity, fee, status, registration availability, rules, FAQs, judging criteria, tracks, prizes, and any other fields supported by the existing data model.
+- Validate required fields and values.
+- Reject duplicate slugs and a 16th competition.
+- Save to Firestore and show a clear success or error message.
+
+## Read
+
+- Load actual competitions from Firestore.
+- Show accurate totals and published, draft, archived, open-registration, and closed-registration counts.
+- Provide search, sorting, and useful filters.
+- Show each competition's actual stored image and status.
+- Handle loading, empty, permission-denied, and server-error states without crashing.
+
+## Update
+
+- Edit every supported field.
+- Save changes to the correct Firestore document ID.
+- Keep the slug and document ID consistent. If changing a slug is supported, safely migrate references and routes.
+- Do not rely on `setState()` alone.
+- Confirm saved values by reading the database again and refreshing the page.
+- Preserve existing registration data when changing event content.
+
+## Delete and archive
+
+- Add confirmation before destructive actions.
+- Support archiving/unpublishing without deleting registration history.
+- If permanent deletion is provided, prevent accidental loss of registrations, payment records, or audit history. Use safe deletion or archival rules.
+- Refresh the admin table and public competition pages after changes.
+
+## Publishing
+
+- Draft competitions must remain unpublished to public visitors.
+- Published competitions should appear on the public competitions page and their detail route.
+- Archived competitions should not appear as active events.
+- Registration availability must be controlled by stored data.
+- New competition slugs must work through the dynamic competition route without requiring new hardcoded page components.
+
+## Data consistency
+
+- Inspect `src/services/dataService.ts`, especially `getEvents()`, `updateEvent()`, and `subscribeEvents()`.
+- Inspect `src/pages/Admin/AdminPage.tsx` for create/edit/save/delete handlers.
+- Ensure all event creation and editing uses one consistent schema and document-ID convention.
+- Use transactions or another atomic method to enforce the 15-event maximum.
+- Avoid automatic client-side seeding that overwrites, duplicates, or conceals production data. Any initial migration must be deliberate, idempotent, and safe.
+- Do not silently replace Firestore failures with fabricated statistics or demo competitions.
+
+---
+
+# PHASE 5 — FIX IMAGE UPLOADS AND IMAGE LOADING SITE-WIDE
+
+The website currently has reports of images not loading consistently, and the admin upload interface has inconsistent size text and validation.
+
+Inspect:
+- `src/components/admin/LocalImageUploader.tsx`
+- `src/services/dataService.ts` upload functions
+- Firebase Storage configuration and security rules
+- Event data in Firestore and `src/services/mockData.ts`
+- Every component that renders competition banners, thumbnails, hero images, team photos, store images, and uploaded media.
+
+## Admin image upload requirements
+
+Provide multiple practical options:
+1. Upload an image from the user's computer.
+2. Paste an HTTPS image URL.
+3. Replace or remove an existing image.
+4. Preview the image before saving.
+
+Optionally support drag-and-drop if it integrates reliably with the existing UI.
+
+For file uploads:
+- Support JPG/JPEG, PNG, and WebP.
+- Use Firebase Storage or another persistent, production-suitable object store.
+- Never rely on Vercel's ephemeral local filesystem or return a local filesystem path as a permanent URL.
+- Use resumable uploads with accurate progress, success, cancellation where feasible, and helpful errors.
+- Validate file type, actual content where feasible, and size on both client and trusted server boundaries.
+- Use a sensible documented limit, such as 10–20 MB, or a configurable policy supported by the chosen storage service. Do not allow unbounded uploads.
+- Ensure storage permissions allow only authorized admins to upload, replace, or delete protected media.
+- Use unique, safe object paths. Do not trust user-supplied file paths.
+- Confirm that the uploaded file's download URL is reachable before committing the competition record.
+- Ensure a failed upload cannot silently save a broken image URL.
+- Display the actual upload error instead of leaving progress stuck at 40%.
+- Reconcile the displayed size limit with the real validation limit.
+- Clean up orphaned files safely when a replacement or deletion succeeds, without deleting an image still used by another record.
+
+For URL uploads:
+- Accept HTTPS URLs only.
+- Reject `javascript:`, `data:` and other unsafe schemes for normal image URL fields.
+- Validate and preview the image.
+- Display a fallback if the external URL fails or blocks hotlinking.
+- Explain that external URLs can stop working and that uploaded Storage images are preferred for critical event banners.
+
+## Image rendering requirements
+
+Create a consistent image component or helper that:
+- Handles loading, broken URLs, missing values, and fallback assets.
+- Uses appropriate `object-fit`, responsive dimensions, and aspect ratios.
+- Avoids layout shifts where possible.
+- Avoids unnecessary repeated downloads.
+- Provides meaningful alt text.
+- Does not silently show the same generic image for unrelated competitions.
+- Handles Firebase download URLs, valid external HTTPS URLs, and local public assets correctly.
+- Avoids incorrect URL prefixing or double-encoding.
+- Uses the right image field from the actual competition schema.
+- Verifies that the required asset exists before referencing it.
+
+## Competition-specific image mapping
+
+Use unique images that accurately represent these six initial competitions:
+
+- **ZeroCode:** AI-assisted website or app creation, a browser-based build interface, or digital product creation.
+- **CodeRush:** Competitive programming, code editor, algorithms, or a timed coding challenge.
+- **PathFinder:** Maze-solving, navigation, route-planning, or pathfinding challenge.
+- **CTF:** Cybersecurity puzzle, terminal, digital forensics, cryptography, or ethical hacking competition.
+- **RoboRace:** Robots competing on a track.
+- **BrainBattle:** A five-person quiz team, buzzer round, or rapid-fire technical quiz.
+
+Every initial event must have its own appropriate image. Do not assign the ZeroCode image to every event.
+
+Do not seed images for the four unselected competitions as public events. The admin must be able to upload suitable images for future competitions when creating them.
+
+Use genuine relevant assets already available in the repository or create original visuals if your environment supports it. Do not invent images by merely renaming unrelated files. If image creation or external downloads are unavailable, document which assets must be supplied.
+
+Audit every competition image on:
+- Homepage cards
+- Competition listing page
+- Dynamic competition detail pages
+- Admin editor preview
+- Mobile layouts
+- Any catalogue or promotional section
+
+Verify image loading with actual browser network results and console output where browser testing is available.
+
+---
+
+# PHASE 6 — AUDIT ALL API ENDPOINTS AND SERVICE CONTRACTS
+
+Create an endpoint inventory showing:
+- HTTP method
+- Frontend caller
+- Backend route
+- Authentication requirements
+- Required payload
+- Response shape
+- Error behavior
+- Test coverage
+
+For every API request, verify the route exists and the expected JSON schema matches the frontend.
+
+Check:
+- `/api` routing through `api/index.ts`
+- `vercel.json` rewrites
+- Express router mounting and route prefixes
+- Development proxy behavior
+- Vercel production behavior
+- Correct ESM imports and build output
+- Request body limits
+- JSON parsing and non-JSON server errors
+- CORS and cookies/headers if used
+- API timeouts and network failures
+- Trailing slashes and incorrect endpoint names
+- Duplicate routes and backward-compatibility aliases
+
+Fix all real instances of errors such as:
+- `is not a function`
+- Missing exports or imports
+- HTML returned to an API request that expects JSON
+- 404, 401, 403, 413 and 500 responses caused by application defects
+- JSON parsing exceptions
+- Firestore permission errors
+- Unhandled promise rejections
+- Components rendering before required data exists
+- API routes that return success when an operation failed.
+
+Do not suppress errors with optional chaining if the underlying API contract is broken. Optional chaining is appropriate only when the value is genuinely optional.
+
+Preserve useful diagnostic information in development, while sanitizing production responses.
+
+---
+
+# PHASE 7 — FIREBASE, STORAGE, AND DATABASE INTEGRITY
+
+Inspect:
+- `src/services/firebase.ts`
+- `src/services/dataService.ts`
+- Firebase app configuration
+- Firestore rules
+- Storage rules, if present
+- Firebase Admin SDK initialization
+- All Firestore collection names and document ID conventions.
+
+Verify:
+- Frontend and backend use the intended Firebase project.
+- The intended named Firestore database is consistently selected.
+- Firebase Authentication works on the production domain.
+- Admin claim provisioning matches Firestore rules.
+- Public reads are limited to intended published content where appropriate.
+- Private student records and registrations cannot be read by unrelated users.
+- Student-owned records can only be accessed by their owner unless properly authorized.
+- Admin-only writes are enforced by rules and trusted server endpoints.
+- Storage upload, read and deletion permissions match the intended media policy.
+- Missing credentials produce a clear actionable configuration error.
+- No service-account key is bundled into the frontend build.
+- Existing student registrations and content are preserved.
+
+Check the actual schemas for events, users, registrations, notifications, messages, team members, site content, and admin audit records. Ensure CRUD operations use the same field names and types as the public UI.
+
+Do not relax Firestore rules to public read/write just to eliminate permission errors.
+
+---
+
+# PHASE 8 — REPAIR THE FULL ADMIN PANEL
+
+The admin dashboard must be genuinely usable, not a decorative mock dashboard.
+
+Ensure that:
+- Statistics are derived from actual stored data.
+- No fake registration counts or fabricated payment statuses are presented as real.
+- Registration lists load, search and filter correctly.
+- Student lists load with appropriate authorization.
+- Notifications can be created, edited where appropriate, published, archived and deleted safely.
+- Website content edits persist to Firestore and appear on the public website.
+- Team member edits persist and update the public Team page.
+- Contact messages load and can be managed according to the current data model.
+- Audit records show actual actions and timestamps.
+- Every save action has loading, success and failure feedback.
+- Every destructive action requires confirmation.
+- Empty and loading states do not crash the page.
+- Session expiry locks the panel and requires re-authentication.
+- The interface works on mobile and desktop.
+- Existing NEXORA styling is preserved: dark black/purple theme, subtle galaxy visuals, current branding, and responsive layouts.
+
+Remove any UI that claims an operation succeeded when no database write occurred.
+
+---
+
+# PHASE 9 — PREVENT CRASHES AND REGRESSIONS
+
+Search all source code for:
+- Undefined function calls
+- Incorrect function signatures
+- Missing exports
+- Invalid React hook usage
+- Stale closures
+- Missing effect cleanup
+- Timers that continue after unmount
+- Duplicate subscriptions
+- Race conditions in authentication state
+- Null or undefined dereferences
+- Broken event listeners
+- Unsafe type casts masking inconsistent data
+- Unhandled rejected promises
+- Incorrect date/time formatting
+- Unbounded rendering or repeated database requests
+- Hardcoded fallback data presented as real
+- Inconsistent API response types
+- Broken direct navigation to nested routes
+- Invalid URLs and missing assets
+- Missing image error handlers
+- Incorrectly cached or stale admin state.
+
+Pay special attention to the previous reported errors:
+- `YT.sendPresenceHeartbeat is not a function`
+- `dataService.subscribeEvents is not a function`
+- Firestore admin stats permission errors
+- Upload progress stuck around 40%
+- API requests returning HTML instead of JSON
+- Missing Admin navigation for the founder.
+
+Verify whether each reported issue still exists in the current commit. Do not assume that a previous fix is correct just because the error changed.
+
+---
+
+# PHASE 10 — AUTOMATED TESTS AND ACCEPTANCE CRITERIA
+
+Add or improve tests that are appropriate for the existing project. Avoid introducing a large testing framework without a clear reason.
+
+At minimum, verify the following.
+
+## Authentication and admin
+1. Signed-out visitors cannot access the admin panel.
+2. An ordinary authenticated student cannot see or use privileged admin functions.
+3. The founder can sign in using the correct Firebase identity.
+4. The founder's Admin navigation item appears after the authorization state resolves.
+5. The founder can complete the intended elevated password and OTP flow.
+6. A wrong password or OTP is rejected.
+7. Expired and revoked elevated sessions are rejected.
+8. Network failure does not turn an unverified session into an authorized session.
+9. Firebase token refresh updates the frontend admin state.
+10. Admin APIs reject forged or missing credentials.
+
+## Competition CRUD
+11. The six initial competitions are exactly ZeroCode, CodeRush, PathFinder, CTF, RoboRace, and BrainBattle.
+12. Initial seeding is idempotent and does not duplicate events.
+13. No other competition is automatically seeded or published during initialization.
+14. The founder can create a seventh competition.
+15. The new competition persists after a full page reload.
+16. The founder can edit every supported field.
+17. Changes persist after reload and update the public event page.
+18. Duplicate slugs are rejected.
+19. A 16th competition is rejected atomically.
+20. Archiving/unpublishing removes the event from the appropriate public listing.
+21. Permanent deletion, if supported, handles related data safely.
+22. New slugs work on direct navigation and page refresh.
+23. Real statistics update after CRUD operations.
+
+## Images
+24. Upload a valid JPG.
+25. Upload a valid PNG.
+26. Upload a valid WebP.
+27. Invalid files are rejected with a useful message.
+28. Oversized files are rejected consistently.
+29. Upload progress reaches success or displays an actionable error.
+30. A valid uploaded image URL remains usable after reload.
+31. Pasting a valid HTTPS image URL works.
+32. Broken external image URLs show a fallback.
+33. Replacing an image updates every relevant UI without stale caching problems.
+34. All six initial competition types have appropriate, distinct images.
+35. Image cards and banners render at mobile and desktop sizes.
+
+## APIs, data and deployment
+36. All frontend API calls map to existing backend routes.
+37. API errors never cause an unhandled JSON parse crash.
+38. Firestore permission-denied errors are handled correctly.
+39. The production build completes successfully.
+40. TypeScript and available lint/tests pass.
+41. Direct navigation to all important public routes works.
+42. The public site remains usable when optional integrations fail.
+43. The admin panel remains locked when a required security dependency is unavailable.
+
+Use a real browser and network inspection when available. Do not report browser tests as passed if they were not executed.
+
+---
+
+# PHASE 11 — SAFE IMPLEMENTATION AND DEPLOYMENT
+
+1. Inspect before editing.
+2. Preserve working behavior and the current design.
+3. Make focused, logically grouped changes.
+4. Add migrations only when needed and make them safe and repeatable.
+5. Do not delete real Firestore data to simplify testing.
+6. Use test data and Firebase emulators where feasible.
+7. Never commit credentials, `.env` files, private keys, OTPs, or production secrets.
+8. Do not modify production secrets automatically. List any required environment-variable changes by name and explain how to configure them securely.
+9. Ensure Vercel environment variables and local development variables are handled appropriately.
+10. Check build output and Vercel function compatibility, including Node runtime, module format, request body handling, and API entry point behavior.
+11. Avoid changing the production domain or DNS as part of unrelated code repairs.
+12. Do not force-push or overwrite unrelated user changes.
+13. Prefer a dedicated repair branch and pull request if repository permissions allow it. If working directly on `main`, explain that before making changes.
+14. Do not claim that a GitHub commit automatically proves the live deployment is healthy.
+
+---
+
+# FINAL COMPLETION REPORT
+
+At the end, provide:
+
+A. **Root causes found:** actual issues with file paths, relevant code, and evidence.
+
+B. **Changes made:** files changed and the purpose of each change.
+
+C. **Admin recovery:** how the founder authorization issue was fixed, without exposing secrets.
+
+D. **Competition CRUD:** evidence that create, read, update, archive/delete and the 15-event limit work.
+
+E. **Image audit:** image source, storage approach, initial six-event image mapping, and upload/load test results.
+
+F. **API audit:** endpoint inventory and confirmed fixes.
+
+G. **Security review:** remaining security concerns and required environment-variable actions.
+
+H. **Test report:** exact commands executed, their results, and any tests not run.
+
+I. **Deployment status:** commit SHA, branch, whether Vercel deployed it, and whether the live site was actually verified.
+
+J. **Remaining blockers:** anything requiring manual Firebase, Brevo, Vercel, or account-owner action.
+
+## FINAL RULE
+
+Keep auditing and fixing in bounded, test-driven cycles. After each cycle, rerun the relevant checks and the full production build. Continue until all critical and high-priority defects are resolved and all executable acceptance tests pass, or until you identify a specific blocker that cannot be resolved from repository access alone.
+
+Do not stop after writing a bug list. Do not invent successful test results. Do not weaken authentication, database rules, or upload validation to hide errors. Do not replace actual production data with mock data.
+
+The deliverable must be a repaired, tested codebase with a precise report of what is and is not verified—not merely a promise that the website is error-free.

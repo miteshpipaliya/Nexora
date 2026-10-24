@@ -58,9 +58,11 @@ import { safeApiFetch } from './apiClient';
 export function generateCompetitionId(eventSlug: string): string {
   const prefixMap: Record<string, string> = {
     zerocode: 'ZC-',
+    coderush: 'CR-',
+    pathfinder: 'PF-',
     ctf: 'CTF-',
-    hackathon: 'HN-',
-    coderush: 'CR-'
+    roborace: 'RR-',
+    brainbattle: 'BB-'
   };
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const cleanSlug = (eventSlug || '').toLowerCase().trim();
@@ -913,7 +915,8 @@ class NexoraDataService {
       }
       return true;
     } catch {
-      return Date.now() < Number(expires);
+      // Fail closed: Network or server check failures must never grant elevated administrative access
+      return false;
     }
   }
 
@@ -1150,14 +1153,14 @@ class NexoraDataService {
     return {
       totalStudents: 1,
       activeStudents: 1,
-      totalCompetitions: 4,
-      publishedCompetitions: 4,
+      totalCompetitions: INITIAL_EVENTS.length,
+      publishedCompetitions: INITIAL_EVENTS.length,
       totalRegistrations: 0,
       confirmedRegistrations: 0,
       actualTeamMembers: 6,
       unreadVisitorMessages: 0,
       publishedNotifications: 0,
-      upcomingEvents: 4,
+      upcomingEvents: INITIAL_EVENTS.length,
       totalRevenue: 0
     };
   }
@@ -1233,6 +1236,18 @@ class NexoraDataService {
     }
     if (!eventData.title || !eventData.title.trim()) {
       throw new Error('Competition title is required.');
+    }
+
+    // Hard constraint: Maximum of 15 competitions allowed in catalogue
+    try {
+      const snap = await getDocs(collection(db, 'events'));
+      if (snap.size >= 15) {
+        throw new Error('Maximum catalogue capacity reached (15 competitions). Please archive or remove an existing competition before adding a new one.');
+      }
+    } catch (countErr: any) {
+      if (countErr.message?.includes('Maximum catalogue capacity reached')) {
+        throw countErr;
+      }
     }
 
     const cleanSlug = eventData.slug.toLowerCase().trim().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');

@@ -29,9 +29,11 @@ export const CompetitionsHubPage: React.FC = () => {
   const getEventIcon = (slug: string) => {
     switch (slug.toLowerCase()) {
       case 'zerocode': return Code2;
-      case 'ctf': return ShieldAlert;
-      case 'hackathon': return Users;
       case 'coderush': return Terminal;
+      case 'pathfinder': return Cpu;
+      case 'ctf': return ShieldAlert;
+      case 'roborace': return Cpu;
+      case 'brainbattle': return Trophy;
       default: return Cpu;
     }
   };
