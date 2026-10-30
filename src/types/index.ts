@@ -167,6 +167,10 @@ export interface InAppNotification {
   link_text?: string;
   audience: 'all' | string; // 'all' or competition slug
   status: 'Draft' | 'Published' | 'Archived';
+  show_popup?: boolean;
+  scheduled_for?: string | number | any;
+  popup_delay_seconds?: number;
+  display_at?: string | number | any;
   publish_at?: string;
   display_at?: string;
   scheduled_for?: string;

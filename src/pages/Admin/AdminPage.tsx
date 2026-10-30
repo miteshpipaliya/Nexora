@@ -41,7 +41,7 @@ import {
   Edit2
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { dataService, ADMIN_EMAILS, ADMIN_PHONE } from '../../services/dataService';
+import { dataService } from '../../services/dataService';
 import { 
   RegistrationRecord, 
   CompetitionEvent, 
@@ -58,7 +58,12 @@ import { PrizePoolEditor } from '../../components/admin/PrizePoolEditor';
 import { FOUNDING_TEAM } from '../../services/mockData';
 
 export const AdminPage: React.FC = () => {
-  const { user, isAdmin, elevatedAdminVerified, setElevatedAdminVerified } = useAuth();
+  const { user, isAdmin, elevatedAdminVerified, setElevatedAdminVerified, refreshAdminClaim } = useAuth();
+
+  // WP4: Refresh ID token on Admin page mount to check claims
+  useEffect(() => {
+    refreshAdminClaim(true);
+  }, []);
   
   // Dashboard Tabs
   type AdminTab = 'overview' | 'competitions' | 'registrations' | 'students' | 'notifications' | 'messages' | 'content' | 'team' | 'audit';
@@ -898,16 +903,25 @@ export const AdminPage: React.FC = () => {
         <div className="w-16 h-16 rounded-2xl bg-red-950/60 border border-red-500/30 flex items-center justify-center mx-auto text-red-400">
           <ShieldAlert className="w-8 h-8" />
         </div>
-        <h1 className="text-2xl font-bold text-white">Founder Access Required</h1>
+        <h1 className="text-2xl font-bold text-white">Administrator Access Required</h1>
         <p className="text-sm text-slate-300 leading-relaxed font-light">
-          The NEXORA Admin Console is restricted strictly to verified founder accounts:
-          <span className="block mt-2 font-mono text-xs text-violet-300">{ADMIN_EMAILS.join(' or ')}</span>
+          {user ? (
+            <>
+              Your account has no admin permission yet. Run{' '}
+              <code className="text-violet-300 bg-violet-950/80 px-1.5 py-0.5 rounded font-mono text-xs border border-violet-500/30">
+                npm run admin:claim -- {user.email}
+              </code>
+              , then sign out and sign in again.
+            </>
+          ) : (
+            'Please sign in with an authorized administrator account to access this console.'
+          )}
         </p>
         <Link
           to="/login"
           className="inline-block px-6 py-2.5 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-md"
         >
-          Sign In as Founder
+          {user ? 'Sign Out & Sign In' : 'Sign In as Administrator'}
         </Link>
       </div>
     );

@@ -2,9 +2,9 @@
  * NEXORA Admin Claim Setup Script (scripts/set-admin-claim.ts)
  * 
  * Usage:
- *   npx tsx scripts/set-admin-claim.ts <user-email-or-uid>
+ *   npm run admin:claim -- user@bvm.edu.in
  * 
- * Sets custom claim { admin: true } on the designated Firebase User.
+ * Reads FIREBASE_SERVICE_ACCOUNT (raw or base64 JSON) as the single environment variable.
  */
 
 import { initializeApp, getApps, cert, type App } from 'firebase-admin/app';
@@ -15,55 +15,54 @@ import path from 'path';
 
 dotenv.config();
 
+function parseServiceAccount(raw: string): any {
+  let trimmed = raw.trim();
+  // Check if base64 encoded
+  if (!trimmed.startsWith('{') && /^[A-Za-z0-9+/=]+$/.test(trimmed)) {
+    try {
+      trimmed = Buffer.from(trimmed, 'base64').toString('utf8');
+    } catch {}
+  }
+  return JSON.parse(trimmed);
+}
+
 function initAdmin(): App {
   const apps = getApps();
   if (apps.length > 0 && apps[0]) {
     return apps[0];
   }
 
-  // 1. JSON string environment variable
-  if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+  const saEnv = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (saEnv && saEnv.trim()) {
     try {
-      const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+      const sa = parseServiceAccount(saEnv);
       return initializeApp({
-        credential: cert(sa)
+        credential: cert(sa),
+        projectId: sa.project_id
       });
-    } catch (e) {
-      console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY JSON:', e);
+    } catch (e: any) {
+      console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT JSON:', e.message);
     }
   }
 
-  // 2. Separate credentials
-  if (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+  // Local service-account.json fallback for development
+  const localFile = path.resolve(process.cwd(), 'service-account.json');
+  if (fs.existsSync(localFile)) {
+    const sa = JSON.parse(fs.readFileSync(localFile, 'utf8'));
     return initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID || 'ai-studio-nexorastudenttec-75ba3757-5549-44e3-a3ae-2ae34026863b',
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-      })
+      credential: cert(sa),
+      projectId: sa.project_id
     });
   }
 
-  // 3. Local service-account.json
-  const saPath = path.resolve(process.cwd(), 'service-account.json');
-  if (fs.existsSync(saPath)) {
-    const sa = JSON.parse(fs.readFileSync(saPath, 'utf8'));
-    return initializeApp({
-      credential: cert(sa)
-    });
-  }
-
-  // 4. Fallback to default application credentials
-  return initializeApp({
-    projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'ai-studio-nexorastudenttec-75ba3757-5549-44e3-a3ae-2ae34026863b'
-  });
+  throw new Error('FIREBASE_SERVICE_ACCOUNT environment variable is not configured. Please supply raw or base64 service account JSON.');
 }
 
 async function main() {
   const target = process.argv[2]?.trim();
   if (!target) {
     console.error('Error: Please provide a user email or Firebase UID.');
-    console.error('Usage: npx tsx scripts/set-admin-claim.ts <email-or-uid>');
+    console.error('Usage: npm run admin:claim -- <email-or-uid>');
     process.exit(1);
   }
 

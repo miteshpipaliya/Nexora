@@ -27,6 +27,8 @@ import { TermsPage } from './pages/Legal/TermsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 import { DynamicCompetitionPage } from './pages/Competitions/DynamicCompetitionPage';
+import { useBroadcastPopups } from './features/notifications/useBroadcastPopups';
+import { BroadcastPopup } from './features/notifications/BroadcastPopup';
 
 // Scroll to top helper on navigation
 const ScrollToTop: React.FC = () => {
@@ -39,12 +41,20 @@ const ScrollToTop: React.FC = () => {
   return null;
 };
 
+// Broadcast popup listener and modal container
+const BroadcastPopupContainer: React.FC = () => {
+  const { activePopup, dismissPopup } = useBroadcastPopups();
+  if (!activePopup) return null;
+  return <BroadcastPopup notification={activePopup} onDismiss={dismissPopup} />;
+};
+
 export function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
         <BrowserRouter>
           <ScrollToTop />
+          <BroadcastPopupContainer />
           {/* Layer 1: Full-website animated galaxy background covering entire viewport */}
           <GlobalGalaxyBackground />
 
