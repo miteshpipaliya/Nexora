@@ -41,7 +41,7 @@ import {
   Edit2
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { dataService } from '../../services/dataService';
+import { dataService, ADMIN_EMAILS, ADMIN_PHONE } from '../../services/dataService';
 import { 
   RegistrationRecord, 
   CompetitionEvent, 
@@ -85,8 +85,8 @@ export const AdminPage: React.FC = () => {
     maskedPhone: string;
   } | null>(null);
 
-  // Flow states: 'check' | 'setup' | 'password' | 'otp'
-  const [authStep, setAuthStep] = useState<'check' | 'setup' | 'password' | 'otp'>('check');
+  // Flow states: 'check' | 'setup' | 'password' | 'otp' | 'forgot_otp' | 'forgot_reset'
+  const [authStep, setAuthStep] = useState<'check' | 'setup' | 'password' | 'otp' | 'forgot_otp' | 'forgot_reset'>('check');
 
   // Step 3 Setup inputs
   const [setupOtp, setSetupOtp] = useState('');
@@ -97,6 +97,12 @@ export const AdminPage: React.FC = () => {
   // Step 3 Password input
   const [enteredPassword, setEnteredPassword] = useState('');
   const [passwordToken, setPasswordToken] = useState<string | null>(null);
+
+  // Forgot password inputs
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotResetToken, setForgotResetToken] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
 
   // Step 4 OTP inputs
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
@@ -149,9 +155,11 @@ export const AdminPage: React.FC = () => {
     difficulty: 'All Skill Levels',
     status: 'Published',
     registration_open: true,
+    isComingSoon: false,
     capacity: 60,
     fee_per_participant: 50,
     banner_image: '/images/competitions/zerocode.jpg',
+    cover_image: '/images/competitions/zerocode.jpg',
     event_date: '',
     registration_deadline: '',
     venue: 'BVM Engineering College, Vallabh Vidyanagar',
@@ -190,7 +198,8 @@ export const AdminPage: React.FC = () => {
     status: 'Published',
     link_url: '',
     link_text: 'Learn More',
-    image_url: ''
+    image_url: '',
+    expires_at: ''
   });
 
   // Message Reply State
@@ -386,7 +395,7 @@ export const AdminPage: React.FC = () => {
     }
   };
 
-  // STEP 3: Verify Admin Security Password (PASSWORD B)
+  // STEP 3: Verify Admin Security Password (Normal Future Logins)
   const handleVerifyPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!enteredPassword.trim()) {
@@ -400,16 +409,105 @@ export const AdminPage: React.FC = () => {
 
     try {
       const res = await dataService.verifyAdminPassword(enteredPassword);
-      setPasswordToken(res.passwordToken);
-      setOtpTimeLeft(180);
-      setResendCooldown(30);
-      setOtpDigits(['', '', '', '', '', '']);
-      setAuthStep('otp');
-      setAuthSuccess(`Admin Password accepted. A fresh 6-digit verification code was sent to ${res.maskedEmail}.`);
+      if (res.sessionToken) {
+        setElevatedAdminVerified(true);
+        setAuthSuccess('Elevated Administrator session granted.');
+        loadDashboardData();
+        return;
+      }
+      if (res.passwordToken) {
+        setPasswordToken(res.passwordToken);
+        setOtpTimeLeft(res.expiresInSeconds || 180);
+        setResendCooldown(res.resendCooldown || 30);
+        setOtpDigits(['', '', '', '', '', '']);
+        setAuthStep('otp');
+        setAuthSuccess(`Admin Password accepted. A fresh 6-digit verification code was sent to ${res.maskedEmail}.`);
+      }
     } catch (err: any) {
       setAuthError(err.message || 'Incorrect Admin Security Password.');
     } finally {
       setAuthLoading(false);
+    }
+  };
+
+  // FORGOT PASSWORD HANDLERS (PHASE 5)
+  const handleStartForgotPassword = async () => {
+    setAuthLoading(true);
+    setAuthError(null);
+    setAuthSuccess(null);
+    try {
+      const res = await dataService.requestAdminPasswordResetOtp();
+      setOtpTimeLeft(res.expiresInSeconds || 300);
+      setResendCooldown(res.resendCooldown || 60);
+      setForgotOtp('');
+      setAuthStep('forgot_otp');
+      setAuthSuccess(`Password reset code dispatched to ${res.maskedEmail}. Please enter the 6-digit code below.`);
+    } catch (err: any) {
+      setAuthError(err.message || 'Failed to dispatch reset code.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleVerifyForgotOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotOtp.trim() || forgotOtp.trim().length !== 6) {
+      setAuthError('Please enter the 6-digit recovery code.');
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const res = await dataService.verifyAdminPasswordResetOtp(forgotOtp.trim());
+      setForgotResetToken(res.resetToken);
+      setAuthStep('forgot_reset');
+      setAuthSuccess('Verification code confirmed! You can now set a new Admin Security Password.');
+    } catch (err: any) {
+      setAuthError(err.message || 'Invalid or expired recovery code.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleCompleteForgotReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (forgotNewPassword.length < 16) {
+      setAuthError('New Admin Security Password must be at least 16 characters long.');
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setAuthError('Passwords do not match.');
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const res = await dataService.resetAdminPassword(forgotResetToken, forgotNewPassword, forgotConfirmPassword);
+      setAuthSuccess(res.message || 'Admin Security Password updated successfully! Please sign in with your new password.');
+      setAuthStep('password');
+      setEnteredPassword('');
+      setForgotNewPassword('');
+      setForgotConfirmPassword('');
+      setForgotResetToken('');
+      setForgotOtp('');
+    } catch (err: any) {
+      setAuthError(err.message || 'Failed to update Admin Security Password.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Toggle Coming Soon directly on a competition card (Phase 4)
+  const handleToggleComingSoon = async (ev: CompetitionEvent) => {
+    const nextVal = !ev.isComingSoon;
+    try {
+      await dataService.updateCompetition(ev.slug, { isComingSoon: nextVal });
+      showSuccessToast(`Competition "${ev.title}" Coming Soon is now ${nextVal ? 'ON (Overlay shown, registration locked)' : 'OFF (Active & Registerable)'}.`);
+      loadDashboardData();
+    } catch (err: any) {
+      showErrorToast(err.message || 'Failed to update Coming Soon status.');
     }
   };
 
@@ -802,8 +900,8 @@ export const AdminPage: React.FC = () => {
         </div>
         <h1 className="text-2xl font-bold text-white">Founder Access Required</h1>
         <p className="text-sm text-slate-300 leading-relaxed font-light">
-          The NEXORA Admin Console is restricted strictly to verified administrator accounts.
-          <span className="block mt-2 font-mono text-xs text-violet-300">Custom Admin Claim Required</span>
+          The NEXORA Admin Console is restricted strictly to verified founder accounts:
+          <span className="block mt-2 font-mono text-xs text-violet-300">{ADMIN_EMAILS.join(' or ')}</span>
         </p>
         <Link
           to="/login"
@@ -946,7 +1044,7 @@ export const AdminPage: React.FC = () => {
         )}
 
         {/* ========================================================
-            STEP 3: ENTER ADMIN SECURITY PASSWORD (PASSWORD B)
+            STEP 3: ENTER ADMIN SECURITY PASSWORD (NORMAL LOGINS)
         ======================================================== */}
         {authStep === 'password' && (
           <form onSubmit={handleVerifyPassword} className="p-6 bg-[#171426] border border-violet-500/30 rounded-2xl space-y-4">
@@ -954,7 +1052,7 @@ export const AdminPage: React.FC = () => {
               <span className="text-[10px] font-mono text-violet-400 uppercase tracking-wider block">Security Layer 2</span>
               <h3 className="text-base font-bold text-white">Enter Admin Security Password</h3>
               <p className="text-xs text-slate-400">
-                Please enter your Admin Security Password. Upon verification, a 6-digit OTP will be dispatched to your founder Gmail.
+                Enter your configured Admin Security Password to unlock the administrative console.
               </p>
             </div>
 
@@ -976,16 +1074,138 @@ export const AdminPage: React.FC = () => {
                 className="w-full py-2.5 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                <span>Verify Password &amp; Send OTP</span>
+                <span>Unlock Admin Console</span>
+              </button>
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-3 border-t border-violet-500/15 text-[11px] font-mono">
+                <button
+                  type="button"
+                  disabled={authLoading}
+                  onClick={handleStartForgotPassword}
+                  className="text-violet-400 hover:text-violet-300 transition-colors cursor-pointer"
+                >
+                  Forgot Password? Reset via Email OTP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuthStep('setup')}
+                  className="text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  First-Time Setup →
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
+
+        {/* ========================================================
+            FORGOT PASSWORD: STEP 1 — ENTER 6-DIGIT EMAIL OTP
+        ======================================================== */}
+        {authStep === 'forgot_otp' && (
+          <form onSubmit={handleVerifyForgotOtp} className="p-6 bg-[#171426] border border-violet-500/30 rounded-2xl space-y-4">
+            <div className="space-y-1">
+              <span className="text-[10px] font-mono text-amber-400 uppercase tracking-wider block">Password Recovery</span>
+              <h3 className="text-base font-bold text-white">Enter Recovery Code</h3>
+              <p className="text-xs text-slate-400">
+                A 6-digit recovery code has been dispatched via Brevo to founder email.
+              </p>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <div>
+                <label className="block text-xs font-mono text-slate-300 mb-1">6-Digit Verification Code</label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  placeholder="000000"
+                  value={forgotOtp}
+                  onChange={(e) => setForgotOtp(e.target.value.replace(/\D/g, ''))}
+                  className="w-full px-3 py-2.5 bg-[#08080D] border border-violet-500/30 rounded-xl text-white font-mono text-lg tracking-widest text-center focus:outline-none focus:border-violet-400"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={authLoading || forgotOtp.length !== 6}
+                className="w-full py-2.5 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                <span>Verify Recovery Code</span>
+              </button>
+
+              <div className="flex items-center justify-between text-[11px] pt-2 border-t border-violet-500/15">
+                <button
+                  type="button"
+                  onClick={() => setAuthStep('password')}
+                  className="text-slate-400 hover:text-white transition-colors"
+                >
+                  &larr; Back to Login
+                </button>
+                <button
+                  type="button"
+                  disabled={resendCooldown > 0 || authLoading}
+                  onClick={handleStartForgotPassword}
+                  className="text-violet-400 hover:text-violet-300 disabled:opacity-50 transition-colors"
+                >
+                  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend Code'}
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
+
+        {/* ========================================================
+            FORGOT PASSWORD: STEP 2 — SET NEW ADMIN PASSWORD
+        ======================================================== */}
+        {authStep === 'forgot_reset' && (
+          <form onSubmit={handleCompleteForgotReset} className="p-6 bg-[#171426] border border-violet-500/30 rounded-2xl space-y-4">
+            <div className="space-y-1">
+              <span className="text-[10px] font-mono text-emerald-400 uppercase tracking-wider block">Authorized Recovery</span>
+              <h3 className="text-base font-bold text-white">Create New Admin Password</h3>
+              <p className="text-xs text-slate-400">
+                Enter your new Admin Security Password (minimum 16 characters).
+              </p>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <div>
+                <label className="block text-xs font-mono text-slate-300 mb-1">New Password (Min 16 chars)</label>
+                <input
+                  type="password"
+                  placeholder="Enter at least 16 characters"
+                  value={forgotNewPassword}
+                  onChange={(e) => setForgotNewPassword(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white text-xs focus:outline-none focus:border-violet-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono text-slate-300 mb-1">Confirm New Password</label>
+                <input
+                  type="password"
+                  placeholder="Repeat new password"
+                  value={forgotConfirmPassword}
+                  onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white text-xs focus:outline-none focus:border-violet-400"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full py-2.5 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 mt-4"
+              >
+                {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                <span>Save New Password &amp; Unlock</span>
               </button>
 
               <div className="text-center pt-2">
                 <button
                   type="button"
-                  onClick={() => setAuthStep('setup')}
-                  className="text-[11px] font-mono text-slate-400 hover:text-violet-300 transition-colors cursor-pointer"
+                  onClick={() => setAuthStep('password')}
+                  className="text-[11px] font-mono text-slate-400 hover:text-white"
                 >
-                  Reset / Change Admin Security Password →
+                  Cancel Recovery
                 </button>
               </div>
             </div>
@@ -1408,6 +1628,11 @@ export const AdminPage: React.FC = () => {
                             }`}>
                               {ev.status}
                             </span>
+                            {ev.isComingSoon && (
+                              <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded border bg-purple-950 text-purple-300 border-purple-500/50 shadow-[0_0_10px_rgba(168,85,247,0.3)] animate-pulse">
+                                COMING SOON
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs font-mono text-violet-400 truncate">{ev.tagline}</p>
                           <p className="text-[11px] font-mono text-slate-400">Slug: /competitions/{ev.slug}</p>
@@ -1429,8 +1654,8 @@ export const AdminPage: React.FC = () => {
                         </div>
                         <div>
                           <span className="text-[10px] text-slate-500 block uppercase">Registration</span>
-                          <span className={`font-bold ${ev.registration_open ? 'text-emerald-400' : 'text-slate-500'}`}>
-                            {ev.registration_open ? 'Open' : 'Closed'}
+                          <span className={`font-bold ${ev.isComingSoon ? 'text-purple-400' : ev.registration_open ? 'text-emerald-400' : 'text-slate-500'}`}>
+                            {ev.isComingSoon ? 'Coming Soon' : ev.registration_open ? 'Open' : 'Closed'}
                           </span>
                         </div>
                       </div>
@@ -1446,6 +1671,20 @@ export const AdminPage: React.FC = () => {
                       </Link>
 
                       <div className="flex items-center gap-2">
+                        {/* Coming Soon ON / OFF Quick Toggle */}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleComingSoon(ev)}
+                          title="Toggle Coming Soon overlay & registration lock"
+                          className={`px-2.5 py-1.5 text-xs font-mono rounded-lg transition-colors border cursor-pointer ${
+                            ev.isComingSoon
+                              ? 'bg-purple-950 text-purple-300 border-purple-500/40 shadow-sm'
+                              : 'bg-[#11101B] text-slate-400 hover:text-white border-violet-500/20'
+                          }`}
+                        >
+                          {ev.isComingSoon ? 'Coming Soon: ON' : 'Coming Soon: OFF'}
+                        </button>
+
                         {/* Publish / Unpublish Toggle */}
                         <button
                           type="button"
@@ -2182,6 +2421,27 @@ export const AdminPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Coming Soon ON / OFF Toggle (Phase 4) */}
+              <div className="p-4 bg-[#11101B] border border-violet-500/30 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-mono font-bold text-white block">Coming Soon Status</span>
+                    <span className="text-[11px] text-slate-400 block">When ON, public card is blurred with &quot;COMING SOON&quot; overlay and registration is locked.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNewEventData({ ...newEventData, isComingSoon: !newEventData.isComingSoon })}
+                    className={`px-3.5 py-1.5 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer ${
+                      newEventData.isComingSoon 
+                        ? 'bg-purple-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.5)] border border-purple-400' 
+                        : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'
+                    }`}
+                  >
+                    {newEventData.isComingSoon ? 'Coming Soon: ON' : 'Coming Soon: OFF'}
+                  </button>
+                </div>
+              </div>
+
               {/* Local Image Uploader (Priority 4) */}
               <LocalImageUploader
                 currentImageUrl={newEventData.cover_image || newEventData.banner_image}
@@ -2386,6 +2646,27 @@ export const AdminPage: React.FC = () => {
                     <option value="Draft">Draft</option>
                     <option value="Archived">Archived</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Coming Soon ON / OFF Toggle (Phase 4) */}
+              <div className="p-4 bg-[#11101B] border border-violet-500/30 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-mono font-bold text-white block">Coming Soon Status</span>
+                    <span className="text-[11px] text-slate-400 block">Locks competition registration and displays glowing COMING SOON overlay to public.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditingEvent({ ...editingEvent, isComingSoon: !editingEvent.isComingSoon })}
+                    className={`px-3.5 py-1.5 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer ${
+                      editingEvent.isComingSoon 
+                        ? 'bg-purple-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.5)] border border-purple-400' 
+                        : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'
+                    }`}
+                  >
+                    {editingEvent.isComingSoon ? 'Coming Soon: ON' : 'Coming Soon: OFF'}
+                  </button>
                 </div>
               </div>
 
@@ -2639,59 +2920,20 @@ export const AdminPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Scheduled Broadcast & Sitewide Popup Controls (WP8) */}
-              <div className="p-3 bg-violet-950/30 border border-violet-500/20 rounded-xl space-y-3">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="is_popup"
-                    checked={Boolean(newNotification.is_popup)}
-                    onChange={(e) => setNewNotification({ ...newNotification, is_popup: e.target.checked })}
-                    className="rounded border-violet-500/30 bg-[#08080D] text-violet-600 focus:ring-violet-400"
-                  />
-                  <label htmlFor="is_popup" className="text-white font-semibold cursor-pointer">
-                    Show as Sitewide Scheduled Popup Modal
-                  </label>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-slate-400 font-mono text-[11px] mb-1">Schedule Display Time</label>
-                    <input
-                      type="datetime-local"
-                      value={newNotification.scheduled_for ? newNotification.scheduled_for.slice(0, 16) : ''}
-                      onChange={(e) => setNewNotification({
-                        ...newNotification,
-                        scheduled_for: e.target.value ? new Date(e.target.value).toISOString() : undefined,
-                        display_at: e.target.value ? new Date(e.target.value).toISOString() : undefined
-                      })}
-                      className="w-full px-3 py-1.5 bg-[#08080D] border border-violet-500/30 rounded-lg text-white font-mono text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-slate-400 font-mono text-[11px] mb-1">Popup Delay (Seconds)</label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={60}
-                      placeholder="2"
-                      value={typeof newNotification.popup_delay_seconds === 'number' ? newNotification.popup_delay_seconds : 2}
-                      onChange={(e) => setNewNotification({ ...newNotification, popup_delay_seconds: Number(e.target.value) })}
-                      className="w-full px-3 py-1.5 bg-[#08080D] border border-violet-500/30 rounded-lg text-white font-mono text-xs"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Live Preview Card */}
-              <div className="p-3 bg-[#08080D] border border-violet-500/20 rounded-xl space-y-1.5">
-                <span className="text-[10px] font-mono text-slate-500 uppercase block">Live Student Preview</span>
-                <div className="text-white font-bold text-sm">
-                  {newNotification.title || 'Announcement Title'}
-                </div>
-                <div className="text-slate-400 text-xs line-clamp-2">
-                  {newNotification.message || 'Announcement message preview...'}
-                </div>
+              {/* Optional Expiry Date & Time (Phase 2) */}
+              <div>
+                <label className="block text-slate-300 font-mono mb-1">
+                  Expiration Date &amp; Time (Optional)
+                </label>
+                <input
+                  type="datetime-local"
+                  value={newNotification.expires_at || ''}
+                  onChange={(e) => setNewNotification({ ...newNotification, expires_at: e.target.value })}
+                  className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
+                />
+                <span className="text-[10px] text-slate-500 font-mono mt-1 block">
+                  Leave empty for announcements that do not automatically expire.
+                </span>
               </div>
             </div>
 

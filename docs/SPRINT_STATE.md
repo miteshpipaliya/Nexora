@@ -1,68 +1,160 @@
-# NEXORA Launch Sprint State (SPRINT_STATE.md)
+# Nexora Launch Sprint State
 
-**Sprint**: 7 Fixes + Scheduled Broadcast Popups  
-**Target**: 100% Verified, zero fake metrics, fail-closed security, robust Vercel serverless execution.  
-**Last Updated**: October 2026  
+All items start Open and are updated strictly with real command output evidence.
+Only existing files are cited with backticks.
 
----
+## Work Packages Overview
 
-## Work Packages Status
-
-| Work Package | Title | Status | Evidence / Verification |
-| :--- | :--- | :---: | :--- |
-| **WP0** | Baseline & State Tracking | `Verified` | State files initialized, scripts created, clean ts-check |
-| **WP1** | Fix Vercel Serverless Entry Crash | `Verified` | `api/index.ts` resolves `../server.js`, `api/app.ts` removed, `vercel.json` configured |
-| **WP2** | Registration Auth & Server Integrity | `Verified` | Bearer token check, Zod schema, atomic Firestore transaction, deterministic doc IDs `${uid}_${event_slug}` |
-| **WP3** | Remove Fake-Success Fallbacks | `Verified` | Fail-closed in `dataService.ts`, throws real server errors to UI, zero silent client fallback writes |
-| **WP4** | Align Rules, Claims & Clean Client | `Verified` | `firestore.rules` updated with whitelisted profile keys; zero hardcoded admin emails in `src/` (audit script PASS) |
-| **WP5** | Close Public Data Leaks | `Verified` | Public `/api/health` sanitized; private details moved to `/api/admin/health`; `/api/admin/status` masks credentials |
-| **WP6** | Stateless Session & Challenge Hardening | `Verified` | Stateless HMAC tokens, standard security headers, 100kb body limit, removed `x-matched-path` rewrites |
-| **WP7** | Crash Guards & Error Boundaries | `Verified` | Structured JSON errors with `requestId`, ErrorBoundary on frontend, no stack traces leaked |
-| **WP8** | Scheduled Broadcast Popups | `Verified` | `serverClock.ts`, `safeUrl.ts`, `useBroadcastPopups.ts`, `BroadcastPopup.tsx` mounted in `App.tsx`, scheduler in `AdminPage.tsx` |
-| **WP9** | Verification, Smoke Testing & Report | `Verified` | TypeScript: 0 errors; Build: succeeded; Smoke script: 4/4 tests passed; Audit script: 0 leaks |
+| Package | Name | Status | Branch | Evidence |
+|---|---|---|---|---|
+| WP0 | Baseline Setup & Tooling | Verified | `chore/sprint-baseline` | `scripts/audit-claims.sh` OK; `npm test` passed (1 test) |
+| WP1 | Fix Vercel Entry Crash | Verified | `fix/vercel-entry-crash` | `scripts/verify-vercel-build.sh` before: ERR_MODULE_NOT_FOUND, after: LOADED OK (200 OK) |
+| WP2 | Registration Authentication & Integrity | Open | fix/registration-auth | Not started |
+| WP3 | Remove Fake-Success Path on Client | Open | fix/registration-no-fake-success | Not started |
+| WP4 | Align Rules, Claims & Client | Open | fix/rules-client-alignment | Not started |
+| WP5 | Close Public Info Leaks | Open | fix/public-info-leaks | Not started |
+| WP6 | Stateless Admin & Crash Guards | Open | fix/admin-state-and-crash-guards | Not started |
+| WP7 | Server Hardening | Open | fix/server-hardening | Not started |
+| WP8 | Scheduled Broadcast Popups | Open | feat/scheduled-broadcast-popups | Not started |
+| WP9 | Smoke & Docs | Open | test/smoke-and-docs | Not started |
 
 ---
 
-## Detailed Evidence Log
+## Detailed Item Progress
 
-### WP1 — Vercel Serverless Entry
-- Command: `node -e "import('./api/index.ts')"` before fix produced `Cannot find module '/app/applet/server' imported from /app/applet/api/index.ts`.
-- Resolution: Updated `api/index.ts` to `import app from '../server.js'`, deleted redundant `api/app.ts`, and configured function limits in `vercel.json`.
-- Verification: `npx tsx -e "import('./api/index.ts').then(() => console.log('api/index.ts loaded successfully with tsx'))"` -> exited 0.
+### WP0: Baseline Setup
+- **Status**: Verified
+- **Branch**: `chore/sprint-baseline`
+- **Files**:
+  - `docs/SPRINT_STATE.md`
+  - `docs/DECISIONS.md`
+  - `docs/MANUAL_STEPS.md`
+  - `docs/SPRINT_PROMPT.md`
+  - `scripts/audit-claims.sh`
+  - `scripts/smoke.mjs`
+  - `scripts/verify-vercel-build.sh`
+  - `vitest.config.ts`
+  - `tests/smoke.test.ts`
+  - `package.json`
+- **Criteria & Evidence**:
+  - Previous launch state removed.
+  - Vitest installed and configured with scripts in `package.json`.
+  - `bash scripts/audit-claims.sh`:
+    ```
+    Auditing 10 cited path(s) in docs/SPRINT_STATE.md...
+    audit-claims passed successfully.
+    ```
+  - `npm test`:
+    ```
+    ✓ tests/smoke.test.ts (1 test) 4ms
+    Test Files  1 passed (1)
+         Tests  1 passed (1)
+    ```
 
-### WP2 & WP3 — Registration Integrity & Zero Fake Success
-- Implementation: Strict Bearer token verification from Firebase Admin SDK. Reject unauthenticated registration requests with 401 Unauthorized before body validation. Single atomic transaction in Firestore with deterministic document ID `${verifiedUserId}_${cleanEventSlug}` prevents race conditions and duplicates.
-- Client: Removed local fallback writes and simulated objects from `createRegistration` in `src/services/dataService.ts`. Errors throw immediately to student UI.
-- Verification: `node scripts/smoke.mjs` test 2: `POST /api/registrations/create` without token returned status 401.
+### WP1: Fix Vercel Entry Crash
+- **Status**: Verified
+- **Branch**: `fix/vercel-entry-crash`
+- **Files**:
+  - `api/index.ts`
+  - `vercel.json`
+- **Criteria & Evidence**:
+  - `api/index.ts` changed to `import app from '../server.js';`.
+  - Duplicate `api/app.ts` removed.
+  - `vercel.json` configured with `"functions": {"api/index.ts": {"maxDuration": 30}}`.
+  - **Before Fix Evidence** (`bash scripts/verify-vercel-build.sh` on main):
+    ```
+    Simulating Vercel build function bundle...
+    Testing built function import...
+    Import error for /app/.tmp_verify_Fq4bXB/.vercel/output/functions/api/index.func/api/index.js: ERR_MODULE_NOT_FOUND
+    ERR_MODULE_NOT_FOUND caught as expected on un-suffixed import
+    ```
+  - **After Fix Evidence** (`bash scripts/verify-vercel-build.sh` on `fix/vercel-entry-crash`):
+    ```
+    Simulating Vercel build function bundle...
+    Testing built function import...
+    LOADED OK from /app/.tmp_verify_EsOLU4/.vercel/output/functions/api/index.func/api/index.js
+    Health status: 200, body: {"status":"ok","service":"NEXORA Production Backend API"...}
+    VERIFICATION SUCCESS: 200 OK
+    ```
 
-### WP4 — Profile Rules Alignment & Admin Claims
-- Implementation: Updated `firestore.rules` for `users/{userId}` to whitelist all application schema fields (`full_name`, `college`, `branch`, `academic_year`, `enrollment_number`, `division`, `phone_number`, `avatar_url`, `updated_at`, `is_profile_complete`, `last_active`, `email_verified`).
-- Removed all hardcoded `ADMIN_EMAILS` and `ADMIN_PHONE` from `src/` (`Navbar.tsx`, `AdminPage.tsx`, `Footer.tsx`, `ProfilePage.tsx`, `dataService.ts`).
-- Verification: `./scripts/audit-claims.sh` output:
-  ```
-  === Auditing src/ for hardcoded admin credentials & claims leaks ===
-  PASS: Zero hardcoded admin credentials found in src/.
-  ```
+### WP2: Registration Authentication & Integrity
+- **Status**: Open
+- **Branch**: fix/registration-auth
+- **Files**:
+  - `server.ts`
+- **Criteria**:
+  - Registration route requires verified Firebase Bearer token.
+  - Schema validation for registration payload.
+  - Single Firestore transaction for deterministic registration doc.
+  - Unique 6-character competition ID.
+  - Server-computed fee calculation.
 
-### WP5 — Public Info Leaks Closed
-- Implementation: Sanitized `/api/health` to return basic uptime and `serverTimeMs`. Relocated verbose diagnostic checks to protected `/api/admin/health` requiring elevated admin authentication. Sanitized `/api/admin/status` to return only masked email and phone.
-- Verification: Smoke test 1 & 4 confirmed zero raw founder emails or phone numbers exposed in public responses.
+### WP3: Remove Client Fake-Success Path
+- **Status**: Open
+- **Branch**: fix/registration-no-fake-success
+- **Files**:
+  - `src/services/dataService.ts`
+- **Criteria**:
+  - Remove fallback mock generation on API error.
+  - Throw on non-2xx responses.
+  - Registration modal retains user input on failure.
 
-### WP6 & WP7 — Server Hardening & Crash Guards
-- Implementation: Added security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `X-XSS-Protection`, `Referrer-Policy`) and `X-Request-Id` tracking middleware.
-- Default body size limit enforced at 100kb (`express.json({ limit: '100kb' })`).
-- Verification: Clean server restart and request-id propagation.
+### WP4: Align Rules, Claims and Client
+- **Status**: Open
+- **Branch**: fix/rules-client-alignment
+- **Files**:
+  - `firestore.rules`
+  - `src/context/AuthContext.tsx`
+- **Criteria**:
+  - User profile schema matched with rules.
+  - Admin custom claim checks via token.
+  - Remove hardcoded admin contact references.
 
-### WP8 — Scheduled Broadcast Popups
-- Implementation:
-  - `src/shared/lib/serverClock.ts`: Synchronizes client clock with server time via `/api/health` `serverTimeMs` to compensate for skew.
-  - `src/shared/lib/safeUrl.ts`: Defends against XSS and rejects `javascript:` / `data:` URI schemes.
-  - `src/hooks/useBroadcastPopups.ts`: Evaluates scheduled popups, respects `popup_delay_seconds`, and tracks dismissals in `localStorage` (`nexora_dismissed_popups`).
-  - `src/components/common/BroadcastPopup.tsx`: Modal dialog with animation, priority badges, message, safe action button, and dismiss handling. Mounted globally in `src/App.tsx`.
-  - `AdminPage.tsx`: Added broadcast modal controls for `is_popup`, `scheduled_for`, `popup_delay_seconds`, and live student preview.
+### WP5: Close Public Info Leaks
+- **Status**: Open
+- **Branch**: fix/public-info-leaks
+- **Files**:
+  - `server.ts`
+- **Criteria**:
+  - Public status and health routes return minimal non-sensitive data.
+  - Admin diagnostics moved to protected endpoint.
 
-### WP9 — Automated Gates Verification Output
-1. Typecheck: `npm run lint` -> `tsc --noEmit` exited 0 (0 errors).
-2. Compilation: `compile_applet` -> `Build succeeded - the applet is compiled`.
-3. Claims Audit: `./scripts/audit-claims.sh` -> `PASS: Zero hardcoded admin credentials found in src/.` (exited 0).
-4. Smoke Suite: `node scripts/smoke.mjs` -> `Passed: 4, Failed: 0` (exited 0).
+### WP6: Stateless Admin Sessions and Crash Guards
+- **Status**: Open
+- **Branch**: fix/admin-state-and-crash-guards
+- **Files**:
+  - `server.ts`
+- **Criteria**:
+  - Stateless HMAC session tokens.
+  - Challenge and rate limit tracking in Firestore.
+  - Crash guards for uncaught exceptions.
+
+### WP7: Server Hardening
+- **Status**: Open
+- **Branch**: fix/server-hardening
+- **Files**:
+  - `server.ts`
+  - `vercel.json`
+- **Criteria**:
+  - Strip rewrite headers.
+  - Global error masking with request IDs.
+  - Security headers in deployment config.
+
+### WP8: Scheduled Delayed Broadcast Popups
+- **Status**: Open
+- **Branch**: feat/scheduled-broadcast-popups
+- **Files**:
+  - `src/pages/Admin/AdminPage.tsx`
+- **Criteria**:
+  - Broadcast schedule metadata and popup delay logic.
+  - Popups triggered based on synchronized server time.
+  - Accessible modal dialog.
+
+### WP9: Smoke Testing & Docs
+- **Status**: Open
+- **Branch**: test/smoke-and-docs
+- **Files**:
+  - `README.md`
+- **Criteria**:
+  - Smoke test verification checklist.
+  - Comprehensive sprint report.

@@ -50,6 +50,7 @@ export interface CompetitionEvent {
   status: EventStatus;
   registration_open: boolean;
   is_published?: boolean;
+  isComingSoon?: boolean;
   registration_deadline?: string;
   event_date?: string;
   event_time?: string;

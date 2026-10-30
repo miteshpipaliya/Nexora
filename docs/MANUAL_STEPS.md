@@ -1,77 +1,44 @@
-# NEXORA Manual Steps Guide (MANUAL_STEPS.md)
+# Manual Steps for Operators & Administrators
 
-This document contains step-by-step instructions for tasks that require manual user credentials or cloud console actions.
+The following operations must be performed manually in third-party dashboards or administrative consoles:
 
----
+## 1. Configure Vercel Environment Variables
+In the Vercel Dashboard -> Project Settings -> Environment Variables, add the following variables for **Production** and **Preview**:
 
-## 1. Firebase Service Account Setup (For Admin Claims & Server API)
-To enable the backend to verify Firebase ID tokens, manage custom claims (`admin: true`), and write server-authoritative registrations:
+1. `FIREBASE_SERVICE_ACCOUNT`:
+   - Paste the service account JSON (either plain string or base64 encoded) generated from Firebase Console -> Project Settings -> Service Accounts -> Generate New Private Key.
+2. `OTP_HMAC_SECRET`:
+   - Generate a secure 32+ character random secret (e.g., `openssl rand -hex 32`).
+3. `ADMIN_SECURITY_PASSWORD` (Optional):
+   - Optional 16+ character master fallback password for elevated admin access.
+4. `BREVO_API_KEY`:
+   - Active Brevo transactional API key (`xkeysib-...`).
+5. `BREVO_SENDER_EMAIL`:
+   - Verified sender email in Brevo (e.g., `nexorabvm@gmail.com` or custom domain sender).
+6. `BREVO_SENDER_NAME`:
+   - `Nexora BVM`
+7. `FIREBASE_API_KEY`:
+   - Public Firebase Web API Key matching client configuration.
 
-1. Open the [Firebase Console](https://console.firebase.google.com/).
-2. Select your NEXORA project (`nexorastudenttech` or your designated project).
-3. Click the **Gear icon** next to *Project Overview* -> **Project settings**.
-4. Navigate to the **Service accounts** tab.
-5. Click **Generate new private key**, then confirm **Generate key**.
-6. A JSON file will download. Open it and either:
-   - **Option A (Vercel / Production)**: Copy the contents and set the environment variable:
-     - `FIREBASE_SERVICE_ACCOUNT_KEY`: paste the entire JSON string.
-   - **Option B (Separate environment variables)**:
-     - `FIREBASE_PROJECT_ID`: `"project_id"` value from JSON
-     - `FIREBASE_CLIENT_EMAIL`: `"client_email"` value from JSON
-     - `FIREBASE_PRIVATE_KEY`: `"private_key"` value from JSON (replace `\n` with actual line breaks)
-   - **Option C (Local Development)**: Save the JSON file to `service-account.json` in the project root (ensure it is gitignored).
+## 2. Brevo IP Restriction Settings
+- Go to Brevo Dashboard -> Settings -> Security -> Authorized IPs.
+- Ensure authorized IP restrictions are **disabled** or set to allow dynamic cloud ranges, because Vercel serverless function IP addresses rotate dynamically across AWS/GCP regions.
 
----
+## 3. Provision Admin Custom Claims
+To grant the initial founder or administrator elevated custom claims on Firebase Auth:
+```bash
+npm run admin:claim -- founder@bvmengineering.ac.in
+```
+After the claim is set, sign out of the Nexora web interface and sign back in for the new token claims to take effect.
 
-## 2. Setting the First Admin User Claim
-Once you have the service account key configured:
-1. Run the admin claims setup script:
-   ```bash
-   npx tsx scripts/set-admin-claim.ts miteshpipaliya2202@gmail.com
-   ```
-2. The user will be granted `admin: true` in Firebase Authentication.
-3. When the user logs in, their Firebase ID token will contain `{ admin: true }`.
+## 4. Deploy Firestore Rules and Indexes
+Deploy the security rules and composite index definitions to your Firebase project:
+```bash
+firebase deploy --only firestore:rules,firestore:indexes
+```
 
----
-
-## 3. Brevo Transactional Email Key Setup
-To enable transactional OTP emails for registration and authentication:
-
-1. Go to [Brevo (formerly Sendinblue)](https://app.brevo.com/).
-2. Log in and click your profile name at the top right -> **SMTP & API Keys**.
-3. Under the **API Keys** tab, click **Generate a new API key**.
-4. Name it `NEXORA Production` and copy the generated key (`xkeysib-...`).
-5. **Critical IP Restriction Check**: Ensure no restrictive IP filter is blocking Vercel or cloud IP addresses under *Security / Authorized IPs*.
-6. Add the key to your environment variables:
-   - `BREVO_API_KEY`: `xkeysib-...`
-   - `BREVO_SENDER_EMAIL`: `nexora.tech@gmail.com` (or your verified sender address)
-   - `BREVO_SENDER_NAME`: `NEXORA Student Community`
-
----
-
-## 4. Vercel Environment Variables Configuration
-In your [Vercel Dashboard](https://vercel.com/):
-1. Go to your project -> **Settings** -> **Environment Variables**.
-2. Add the following variables for *Production* and *Preview*:
-   - `FIREBASE_SERVICE_ACCOUNT_KEY`: (JSON string from Step 1)
-   - `BREVO_API_KEY`: (API key from Step 3)
-   - `BREVO_SENDER_EMAIL`: `nexora.tech@gmail.com`
-   - `VITE_FIREBASE_API_KEY`: your web app API key
-   - `VITE_FIREBASE_AUTH_DOMAIN`: your auth domain
-   - `VITE_FIREBASE_PROJECT_ID`: your project ID
-   - `VITE_FIREBASE_STORAGE_BUCKET`: your storage bucket
-   - `VITE_FIREBASE_MESSAGING_SENDER_ID`: your sender ID
-   - `VITE_FIREBASE_APP_ID`: your app ID
-3. Trigger a redeploy from **Deployments** -> **Redeploy**.
-
----
-
-## 5. GitHub Branch Protection Setup
-To enforce high safety standards:
-1. Go to your repository on GitHub -> **Settings** -> **Branches**.
-2. Click **Add branch ruleset** or **Add rule** for branch `main`.
-3. Check:
-   - **Require a pull request before merging** (Require approvals: 1).
-   - **Require status checks to pass before merging** (Require branch to be up to date before merging).
-   - **Do not allow force pushes**.
-   - **Do not allow deletions**.
+## 5. Rotate Secrets if Exposed
+If `.env` was ever committed or shared publicly, immediately rotate:
+1. Brevo API key in the Brevo console.
+2. `OTP_HMAC_SECRET` in Vercel settings.
+3. Firebase Service Account private key in the Google Cloud Console.

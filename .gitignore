@@ -4,7 +4,22 @@ dist/
 coverage/
 .DS_Store
 *.log
-.env*
-!.env.example
 .server_data/
 server.js
+.tmp_verify_*
+
+# Environment files - strictly ignored from Git tracking per security policy
+.env
+.env.*
+.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Sensitive credentials & service account keys
+*.pem
+*.key
+serviceAccountKey.json
+firebase-service-account*.json
+firebase-credentials*.json

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Code2, ShieldAlert, Cpu, Terminal, Users, Trophy } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { EventRegistrationModal } from '../../components/forms/EventRegistrationModal';
+import { CompetitionCardImage } from '../../components/ui/CompetitionCardImage';
 import { CompetitionEvent } from '../../types';
 
 export const CompetitionsHubPage: React.FC = () => {
@@ -75,55 +76,42 @@ export const CompetitionsHubPage: React.FC = () => {
         /* Grid of Real-Time Events */
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {events.map((event) => {
-            const Icon = getEventIcon(event.slug);
-            const isBroken = Boolean(brokenImages[event.id]);
-            const imageSrc = event.cover_image || event.banner_image || '/images/competitions/zerocode.jpg';
+            const isComingSoon = Boolean(event.isComingSoon);
 
             return (
               <div
                 key={event.id}
-                role="link"
-                tabIndex={0}
-                aria-label={`Explore ${event.title}`}
-                onClick={() => navigate(`/competitions/${event.slug}`)}
+                role={isComingSoon ? 'article' : 'link'}
+                tabIndex={isComingSoon ? -1 : 0}
+                aria-label={isComingSoon ? `${event.title} (Coming Soon)` : `Explore ${event.title}`}
+                onClick={() => {
+                  if (!isComingSoon) {
+                    navigate(`/competitions/${event.slug}`);
+                  }
+                }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
+                  if (!isComingSoon && (e.key === 'Enter' || e.key === ' ')) {
                     e.preventDefault();
                     navigate(`/competitions/${event.slug}`);
                   }
                 }}
-                className="rounded-2xl bg-[#171426] border border-violet-500/20 overflow-hidden flex flex-col justify-between group hover:border-violet-400/50 hover:shadow-[0_0_30px_-5px_rgba(139,92,246,0.25)] transition-all duration-300 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+                className={`rounded-2xl bg-[#171426] border overflow-hidden flex flex-col justify-between transition-all duration-300 ${
+                  isComingSoon
+                    ? 'border-violet-500/15 opacity-80 cursor-default shadow-none'
+                    : 'border-violet-500/20 group hover:border-violet-400/50 hover:shadow-[0_0_30px_-5px_rgba(139,92,246,0.25)] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400'
+                }`}
               >
                 {/* Event Image */}
-                <div className="relative h-56 w-full overflow-hidden bg-violet-950/40">
-                  {imageSrc && !isBroken ? (
-                    <img
-                      src={imageSrc}
-                      alt={event.title}
-                      onError={() => handleImageError(event.id)}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-violet-950/60 to-purple-950/40 text-violet-400 p-6 text-center">
-                      <Icon className="w-16 h-16 text-violet-400/70 mb-2" />
-                      <span className="text-xs font-mono text-violet-300/80">{event.title}</span>
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#171426] via-transparent to-transparent pointer-events-none" />
-
-                  <div className="absolute top-4 left-4 right-4 flex items-center justify-between text-xs font-mono user-select-none pointer-events-none">
-                    <span className="text-slate-200 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded border border-white/10">
-                      {event.category}
-                    </span>
-                    <span className="text-violet-300 bg-violet-950/90 backdrop-blur-md px-2.5 py-1 rounded border border-violet-500/30">
-                      {event.status} Event
-                    </span>
-                  </div>
-                </div>
+                <CompetitionCardImage
+                  event={event}
+                  className="h-56 w-full"
+                  isComingSoon={isComingSoon}
+                />
 
                 {/* Event Body */}
-                <div className="p-6 md:p-8 space-y-4 flex-1 flex flex-col justify-between">
+                <div className={`p-6 md:p-8 space-y-4 flex-1 flex flex-col justify-between transition-all ${
+                  isComingSoon ? 'filter blur-[1px] opacity-60 pointer-events-none select-none' : ''
+                }`}>
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 text-xs font-mono text-slate-400 user-select-none">
                       <span>Difficulty:</span>
@@ -153,31 +141,52 @@ export const CompetitionsHubPage: React.FC = () => {
                   <div className="pt-6 border-t border-violet-500/15 flex items-center justify-between gap-4">
                     <div className="text-xs font-mono text-slate-400 user-select-none">
                       <div>Capacity: {event.capacity} seats</div>
-                      <div className="text-emerald-400">
-                        {event.registration_open ? 'Registration Open' : 'Registration Closed'}
+                      <div className={isComingSoon ? 'text-amber-400' : event.registration_open ? 'text-emerald-400' : 'text-slate-400'}>
+                        {isComingSoon ? 'Coming Soon' : event.registration_open ? 'Registration Open' : 'Registration Closed'}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <Link
-                        to={`/competitions/${event.slug}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="px-4 py-2 text-xs font-medium text-slate-200 bg-[#11101B] border border-violet-500/25 rounded-xl hover:text-white hover:border-violet-400 transition-colors"
-                      >
-                        Details &amp; Rules
-                      </Link>
+                      {isComingSoon ? (
+                        <>
+                          <button
+                            type="button"
+                            disabled
+                            className="px-4 py-2 text-xs font-medium text-slate-500 bg-[#11101B]/50 border border-slate-700/30 rounded-xl cursor-not-allowed"
+                          >
+                            Details &amp; Rules
+                          </button>
+                          <button
+                            type="button"
+                            disabled
+                            className="px-4 py-2 text-xs font-semibold text-amber-300/60 bg-amber-950/30 border border-amber-500/20 rounded-xl cursor-not-allowed"
+                          >
+                            Coming Soon
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <Link
+                            to={`/competitions/${event.slug}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="px-4 py-2 text-xs font-medium text-slate-200 bg-[#11101B] border border-violet-500/25 rounded-xl hover:text-white hover:border-violet-400 transition-colors"
+                          >
+                            Details &amp; Rules
+                          </Link>
 
-                      {event.registration_open && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedEventForModal(event);
-                          }}
-                          className="px-4 py-2 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-md cursor-pointer"
-                        >
-                          Register
-                        </button>
+                          {event.registration_open && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedEventForModal(event);
+                              }}
+                              className="px-4 py-2 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-md cursor-pointer"
+                            >
+                              Register
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

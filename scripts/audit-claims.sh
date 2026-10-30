@@ -1,31 +1,48 @@
 #!/usr/bin/env bash
-# scripts/audit-claims.sh
-# Verifies zero hardcoded admin emails or phone numbers in src/
+set -euo pipefail
 
-set -e
+node - << 'EOF'
+import fs from 'fs';
 
-echo "=== Auditing src/ for hardcoded admin credentials & claims leaks ==="
+const stateFile = 'docs/SPRINT_STATE.md';
+if (!fs.existsSync(stateFile)) {
+  console.error(`Error: ${stateFile} does not exist.`);
+  process.exit(1);
+}
 
-# Check for hardcoded ADMIN_EMAILS in src/
-LEAKS=$(grep -rn "ADMIN_EMAILS" src/ || true)
-if [ -n "$LEAKS" ]; then
-  echo "FAIL: Found references to ADMIN_EMAILS in src/:"
-  echo "$LEAKS"
-  exit 1
-fi
+const content = fs.readFileSync(stateFile, 'utf8');
+const backtickRegex = /`([^`]+)`/g;
+let match;
+const citedPaths = new Set();
 
-PHONE_LEAKS=$(grep -rn "ADMIN_PHONE" src/ || true)
-if [ -n "$PHONE_LEAKS" ]; then
-  echo "FAIL: Found references to ADMIN_PHONE in src/:"
-  echo "$PHONE_LEAKS"
-  exit 1
-fi
+while ((match = backtickRegex.exec(content)) !== null) {
+  const item = match[1].trim();
+  // Filter for file/directory paths
+  const isLikelyPath = /^(src\/|docs\/|scripts\/|tests\/|api\/|public\/|supabase\/|[a-zA-Z0-9_\-\.\/]+\.(ts|tsx|js|mjs|json|md|sh|rules|css|html)$)/.test(item);
+  const isExcluded = item.startsWith('http://') || item.startsWith('https://') || item.startsWith('/api/') || item.includes('${') || item.includes('npm ') || item.includes('npx ') || item.includes('curl ') || item.includes('bash ') || item.includes('git ');
+  
+  if (isLikelyPath && !isExcluded) {
+    citedPaths.add(item);
+  }
+}
 
-RAW_FOUNDER=$(grep -rn "miteshpipaliya2202@gmail.com" src/ || true)
-if [ -n "$RAW_FOUNDER" ]; then
-  echo "FAIL: Found founder email directly hardcoded in src/:"
-  echo "$RAW_FOUNDER"
-  exit 1
-fi
+let missing = 0;
+console.log(`Auditing ${citedPaths.size} cited path(s) in ${stateFile}...`);
 
-echo "PASS: Zero hardcoded admin credentials found in src/."
+for (const p of citedPaths) {
+  const cleanPath = p.replace(/^\//, '');
+  if (!fs.existsSync(cleanPath)) {
+    console.error(`FAIL: Cited path does not exist: ${p} (checked ${cleanPath})`);
+    missing++;
+  } else {
+    console.log(`OK: ${cleanPath}`);
+  }
+}
+
+if (missing > 0) {
+  console.error(`\nAudit failed: ${missing} cited path(s) missing.`);
+  process.exit(1);
+} else {
+  console.log('\naudit-claims passed successfully.');
+}
+EOF

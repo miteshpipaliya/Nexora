@@ -180,6 +180,10 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
     e.preventDefault();
     setErrorMessage(null);
 
+    if (event.isComingSoon) {
+      return setErrorMessage('Registration is currently locked. This competition is Coming Soon.');
+    }
+
     // Validation
     if (!fullName.trim()) return setErrorMessage('Full name is required.');
     if (!email.trim() || !email.includes('@')) return setErrorMessage('Valid email address is required.');

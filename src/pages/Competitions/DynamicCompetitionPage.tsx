@@ -22,6 +22,7 @@ import {
 import { dataService } from '../../services/dataService';
 import { CompetitionEvent } from '../../types';
 import { EventRegistrationModal } from '../../components/forms/EventRegistrationModal';
+import { CompetitionCardImage } from '../../components/ui/CompetitionCardImage';
 import { useAuth } from '../../context/AuthContext';
 
 export const DynamicCompetitionPage: React.FC = () => {
@@ -91,6 +92,34 @@ export const DynamicCompetitionPage: React.FC = () => {
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Browse Available Competitions</span>
+        </Link>
+      </div>
+    );
+  }
+
+  // If marked Coming Soon and visitor is not admin, show Coming Soon lock screen
+  if (event.isComingSoon && !isAdmin) {
+    return (
+      <div className="py-24 px-4 max-w-lg mx-auto text-center space-y-6">
+        <div className="w-20 h-20 rounded-3xl bg-violet-950/70 border border-violet-500/40 flex items-center justify-center mx-auto text-violet-300 shadow-[0_0_30px_rgba(139,92,246,0.3)]">
+          <Clock className="w-10 h-10" />
+        </div>
+        <div className="space-y-2">
+          <div className="inline-block px-3.5 py-1 rounded-full bg-amber-950/80 border border-amber-500/40 text-[11px] font-mono font-bold tracking-widest text-amber-300">
+            COMING SOON
+          </div>
+          <h1 className="text-3xl font-extrabold text-white tracking-tight">{event.title}</h1>
+          <p className="text-xs font-mono text-violet-400">{event.tagline}</p>
+        </div>
+        <p className="text-sm text-slate-300 font-light leading-relaxed">
+          This competition is currently under active formulation by the NEXORA team. Complete specifications, rulebooks, and student registrations will open soon!
+        </p>
+        <Link
+          to="/competitions"
+          className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-md"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back to All Competitions</span>
         </Link>
       </div>
     );
@@ -172,22 +201,12 @@ export const DynamicCompetitionPage: React.FC = () => {
           <div className="p-6 sm:p-8 rounded-2xl bg-[#171426] border border-violet-500/30 space-y-6 shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-violet-600/10 rounded-full blur-2xl pointer-events-none" />
 
-            {/* Banner preview if available */}
-            <div className="relative h-44 rounded-xl overflow-hidden bg-violet-950/40 border border-violet-500/20">
-              {!brokenImage ? (
-                <img
-                  src={bannerSrc}
-                  alt={event.title}
-                  onError={() => setBrokenImage(true)}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-xs font-mono text-violet-400">
-                  {event.title}
-                </div>
-              )}
-              <div className="absolute inset-0 bg-gradient-to-t from-[#171426] via-transparent to-transparent" />
-            </div>
+            {/* Banner preview */}
+            <CompetitionCardImage 
+              event={event} 
+              className="h-44 rounded-xl border border-violet-500/20" 
+              isComingSoon={event.isComingSoon} 
+            />
 
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs font-mono text-slate-400">
