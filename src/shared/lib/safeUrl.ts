@@ -17,8 +17,21 @@ export function isSafeUrl(rawUrl: string | undefined | null): boolean {
   const trimmed = rawUrl.trim();
   if (!trimmed) return false;
 
-  // Internal absolute paths starting with '/' are safe (e.g. /competitions, /about)
-  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) {
+  // Reject protocol-relative and backslash evasions (e.g., //evil.com, /\\evil.com, /\evil.com)
+  if (trimmed.startsWith('//') || trimmed.startsWith('/\\') || trimmed.startsWith('\\') || /^\/[/\\]/.test(trimmed)) {
+    return false;
+  }
+
+  // Strip all internal whitespace and control characters to detect obfuscated schemes like "java\nscript:"
+  const noWhitespace = trimmed.replace(/[\x00-\x20\s\r\n\t]/g, '').toLowerCase();
+  for (const dangerous of DANGEROUS_PROTOCOLS) {
+    if (noWhitespace.startsWith(dangerous) || noWhitespace.includes(dangerous)) {
+      return false;
+    }
+  }
+
+  // Internal absolute paths starting with a single '/'
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//') && !trimmed.startsWith('/\\')) {
     return true;
   }
 
@@ -27,19 +40,16 @@ export function isSafeUrl(rawUrl: string | undefined | null): boolean {
     return true;
   }
 
-  // Check lowercase protocol
-  const lower = trimmed.toLowerCase();
-  for (const dangerous of DANGEROUS_PROTOCOLS) {
-    if (lower.startsWith(dangerous) || lower.includes(` ${dangerous}`)) {
-      return false;
-    }
-  }
-
-  // Validate full URL
+  // Validate full URL using URL parser
   try {
-    const parsed = new URL(trimmed, window.location.origin);
+    const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'http://localhost:3000';
+    const parsed = new URL(trimmed, origin);
     // Only allow http: or https:
     if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      // Extra check on host for protocol-relative bypasses
+      if (!parsed.hostname && !trimmed.startsWith('/')) {
+        return false;
+      }
       return true;
     }
     return false;
@@ -48,9 +58,18 @@ export function isSafeUrl(rawUrl: string | undefined | null): boolean {
   }
 }
 
+export const isValidSafeUrl = isSafeUrl;
+
 export function sanitizeUrl(rawUrl: string | undefined | null, fallback: string = '/'): string {
   if (isSafeUrl(rawUrl)) {
     return rawUrl!.trim();
   }
   return fallback;
+}
+
+export function sanitizeSafeUrl(rawUrl: string | undefined | null): string | null {
+  if (isSafeUrl(rawUrl)) {
+    return rawUrl!.trim();
+  }
+  return null;
 }

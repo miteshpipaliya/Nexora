@@ -251,11 +251,12 @@ export function useBroadcastPopups() {
     markBroadcastSeenLocally(currentId);
 
     // 2. If signed in, record user notification read receipt in Firestore
-    if (user?.uid) {
+    const userId = user?.id || (user as any)?.uid;
+    if (userId) {
       try {
-        const receiptId = `${user.uid}_${currentId}`;
+        const receiptId = `${userId}_${currentId}`;
         await setDoc(doc(db, 'userNotificationReads', receiptId), {
-          user_id: user.uid,
+          user_id: userId,
           notification_id: currentId,
           read_at: serverTimestamp()
         });
@@ -265,7 +266,7 @@ export function useBroadcastPopups() {
     // 3. Advance queue
     setActivePopup(null);
     setQueue(prev => prev.filter(item => item.id !== currentId));
-  }, [activePopup, user?.uid]);
+  }, [activePopup, user?.id, (user as any)?.uid]);
 
   return {
     activePopup,

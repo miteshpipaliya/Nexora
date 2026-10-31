@@ -33,6 +33,7 @@ import {
   OperationType,
   testFirestoreConnection
 } from './firebase';
+export { db, auth, storage } from './firebase';
 import { 
   doc, 
   getDoc, 
@@ -709,83 +710,66 @@ class NexoraDataService {
     const user = auth.currentUser;
     if (!user) throw new Error('Authentication required to register for competitions.');
 
-    // Duplicate check
-    const alreadyRegistered = await this.isUserRegisteredForEvent(user.uid, data.event_slug);
-    if (alreadyRegistered) {
-      throw new Error('You are already registered for this competition.');
+    let idToken = '';
+    try {
+      idToken = await user.getIdToken();
+    } catch {
+      // ignore
     }
 
-    const event = await this.getEventBySlug(data.event_slug);
-    if (!event) throw new Error('Event not found.');
-
-    if (event.isComingSoon) {
-      throw new Error('This competition is marked as Coming Soon and is not open for registration.');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (idToken) {
+      headers['Authorization'] = `Bearer ${idToken}`;
     }
 
-    if (!event.registration_open) {
-      throw new Error('Registration for this competition is currently closed.');
-    }
-
-    if (event.registered_count >= event.capacity) {
-      throw new Error('Competition capacity has been reached. Please contact NEXORA organizing desk.');
-    }
-
-    // Generate unique permanent competition ID e.g. ZC-A7K2
-    const competitionId = generateCompetitionId(data.event_slug);
-
-    // Uniform ₹50 fee calculation
-    const participantCount = data.team_members && data.team_members.length > 0 
-      ? data.team_members.length 
-      : 1;
-    const totalFee = participantCount * 50;
-
-    const regId = `reg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-
-    const newRecord: RegistrationRecord = {
-      id: regId,
-      competition_id: competitionId,
-      reference_id: competitionId,
-      user_id: user.uid,
+    const payload = {
       event_slug: data.event_slug,
-      event_title: event.title,
-      full_name: data.full_name.trim(),
-      email: data.email.trim().toLowerCase(),
-      phone_number: data.phone_number.trim(),
-      college: data.college.trim(),
-      branch: data.branch.trim(),
+      full_name: data.full_name?.trim(),
+      email: data.email?.trim().toLowerCase(),
+      phone_number: data.phone_number?.trim(),
+      college: data.college?.trim(),
+      branch: data.branch?.trim(),
       academic_year: data.academic_year,
-      enrollment_number: data.enrollment_number.trim().toUpperCase(),
+      enrollment_number: data.enrollment_number?.trim().toUpperCase(),
       division: data.division?.trim() || '',
       team_name: data.team_name?.trim() || '',
-      team_members: data.team_members?.filter(Boolean) || [],
-      team_member_details: data.team_member_details || [],
-      participant_count: participantCount,
-      registration_status: 'Confirmed',
-      payment_status: 'Unpaid',
-      calculated_fee: totalFee,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      team_members: data.team_members || [],
+      team_member_details: data.team_member_details || []
     };
 
+    let res: Response;
     try {
-      const regRef = doc(db, 'registrations', regId);
-      await setDoc(regRef, cleanFirestoreData(newRecord));
+      res = await fetch('/api/registrations/create', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      });
+    } catch {
+      throw new Error('Registration service is unavailable. Nothing was saved. Please try again.');
+    }
 
-      // Increment registered_count on event
-      try {
-        const evRef = doc(db, 'events', data.event_slug);
-        await updateDoc(evRef, {
-          registered_count: (event.registered_count || 0) + 1
-        });
-      } catch (evErr) {
-        console.warn('Event count update note:', evErr);
+    let json: any = null;
+    try {
+      json = await res.json();
+    } catch {
+      json = null;
+    }
+
+    if (!res.ok) {
+      if (json && typeof json.error === 'string') {
+        throw new Error(json.error);
       }
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `registrations/${regId}`);
+      throw new Error('Registration service is unavailable. Nothing was saved. Please try again.');
+    }
+
+    if (!json || !json.registration) {
+      throw new Error('Registration service is unavailable. Nothing was saved. Please try again.');
     }
 
     this.notify();
-    return newRecord;
+    return json.registration;
   }
 
   // --- CONTACT INQUIRIES ---

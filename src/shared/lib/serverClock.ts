@@ -41,6 +41,16 @@ export function getServerNow(): number {
   return Date.now() + serverOffsetMs;
 }
 
+export const serverNow = getServerNow;
+
+export function getServerSkewMs(): number {
+  return serverOffsetMs;
+}
+
+export function getSafeServerQueryTimeMs(safetyWindowMs = 30000): number {
+  return getServerNow() - safetyWindowMs;
+}
+
 export function getServerDate(): Date {
   return new Date(getServerNow());
 }

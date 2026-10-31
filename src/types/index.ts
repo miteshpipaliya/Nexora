@@ -172,9 +172,6 @@ export interface InAppNotification {
   popup_delay_seconds?: number;
   display_at?: string | number | any;
   publish_at?: string;
-  display_at?: string;
-  scheduled_for?: string;
-  popup_delay_seconds?: number;
   is_popup?: boolean;
   expires_at?: string;
   created_at: string;

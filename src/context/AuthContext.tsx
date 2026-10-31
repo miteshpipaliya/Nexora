@@ -27,6 +27,7 @@ interface AuthContextType {
     expiresAt: number;
   }>;
   resetPasswordWithOtp: (email: string, verificationToken: string, newPassword: string) => Promise<void>;
+  refreshAdminClaim: (force?: boolean) => Promise<boolean>;
   // Backward compatibility aliases
   login: (email: string, pass: string) => Promise<UserProfile>;
   signup: (data: any) => Promise<UserProfile>;
@@ -193,6 +194,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isAdmin = Boolean(isAdminClaim || user?.is_admin || dataService.isUserAdmin(user));
 
+  const refreshAdminClaim = async (force: boolean = true): Promise<boolean> => {
+    try {
+      const fbUser = auth.currentUser;
+      if (!fbUser) {
+        setIsAdminClaim(false);
+        return false;
+      }
+      const tokenResult = await fbUser.getIdTokenResult(force);
+      const hasClaim = Boolean(tokenResult?.claims?.admin === true);
+      setIsAdminClaim(hasClaim);
+      return hasClaim;
+    } catch {
+      return false;
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -212,6 +229,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sendEmailOtp,
         verifyEmailOtp,
         resetPasswordWithOtp,
+        refreshAdminClaim,
         login: loginWithEmail,
         signup: signupWithEmail
       }}

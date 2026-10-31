@@ -23,9 +23,9 @@ describe('Phase 1 & Phase 8: Data Sanitization & Undefined Field Prevention', ()
     const cleaned = cleanFirestoreData(dirtyData);
     expect(cleaned).not.toHaveProperty('expires_at');
     expect(cleaned).not.toHaveProperty('publish_at');
-    expect(cleaned.metadata).not.toHaveProperty('extra');
-    expect(cleaned.metadata.deep).not.toHaveProperty('bad');
-    expect(cleaned.metadata.deep.valid).toBe(123);
+    expect((cleaned as any).metadata).not.toHaveProperty('extra');
+    expect((cleaned as any).metadata.deep).not.toHaveProperty('bad');
+    expect((cleaned as any).metadata.deep.valid).toBe(123);
     expect(cleaned.title).toBe('Hackathon Announcement');
   });
 
