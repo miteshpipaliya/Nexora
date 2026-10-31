@@ -103,6 +103,9 @@ export const Footer: React.FC = () => {
                 <Link to="/team" className="hover:text-white transition-colors">Founding Team</Link>
               </li>
               <li>
+                <Link to="/store" className="hover:text-white transition-colors">NEXORA Store</Link>
+              </li>
+              <li>
                 <Link to="/profile" className="hover:text-white transition-colors">Student Profile</Link>
               </li>
             </ul>

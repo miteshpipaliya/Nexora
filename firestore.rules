@@ -83,10 +83,36 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
 
-    // Media Upload Metadata
+    // Media Upload Metadata & Image Library
     match /mediaUploads/{uploadId} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+    match /imageLibrary/{imageId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Team Roles, Branches, Departments, Divisions & Config
+    match /teamConfig/{configId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+    match /teamRoles/{roleId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+    match /academicBranches/{branchId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+    match /teamDepartments/{deptId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+    match /teamDivisions/{divId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
 
     // System Config (Initialized flags)

@@ -208,3 +208,76 @@ export interface RealDashboardStats {
   upcomingEvents: number;
   totalRevenue: number;
 }
+
+export interface ImageLibraryItem {
+  id: string;
+  title: string;
+  category: 'Vibe Coding / AI Hackathon' | 'CodeRush' | 'Mechanical / RoboRace' | 'Cybersecurity / CTF' | 'Civil / Engineering' | 'General Student Groups' | string;
+  url: string;
+  thumbnail_url?: string;
+  file_name?: string;
+  file_size?: number;
+  dimensions?: string;
+  uploaded_by?: string;
+  created_at: string;
+  is_system_preset?: boolean;
+}
+
+export interface TeamRole {
+  id: string;
+  name: string;
+  display_order: number;
+  enabled: boolean;
+  description?: string;
+}
+
+export interface AcademicBranch {
+  id: string;
+  name: string;
+  code: string;
+  display_order: number;
+  enabled: boolean;
+}
+
+export interface TeamDivision {
+  id: string;
+  name: string;
+  display_order: number;
+}
+
+export interface TeamDepartment {
+  id: string;
+  name: string;
+  display_order: number;
+  enabled: boolean;
+  description?: string;
+}
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  role_id?: string;
+  role_name: string;
+  academic_branch_id?: string;
+  academic_branch_name: string;
+  division?: string;
+  department_id?: string;
+  department_name: string;
+  bio: string;
+  avatar_url?: string;
+  enrollment_number?: string;
+  institution?: string;
+  social_links?: {
+    linkedin?: string;
+    github?: string;
+    twitter?: string;
+    email?: string;
+    instagram?: string;
+  };
+  display_order: number;
+  is_featured: boolean;
+  is_founder?: boolean;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}

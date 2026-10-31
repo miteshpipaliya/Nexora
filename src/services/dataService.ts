@@ -10,7 +10,13 @@ import {
   AcademicYear,
   InAppNotification,
   SiteContent,
-  RealDashboardStats
+  RealDashboardStats,
+  ImageLibraryItem,
+  TeamRole,
+  AcademicBranch,
+  TeamDivision,
+  TeamDepartment,
+  TeamMember
 } from '../types';
 import { 
   auth, 
@@ -1076,7 +1082,13 @@ class NexoraDataService {
     }
   }
 
-  public subscribeNotifications(audience: string, callback: (notifs: InAppNotification[]) => void): () => void {
+  public subscribeNotifications(
+    audienceOrCallback: string | ((notifs: InAppNotification[]) => void),
+    maybeCallback?: (notifs: InAppNotification[]) => void
+  ): () => void {
+    const audience = typeof audienceOrCallback === 'string' ? audienceOrCallback : 'all';
+    const callback = typeof audienceOrCallback === 'function' ? audienceOrCallback : (maybeCallback || (() => {}));
+
     try {
       const q = collection(db, 'notifications');
       const unsubscribe = onSnapshot(q, (snap) => {
@@ -1278,20 +1290,28 @@ class NexoraDataService {
     }
   }
 
-  // --- COMPETITION CRUD (PHASE 5) ---
+  // Admin Session Header Helper
+  private getAdminHeaders(): Record<string, string> {
+    const token = sessionStorage.getItem('nexora_elevated_admin_token') || '';
+    return {
+      'Content-Type': 'application/json',
+      'x-admin-session': token
+    };
+  }
+
+  // --- COMPETITION CRUD (PHASE 2 & PHASE 5 RESILIENT PERSISTENCE) ---
   public async createCompetition(eventData: Partial<CompetitionEvent>): Promise<CompetitionEvent> {
-    if (!eventData.slug || !eventData.slug.trim()) {
-      throw new Error('A unique competition URL slug is required (e.g. "code-combat").');
-    }
     if (!eventData.title || !eventData.title.trim()) {
       throw new Error('Competition title is required.');
     }
 
-    const cleanSlug = eventData.slug.toLowerCase().trim().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
-    const evRef = doc(db, 'events', cleanSlug);
-    const existing = await getDoc(evRef);
-    if (existing.exists()) {
-      throw new Error(`A competition with the slug "${cleanSlug}" already exists. Please choose a unique slug.`);
+    // Auto-generate slug from title if not explicitly provided
+    let cleanSlug = (eventData.slug || '').toLowerCase().trim().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+    if (!cleanSlug) {
+      cleanSlug = eventData.title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    }
+    if (!cleanSlug) {
+      cleanSlug = `event-${Date.now().toString(36)}`;
     }
 
     const newEvent: CompetitionEvent = {
@@ -1310,7 +1330,7 @@ class NexoraDataService {
       isComingSoon: Boolean(eventData.isComingSoon),
       capacity: Number(eventData.capacity) || 60,
       registered_count: 0,
-      fee_per_participant: Number(eventData.fee_per_participant) || 50,
+      fee_per_participant: Number(eventData.fee_per_participant) ?? 50,
       banner_image: eventData.banner_image || eventData.cover_image || '/images/competitions/zerocode.jpg',
       cover_image: eventData.cover_image || eventData.banner_image || '/images/competitions/zerocode.jpg',
       event_date: eventData.event_date || 'TBA',
@@ -1318,8 +1338,8 @@ class NexoraDataService {
       venue: eventData.venue || 'BVM Engineering College, Vallabh Vidyanagar',
       duration: eventData.duration || '6 Hours',
       team_size: eventData.team_size || '1–4 Participants',
-      min_team_size: eventData.min_team_size || 1,
-      max_team_size: eventData.max_team_size || 4,
+      min_team_size: Number(eventData.min_team_size) || 1,
+      max_team_size: Number(eventData.max_team_size) || 4,
       eligibility: eventData.eligibility || 'Open to all engineering students.',
       prizes: eventData.prizes || {
         first_place: '₹2,000 Cash Prize',
@@ -1337,10 +1357,28 @@ class NexoraDataService {
       updated_at: new Date().toISOString()
     };
 
+    const sanitized = cleanFirestoreData(newEvent);
+
+    // Primary: Write through secure server-side endpoint with Admin SDK
     try {
-      await setDoc(evRef, cleanFirestoreData(newEvent));
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `events/${cleanSlug}`);
+      const res = await safeApiFetch<{ success: boolean; competition?: CompetitionEvent }>('/api/admin/competitions', {
+        method: 'POST',
+        headers: this.getAdminHeaders(),
+        body: JSON.stringify(sanitized)
+      });
+      if (res && res.competition) {
+        this.notify();
+        return res.competition;
+      }
+    } catch (apiErr) {
+      console.warn('[COMPETITION CREATE] Server endpoint fallback to direct Firestore:', apiErr);
+      // Secondary Fallback: Direct client SDK write
+      try {
+        const evRef = doc(db, 'events', cleanSlug);
+        await setDoc(evRef, sanitized);
+      } catch (clientErr) {
+        handleFirestoreError(clientErr, OperationType.CREATE, `events/${cleanSlug}`);
+      }
     }
 
     await this.recordAdminAuditLog({
@@ -1353,15 +1391,27 @@ class NexoraDataService {
   }
 
   public async updateCompetition(slug: string, updates: Partial<CompetitionEvent>): Promise<void> {
-    const evRef = doc(db, 'events', slug);
     const sanitizedUpdates = cleanFirestoreData({
       ...updates,
+      slug,
       updated_at: new Date().toISOString()
     });
+
+    // Primary: Write through secure server-side endpoint
     try {
-      await updateDoc(evRef, sanitizedUpdates);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `events/${slug}`);
+      await safeApiFetch(`/api/admin/competitions/${slug}`, {
+        method: 'PUT',
+        headers: this.getAdminHeaders(),
+        body: JSON.stringify(sanitizedUpdates)
+      });
+    } catch (apiErr) {
+      console.warn('[COMPETITION UPDATE] Server endpoint fallback to direct Firestore:', apiErr);
+      try {
+        const evRef = doc(db, 'events', slug);
+        await updateDoc(evRef, sanitizedUpdates);
+      } catch (clientErr) {
+        handleFirestoreError(clientErr, OperationType.UPDATE, `events/${slug}`);
+      }
     }
 
     await this.recordAdminAuditLog({
@@ -1390,15 +1440,24 @@ class NexoraDataService {
   }
 
   public async deleteCompetition(slug: string): Promise<void> {
-    const regs = await getDocs(query(collection(db, 'registrations'), where('event_slug', '==', slug)));
-    if (!regs.empty) {
-      throw new Error(`Cannot delete this competition because ${regs.size} student registration(s) exist. Please Archive it instead to safely preserve student registration history.`);
-    }
-
+    // Primary: Server-side endpoint
     try {
-      await deleteDoc(doc(db, 'events', slug));
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `events/${slug}`);
+      await safeApiFetch(`/api/admin/competitions/${slug}`, {
+        method: 'DELETE',
+        headers: this.getAdminHeaders()
+      });
+    } catch (apiErr) {
+      console.warn('[COMPETITION DELETE] Server endpoint fallback to direct Firestore:', apiErr);
+      const regs = await getDocs(query(collection(db, 'registrations'), where('event_slug', '==', slug)));
+      if (!regs.empty) {
+        throw new Error(`Cannot delete this competition because ${regs.size} student registration(s) exist. Please Archive it instead to safely preserve student registration history.`);
+      }
+
+      try {
+        await deleteDoc(doc(db, 'events', slug));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `events/${slug}`);
+      }
     }
 
     await this.recordAdminAuditLog({
@@ -1409,27 +1468,10 @@ class NexoraDataService {
     this.notify();
   }
 
-  // --- NOTIFICATIONS (PHASE 2 FIX: STRICT FIRESTORE UNDEFINED GUARDS) ---
+  // --- NOTIFICATIONS (PHASE 8 FIX: SAFE SERVER-SIDE PERSISTENCE & UNDEFINED GUARDS) ---
   public async createNotification(notifData: Partial<InAppNotification>): Promise<InAppNotification> {
-    const notifId = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    
-    // Validate optional expires_at
-    let validExpiresAt: string | undefined = undefined;
-    if (notifData.expires_at && typeof notifData.expires_at === 'string' && notifData.expires_at.trim() !== '') {
-      const parsedExp = new Date(notifData.expires_at);
-      if (!isNaN(parsedExp.getTime())) {
-        validExpiresAt = parsedExp.toISOString();
-      }
-    }
-
-    // Validate optional publish_at
-    let validPublishAt: string | undefined = undefined;
-    if (notifData.publish_at && typeof notifData.publish_at === 'string' && notifData.publish_at.trim() !== '') {
-      const parsedPub = new Date(notifData.publish_at);
-      if (!isNaN(parsedPub.getTime())) {
-        validPublishAt = parsedPub.toISOString();
-      }
-    }
+    const notifId = notifData.id || `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const now = new Date().toISOString();
 
     const newNotif: InAppNotification = {
       id: notifId,
@@ -1439,29 +1481,36 @@ class NexoraDataService {
       priority: notifData.priority || 'Normal',
       audience: notifData.audience || 'all',
       status: notifData.status || 'Published',
-      link_url: notifData.link_url?.trim() || '',
-      link_text: notifData.link_text?.trim() || 'Learn More',
-      image_url: notifData.image_url?.trim() || '',
-      created_at: new Date().toISOString()
+      created_at: now
     };
 
-    if (validExpiresAt) {
-      newNotif.expires_at = validExpiresAt;
-    }
-    if (validPublishAt) {
-      newNotif.publish_at = validPublishAt;
-    }
-    if (notifData.created_by?.trim()) {
-      newNotif.created_by = notifData.created_by.trim();
-    }
+    if (notifData.link_url?.trim()) newNotif.link_url = notifData.link_url.trim();
+    if (notifData.link_text?.trim()) newNotif.link_text = notifData.link_text.trim();
+    if (notifData.image_url?.trim()) newNotif.image_url = notifData.image_url.trim();
+    if (notifData.publish_at?.trim()) newNotif.publish_at = notifData.publish_at.trim();
+    if (notifData.expires_at?.trim()) newNotif.expires_at = notifData.expires_at.trim();
+    if (notifData.created_by?.trim()) newNotif.created_by = notifData.created_by.trim();
 
-    // Pass through cleanFirestoreData to guarantee ZERO undefined keys
-    const sanitizedPayload = cleanFirestoreData(newNotif);
+    const sanitized = cleanFirestoreData(newNotif);
 
+    // Primary: Write through secure server-side endpoint
     try {
-      await setDoc(doc(db, 'notifications', notifId), sanitizedPayload);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `notifications/${notifId}`);
+      const res = await safeApiFetch<{ success: boolean; notification?: InAppNotification }>('/api/admin/notifications', {
+        method: 'POST',
+        headers: this.getAdminHeaders(),
+        body: JSON.stringify(sanitized)
+      });
+      if (res && res.notification) {
+        this.notify();
+        return res.notification;
+      }
+    } catch (apiErr) {
+      console.warn('[NOTIFICATION CREATE] Server endpoint fallback to direct Firestore:', apiErr);
+      try {
+        await setDoc(doc(db, 'notifications', notifId), sanitized);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `notifications/${notifId}`);
+      }
     }
 
     await this.recordAdminAuditLog({
@@ -1469,16 +1518,226 @@ class NexoraDataService {
       details: `Broadcast notification: "${newNotif.title}"`
     });
 
+    this.notify();
     return newNotif;
   }
 
   public async deleteNotification(id: string): Promise<void> {
     try {
-      await deleteDoc(doc(db, 'notifications', id));
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `notifications/${id}`);
+      await safeApiFetch(`/api/admin/notifications/${id}`, {
+        method: 'DELETE',
+        headers: this.getAdminHeaders()
+      });
+    } catch (apiErr) {
+      console.warn('[NOTIFICATION DELETE] Server endpoint fallback to direct Firestore:', apiErr);
+      try {
+        await deleteDoc(doc(db, 'notifications', id));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `notifications/${id}`);
+      }
+    }
+    this.notify();
+  }
+
+  // --- IMAGE LIBRARY (PHASE 3) ---
+  public async getImageLibrary(): Promise<ImageLibraryItem[]> {
+    try {
+      const res = await safeApiFetch<{ success: boolean; images: ImageLibraryItem[] }>('/api/admin/images', {
+        headers: this.getAdminHeaders()
+      });
+      if (res && Array.isArray(res.images)) {
+        return res.images;
+      }
+    } catch (apiErr) {
+      console.warn('[IMAGE LIBRARY] Server fallback to direct Firestore:', apiErr);
+    }
+
+    try {
+      const snap = await getDocs(collection(db, 'imageLibrary'));
+      if (!snap.empty) {
+        return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ImageLibraryItem));
+      }
+    } catch {}
+
+    return [];
+  }
+
+  public async addImageToLibrary(item: Partial<ImageLibraryItem>): Promise<ImageLibraryItem> {
+    const id = item.id || `img_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const fullItem: ImageLibraryItem = {
+      id,
+      title: item.title?.trim() || 'Uploaded Image',
+      category: item.category || 'General Student Groups',
+      url: item.url?.trim() || '',
+      file_name: item.file_name || 'image.jpg',
+      file_size: item.file_size || 0,
+      dimensions: item.dimensions || '1200x800',
+      uploaded_by: 'NEXORA Admin Desk',
+      is_system_preset: Boolean(item.is_system_preset),
+      created_at: new Date().toISOString()
+    };
+
+    try {
+      const res = await safeApiFetch<{ success: boolean; image: ImageLibraryItem }>('/api/admin/images', {
+        method: 'POST',
+        headers: this.getAdminHeaders(),
+        body: JSON.stringify(fullItem)
+      });
+      if (res && res.image) return res.image;
+    } catch (apiErr) {
+      console.warn('[IMAGE ADD] Server fallback to direct Firestore:', apiErr);
+      try {
+        await setDoc(doc(db, 'imageLibrary', id), cleanFirestoreData(fullItem));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `imageLibrary/${id}`);
+      }
+    }
+
+    return fullItem;
+  }
+
+  public async deleteImageFromLibrary(id: string): Promise<void> {
+    const res = await safeApiFetch<{ success: boolean; error?: string; inUse?: boolean; usedBy?: string }>(`/api/admin/images/${id}`, {
+      method: 'DELETE',
+      headers: this.getAdminHeaders()
+    });
+
+    if (res && (res as any).error) {
+      throw new Error((res as any).error);
     }
   }
+
+  // --- TEAM CMS CRUD (PHASE 5) ---
+  public async getTeamMeta(): Promise<{
+    roles: TeamRole[];
+    branches: AcademicBranch[];
+    divisions: TeamDivision[];
+    departments: TeamDepartment[];
+  }> {
+    try {
+      const res = await safeApiFetch<{ success: boolean; meta: any }>('/api/admin/team/meta', {
+        headers: this.getAdminHeaders()
+      });
+      if (res && res.meta) return res.meta;
+    } catch {}
+
+    try {
+      const snap = await getDoc(doc(db, 'teamConfig', 'meta'));
+      if (snap.exists()) return snap.data() as any;
+    } catch {}
+
+    return { roles: [], branches: [], divisions: [], departments: [] };
+  }
+
+  public async updateTeamMeta(meta: any): Promise<void> {
+    try {
+      await safeApiFetch('/api/admin/team/meta', {
+        method: 'POST',
+        headers: this.getAdminHeaders(),
+        body: JSON.stringify(meta)
+      });
+    } catch (apiErr) {
+      console.warn('[TEAM META] Server fallback to direct Firestore:', apiErr);
+      await setDoc(doc(db, 'teamConfig', 'meta'), cleanFirestoreData(meta), { merge: true });
+    }
+  }
+
+  public async getTeamMembers(): Promise<TeamMember[]> {
+    try {
+      const res = await safeApiFetch<{ success: boolean; members: TeamMember[] }>('/api/admin/team/members', {
+        headers: this.getAdminHeaders()
+      });
+      if (res && Array.isArray(res.members)) return res.members;
+    } catch {}
+
+    try {
+      const snap = await getDocs(collection(db, 'teamMembers'));
+      if (!snap.empty) {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as TeamMember));
+        list.sort((a, b) => (a.display_order || 99) - (b.display_order || 99));
+        return list;
+      }
+    } catch {}
+
+    return [];
+  }
+
+  public async createTeamMember(data: Partial<TeamMember>): Promise<TeamMember> {
+    const id = data.id || `member_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const now = new Date().toISOString();
+    const newMember: TeamMember = {
+      id,
+      name: data.name?.trim() || '',
+      role_name: data.role_name || 'Executive Member',
+      academic_branch_name: data.academic_branch_name || 'Engineering',
+      division: data.division || 'Division A',
+      department_name: data.department_name || 'Technical Operations',
+      bio: data.bio?.trim() || '',
+      avatar_url: data.avatar_url?.trim() || '/images/team/mitesh_founder.jpg',
+      enrollment_number: data.enrollment_number?.trim() || '',
+      institution: data.institution?.trim() || 'Birla Vishvakarma Mahavidyalaya',
+      social_links: data.social_links || {},
+      display_order: Number(data.display_order) || 99,
+      is_featured: Boolean(data.is_featured),
+      is_founder: Boolean(data.is_founder),
+      enabled: data.enabled !== false,
+      created_at: now,
+      updated_at: now
+    };
+
+    try {
+      const res = await safeApiFetch<{ success: boolean; member: TeamMember }>('/api/admin/team/members', {
+        method: 'POST',
+        headers: this.getAdminHeaders(),
+        body: JSON.stringify(newMember)
+      });
+      if (res && res.member) return res.member;
+    } catch (apiErr) {
+      console.warn('[TEAM MEMBER CREATE] Server fallback to direct Firestore:', apiErr);
+      await setDoc(doc(db, 'teamMembers', id), cleanFirestoreData(newMember));
+    }
+
+    return newMember;
+  }
+
+  public async updateTeamMember(id: string, updates: Partial<TeamMember>): Promise<void> {
+    try {
+      await safeApiFetch(`/api/admin/team/members/${id}`, {
+        method: 'PUT',
+        headers: this.getAdminHeaders(),
+        body: JSON.stringify(updates)
+      });
+    } catch (apiErr) {
+      console.warn('[TEAM MEMBER UPDATE] Server fallback to direct Firestore:', apiErr);
+      await updateDoc(doc(db, 'teamMembers', id), cleanFirestoreData(updates));
+    }
+  }
+
+  public async deleteTeamMember(id: string): Promise<void> {
+    try {
+      await safeApiFetch(`/api/admin/team/members/${id}`, {
+        method: 'DELETE',
+        headers: this.getAdminHeaders()
+      });
+    } catch (apiErr) {
+      console.warn('[TEAM MEMBER DELETE] Server fallback to direct Firestore:', apiErr);
+      await deleteDoc(doc(db, 'teamMembers', id));
+    }
+  }
+
+  public async getPublicTeamData(): Promise<{ members: TeamMember[]; meta: any }> {
+    try {
+      const res = await safeApiFetch<{ success: boolean; members: TeamMember[]; meta: any }>('/api/team/public');
+      if (res && Array.isArray(res.members)) {
+        return { members: res.members, meta: res.meta };
+      }
+    } catch {}
+
+    const members = await this.getTeamMembers();
+    const meta = await this.getTeamMeta();
+    return { members: members.filter((m) => m.enabled !== false), meta };
+  }
+
 
   // --- STUDENT NOTIFICATION READ RECEIPTS ---
   public async getReadNotificationIds(userId: string): Promise<Set<string>> {

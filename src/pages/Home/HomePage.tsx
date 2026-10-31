@@ -239,96 +239,125 @@ export const HomePage: React.FC = () => {
               </p>
             </div>
           ) : (
-            events.map((event) => {
+            events.map((event, idx) => {
               const isComingSoon = Boolean(event.isComingSoon);
               return (
                 <div
                   key={event.id}
-                  className={`rounded-2xl bg-[#171426]/80 border overflow-hidden flex flex-col justify-between transition-all backdrop-blur-sm ${
+                  className={`relative rounded-2xl bg-[#171426]/80 border overflow-hidden flex flex-col justify-between transition-all backdrop-blur-sm ${
                     isComingSoon
-                      ? 'border-violet-500/15 opacity-80 cursor-default'
+                      ? 'border-violet-500/15 cursor-default'
                       : 'border-violet-500/20 group hover:border-violet-400/40 hover:shadow-[0_0_25px_-5px_rgba(139,92,246,0.2)]'
                   }`}
                 >
-                  <CompetitionCardImage
-                    event={event}
-                    className="h-48 w-full"
-                    isComingSoon={isComingSoon}
-                  />
-
-                  <div className={`p-6 space-y-4 flex-1 flex flex-col justify-between transition-all ${
-                    isComingSoon ? 'filter blur-[1px] opacity-60 pointer-events-none select-none' : ''
+                  {/* Entire Card Content Wrapper (Blurred when Coming Soon) */}
+                  <div className={`flex flex-col flex-1 justify-between transition-all duration-300 ${
+                    isComingSoon ? 'filter blur-sm opacity-40 select-none pointer-events-none' : ''
                   }`}>
-                    <div className="space-y-2">
-                      <h3 className="text-2xl font-bold text-white group-hover:text-violet-300 transition-colors user-select-none">
-                        {event.title}
-                      </h3>
-                      <p className="text-xs font-mono text-violet-400 tracking-wide user-select-none">
-                        {event.tagline}
-                      </p>
-                      <p className="text-sm text-slate-300 leading-relaxed line-clamp-3 select-text">
-                        {event.description || event.short_description}
-                      </p>
+                    <CompetitionCardImage
+                      event={event}
+                      className="w-full aspect-[16/9]"
+                      isComingSoon={false}
+                      priority={idx < 2}
+                      hideInnerOverlay={true}
+                    />
 
-                      <div className="pt-2 flex items-center gap-2 text-xs font-mono text-amber-400">
-                        <Trophy className="w-3.5 h-3.5 shrink-0" />
-                        <span>1st Prize: {event.prizes?.first_place || '₹2,000 Cash Prize'}</span>
-                      </div>
-                    </div>
+                    <div className="p-6 space-y-4 flex-1 flex flex-col justify-between">
+                      <div className="space-y-2">
+                        <h3 className="text-2xl font-bold text-white group-hover:text-violet-300 transition-colors user-select-none">
+                          {event.title}
+                        </h3>
+                        <p className="text-xs font-mono text-violet-400 tracking-wide user-select-none">
+                          {event.tagline}
+                        </p>
+                        <p className="text-sm text-slate-300 leading-relaxed line-clamp-3 select-text">
+                          {event.description || event.short_description}
+                        </p>
 
-                    <div className="pt-4 border-t border-violet-500/15 flex items-center justify-between gap-2">
-                      <div className="text-xs text-slate-400 font-mono user-select-none">
-                        <div>Capacity: {event.capacity} seats</div>
-                        <div className="text-violet-300 font-semibold">
-                          {event.fee_per_participant === 0 ? 'Free Entry' : `Fee: ₹${event.fee_per_participant}`}
+                        <div className="pt-2 flex items-center gap-2 text-xs font-mono text-amber-400">
+                          <Trophy className="w-3.5 h-3.5 shrink-0" />
+                          <span>1st Prize: {event.prizes?.first_place || '₹2,000 Cash Prize'}</span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {isComingSoon ? (
-                          <>
-                            <button
-                              type="button"
-                              disabled
-                              className="px-3.5 py-1.5 text-xs font-medium text-slate-500 bg-[#11101B]/50 border border-slate-700/30 rounded-lg cursor-not-allowed"
-                            >
-                              Details &amp; Rules
-                            </button>
-                            <button
-                              type="button"
-                              disabled
-                              className="px-3.5 py-1.5 text-xs font-semibold rounded-lg text-amber-300/60 bg-amber-950/30 border border-amber-500/20 cursor-not-allowed"
-                            >
-                              Coming Soon
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <Link
-                              to={`/competitions/${event.slug}`}
-                              className="px-3.5 py-1.5 text-xs font-medium text-slate-200 bg-[#11101B] border border-violet-500/25 rounded-lg hover:text-white hover:border-violet-400 transition-colors"
-                            >
-                              Details &amp; Rules
-                            </Link>
-                            <button
-                              type="button"
-                              disabled={!event.registration_open}
-                              onClick={() => setSelectedEventForModal(event)}
-                              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                                event.registration_open
-                                  ? 'text-white bg-violet-600 hover:bg-violet-500'
-                                  : 'text-slate-500 bg-slate-800 cursor-not-allowed'
-                              }`}
-                            >
-                              {event.registration_open ? 'Register' : 'Closed'}
-                            </button>
-                          </>
-                        )}
+
+                      <div className="pt-4 border-t border-violet-500/15 flex items-center justify-between gap-2">
+                        <div className="text-xs text-slate-400 font-mono user-select-none">
+                          <div>Capacity: {event.capacity} seats</div>
+                          <div className="text-violet-300 font-semibold">
+                            {event.fee_per_participant === 0 ? 'Free Entry' : `Fee: ₹${event.fee_per_participant}`}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isComingSoon ? (
+                            <>
+                              <button
+                                type="button"
+                                disabled
+                                tabIndex={-1}
+                                className="px-3.5 py-1.5 text-xs font-medium text-slate-500 bg-[#11101B]/50 border border-slate-700/30 rounded-lg cursor-not-allowed"
+                              >
+                                Details &amp; Rules
+                              </button>
+                              <button
+                                type="button"
+                                disabled
+                                tabIndex={-1}
+                                className="px-3.5 py-1.5 text-xs font-semibold rounded-lg text-amber-300/60 bg-amber-950/30 border border-amber-500/20 cursor-not-allowed"
+                              >
+                                Coming Soon
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <Link
+                                to={`/competitions/${event.slug}`}
+                                className="px-3.5 py-1.5 text-xs font-medium text-slate-200 bg-[#11101B] border border-violet-500/25 rounded-lg hover:text-white hover:border-violet-400 transition-colors"
+                              >
+                                Details &amp; Rules
+                              </Link>
+                              <button
+                                type="button"
+                                disabled={!event.registration_open}
+                                onClick={() => setSelectedEventForModal(event)}
+                                className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                                  event.registration_open
+                                    ? 'text-white bg-violet-600 hover:bg-violet-500'
+                                    : 'text-slate-500 bg-slate-800 cursor-not-allowed'
+                                }`}
+                              >
+                                {event.registration_open ? 'Register' : 'Closed'}
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
+
+                  {/* Sharp Overlay Sibling on Top */}
+                  {isComingSoon && (
+                    <div
+                      className="absolute inset-0 z-30 flex flex-col items-center justify-center p-6 bg-black/60 backdrop-blur-[2px] text-center select-none"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      aria-hidden="true"
+                    >
+                      <div className="px-4 py-1.5 rounded-full bg-violet-950/90 border border-violet-400/50 shadow-[0_0_20px_rgba(139,92,246,0.6)] mb-2">
+                        <span className="text-sm sm:text-base font-extrabold tracking-widest text-violet-200 font-mono">
+                          COMING SOON
+                        </span>
+                      </div>
+                      <p className="text-xs font-mono text-slate-300 tracking-wide max-w-xs">
+                        Details &amp; Registration Opening Soon
+                      </p>
+                    </div>
+                  )}
                 </div>
               );
             })
+
           )}
         </div>
       </section>

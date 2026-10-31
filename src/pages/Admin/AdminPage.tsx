@@ -50,10 +50,18 @@ import {
   ContactMessage, 
   RealDashboardStats, 
   SiteContent, 
-  UserProfile 
+  UserProfile,
+  TeamMember,
+  TeamRole,
+  AcademicBranch,
+  TeamDivision,
+  TeamDepartment,
+  ImageLibraryItem
 } from '../../types';
 import { NexoraLogo } from '../../components/ui/NexoraLogo';
 import { LocalImageUploader } from '../../components/admin/LocalImageUploader';
+import { ImageSelector } from '../../components/admin/ImageSelector';
+import { ImageLibraryModal } from '../../components/admin/ImageLibraryModal';
 import { PrizePoolEditor } from '../../components/admin/PrizePoolEditor';
 import { FOUNDING_TEAM } from '../../services/mockData';
 
@@ -77,7 +85,34 @@ export const AdminPage: React.FC = () => {
   const [students, setStudents] = useState<UserProfile[]>([]);
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
   const [messages, setMessages] = useState<ContactMessage[]>([]);
-  const [teamMembers, setTeamMembers] = useState<TeamMemberProfile[]>(FOUNDING_TEAM);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [teamMeta, setTeamMeta] = useState<{
+    roles: TeamRole[];
+    branches: AcademicBranch[];
+    divisions: TeamDivision[];
+    departments: TeamDepartment[];
+  }>({ roles: [], branches: [], divisions: [], departments: [] });
+  const [teamSubTab, setTeamSubTab] = useState<'members' | 'roles' | 'branches' | 'departments' | 'divisions'>('members');
+  const [editingTeamMember, setEditingTeamMember] = useState<TeamMember | null>(null);
+  const [showTeamMemberModal, setShowTeamMemberModal] = useState<boolean>(false);
+  const [newTeamMemberData, setNewTeamMemberData] = useState<Partial<TeamMember>>({
+    name: '',
+    role_name: 'Executive Member',
+    academic_branch_name: 'Electronics Engineering',
+    division: 'Division A',
+    department_name: 'Technical Operations',
+    bio: '',
+    avatar_url: '/images/team/mitesh_founder.jpg',
+    enrollment_number: '',
+    institution: 'Birla Vishvakarma Mahavidyalaya',
+    display_order: 10,
+    is_featured: false,
+    is_founder: false,
+    enabled: true
+  });
+  const [showImageLibraryDirectModal, setShowImageLibraryDirectModal] = useState<boolean>(false);
+  const [newMetaInput, setNewMetaInput] = useState<{ name: string; code?: string; description?: string }>({ name: '', code: '', description: '' });
+  const [showAddMetaModal, setShowAddMetaModal] = useState<boolean>(false);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -327,7 +362,7 @@ export const AdminPage: React.FC = () => {
     setLoading(true);
     setStatsError(null);
     try {
-      const [stats, allRegs, allEvents, allStudents, notifs, msgs, logs] = await Promise.all([
+      const [stats, allRegs, allEvents, allStudents, notifs, msgs, logs, tMembers, tMeta] = await Promise.all([
         dataService.getRealDashboardStats().catch((err: any) => {
           setStatsError(err.message || 'Could not fetch database stats');
           return null;
@@ -337,7 +372,9 @@ export const AdminPage: React.FC = () => {
         dataService.getAllStudents().catch(() => []),
         dataService.getNotifications().catch(() => []),
         dataService.getContactMessages().catch(() => []),
-        dataService.getAuditLogs().catch(() => [])
+        dataService.getAuditLogs().catch(() => []),
+        dataService.getTeamMembers().catch(() => []),
+        dataService.getTeamMeta().catch(() => ({ roles: [], branches: [], divisions: [], departments: [] }))
       ]);
 
       if (stats) setRealStats(stats);
@@ -347,6 +384,8 @@ export const AdminPage: React.FC = () => {
       setNotifications(notifs);
       setMessages(msgs);
       setAuditLogs(logs);
+      if (tMembers && tMembers.length > 0) setTeamMembers(tMembers);
+      if (tMeta) setTeamMeta(tMeta);
     } catch (err: any) {
       console.warn('Dashboard load error:', err);
       setStatsError(err.message || 'Error communicating with Firestore.');
@@ -815,6 +854,115 @@ export const AdminPage: React.FC = () => {
       showErrorToast(err.message || 'Failed to send reply.');
     } finally {
       setSendingReply(false);
+    }
+  };
+
+  // TEAM CRUD ACTIONS (PHASE 5)
+  const handleSaveTeamMember = async () => {
+    if (!newTeamMemberData.name?.trim()) {
+      showErrorToast('Member name is required.');
+      return;
+    }
+    setLoading(true);
+    try {
+      if (editingTeamMember) {
+        await dataService.updateTeamMember(editingTeamMember.id, newTeamMemberData);
+        showSuccessToast(`Updated team member "${newTeamMemberData.name}"!`);
+      } else {
+        await dataService.createTeamMember(newTeamMemberData);
+        showSuccessToast(`Added team member "${newTeamMemberData.name}"!`);
+      }
+      setShowTeamMemberModal(false);
+      setEditingTeamMember(null);
+      loadDashboardData();
+    } catch (err: any) {
+      showErrorToast(err.message || 'Failed to save team member.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteTeamMember = async (id: string, name: string) => {
+    if (!window.confirm(`Delete team member "${name}"?`)) return;
+    setLoading(true);
+    try {
+      await dataService.deleteTeamMember(id);
+      showSuccessToast(`Deleted team member "${name}".`);
+      loadDashboardData();
+    } catch (err: any) {
+      showErrorToast(err.message || 'Failed to delete team member.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveMetaItem = async (type: 'role' | 'branch' | 'department' | 'division', itemData: any) => {
+    setLoading(true);
+    try {
+      const updated = {
+        roles: [...(teamMeta.roles || [])],
+        branches: [...(teamMeta.branches || [])],
+        divisions: [...(teamMeta.divisions || [])],
+        departments: [...(teamMeta.departments || [])]
+      };
+
+      if (type === 'role') {
+        const id = itemData.id || `role-${Date.now()}`;
+        const existingIdx = updated.roles.findIndex((r) => r.id === id);
+        if (existingIdx >= 0) updated.roles[existingIdx] = { ...updated.roles[existingIdx], ...itemData };
+        else updated.roles.push({ id, name: itemData.name, display_order: updated.roles.length + 1, enabled: true, ...itemData });
+      } else if (type === 'branch') {
+        const id = itemData.id || `branch-${Date.now()}`;
+        const existingIdx = updated.branches.findIndex((b) => b.id === id);
+        if (existingIdx >= 0) updated.branches[existingIdx] = { ...updated.branches[existingIdx], ...itemData };
+        else updated.branches.push({ id, name: itemData.name, code: itemData.code || 'BVM', display_order: updated.branches.length + 1, enabled: true, ...itemData });
+      } else if (type === 'department') {
+        const id = itemData.id || `dept-${Date.now()}`;
+        const existingIdx = updated.departments.findIndex((d) => d.id === id);
+        if (existingIdx >= 0) updated.departments[existingIdx] = { ...updated.departments[existingIdx], ...itemData };
+        else updated.departments.push({ id, name: itemData.name, display_order: updated.departments.length + 1, enabled: true, ...itemData });
+      } else if (type === 'division') {
+        const id = itemData.id || `div-${Date.now()}`;
+        const existingIdx = updated.divisions.findIndex((d) => d.id === id);
+        if (existingIdx >= 0) updated.divisions[existingIdx] = { ...updated.divisions[existingIdx], ...itemData };
+        else updated.divisions.push({ id, name: itemData.name, display_order: updated.divisions.length + 1, ...itemData });
+      }
+
+      await dataService.updateTeamMeta(updated);
+      setTeamMeta(updated);
+      showSuccessToast(`Organizational metadata saved!`);
+      setShowAddMetaModal(false);
+      setNewMetaInput({ name: '', code: '', description: '' });
+    } catch (err: any) {
+      showErrorToast(err.message || 'Failed to update organizational metadata.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteMetaItem = async (type: 'role' | 'branch' | 'department' | 'division', id: string) => {
+    if (!window.confirm('Delete this organizational item?')) return;
+    setLoading(true);
+    try {
+      const updated = {
+        roles: [...(teamMeta.roles || [])],
+        branches: [...(teamMeta.branches || [])],
+        divisions: [...(teamMeta.divisions || [])],
+        departments: [...(teamMeta.departments || [])]
+      };
+
+      if (type === 'role') updated.roles = updated.roles.filter((r) => r.id !== id);
+      if (type === 'branch') updated.branches = updated.branches.filter((b) => b.id !== id);
+      if (type === 'department') updated.departments = updated.departments.filter((d) => d.id !== id);
+      if (type === 'division') updated.divisions = updated.divisions.filter((d) => d.id !== id);
+
+      await dataService.updateTeamMeta(updated);
+      setTeamMeta(updated);
+      showSuccessToast('Item removed.');
+    } catch (err: any) {
+      showErrorToast(err.message || 'Failed to remove item.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -2252,45 +2400,392 @@ export const AdminPage: React.FC = () => {
       )}
 
       {/* ========================================================
-          TAB 8: TEAM ROLES & FOUNDER PROFILE
+          TAB 8: FULL TEAM CMS & ROLES ARCHITECTURE (PHASE 5)
       ======================================================== */}
       {activeTab === 'team' && (
         <div className="space-y-6">
-          <div>
-            <h2 className="text-xl font-bold text-white tracking-tight">Executive Team Leadership</h2>
-            <p className="text-xs text-slate-400">Founder credentials and collegiate recruitment leadership positions.</p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-white tracking-tight">Team &amp; Organizational Architecture CMS</h2>
+              <p className="text-xs text-slate-400">Manage executive organizers, team roles, academic engineering branches, divisions, and functional departments.</p>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowImageLibraryDirectModal(true)}
+                className="px-4 py-2 text-xs font-semibold text-violet-300 bg-violet-950/80 border border-violet-500/30 rounded-xl hover:bg-violet-900/60 transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Layers className="w-3.5 h-3.5 text-violet-400" />
+                <span>Open Image Library</span>
+              </button>
+
+              {teamSubTab === 'members' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingTeamMember(null);
+                    setNewTeamMemberData({
+                      name: '',
+                      role_name: teamMeta.roles?.[0]?.name || 'Executive Member',
+                      academic_branch_name: teamMeta.branches?.[0]?.name || 'Electronics Engineering',
+                      division: teamMeta.divisions?.[0]?.name || 'Division A',
+                      department_name: teamMeta.departments?.[0]?.name || 'Platform Engineering & Architecture',
+                      bio: '',
+                      avatar_url: '/images/team/mitesh_founder.jpg',
+                      enrollment_number: '',
+                      institution: 'Birla Vishvakarma Mahavidyalaya',
+                      display_order: (teamMembers.length + 1),
+                      is_featured: false,
+                      is_founder: false,
+                      enabled: true
+                    });
+                    setShowTeamMemberModal(true);
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-md flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Team Member</span>
+                </button>
+              )}
+
+              {teamSubTab !== 'members' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewMetaInput({ name: '', code: '', description: '' });
+                    setShowAddMetaModal(true);
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-md flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add {teamSubTab.slice(0, -1)}</span>
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {teamMembers.map((member) => (
-              <div key={member.id} className="p-6 bg-[#171426] border border-violet-500/20 rounded-2xl space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-700 to-purple-900 border border-violet-500/30 flex items-center justify-center text-white font-bold text-xl overflow-hidden shrink-0">
-                    {member.avatar_url ? (
-                      <img src={member.avatar_url} alt={member.name} className="w-full h-full object-cover" />
-                    ) : (
-                      member.name.split(' ').map(n => n[0]).join('')
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-bold text-white">{member.name}</h3>
-                      {member.is_founder && (
-                        <span className="px-2 py-0.5 text-[10px] font-mono bg-violet-950 text-violet-300 border border-violet-500/30 rounded font-semibold">
-                          Founder
-                        </span>
-                      )}
+          {/* Sub Tabs */}
+          <div className="flex items-center gap-2 border-b border-violet-500/20 pb-2 overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setTeamSubTab('members')}
+              className={`px-4 py-2 text-xs font-mono rounded-xl transition-all whitespace-nowrap ${
+                teamSubTab === 'members'
+                  ? 'bg-violet-600 text-white font-bold shadow-md'
+                  : 'bg-[#171426] text-slate-400 hover:text-white border border-violet-500/15'
+              }`}
+            >
+              Team Members ({teamMembers.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTeamSubTab('roles')}
+              className={`px-4 py-2 text-xs font-mono rounded-xl transition-all whitespace-nowrap ${
+                teamSubTab === 'roles'
+                  ? 'bg-violet-600 text-white font-bold shadow-md'
+                  : 'bg-[#171426] text-slate-400 hover:text-white border border-violet-500/15'
+              }`}
+            >
+              Roles ({teamMeta.roles?.length || 0})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTeamSubTab('branches')}
+              className={`px-4 py-2 text-xs font-mono rounded-xl transition-all whitespace-nowrap ${
+                teamSubTab === 'branches'
+                  ? 'bg-violet-600 text-white font-bold shadow-md'
+                  : 'bg-[#171426] text-slate-400 hover:text-white border border-violet-500/15'
+              }`}
+            >
+              Academic Branches ({teamMeta.branches?.length || 0})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTeamSubTab('departments')}
+              className={`px-4 py-2 text-xs font-mono rounded-xl transition-all whitespace-nowrap ${
+                teamSubTab === 'departments'
+                  ? 'bg-violet-600 text-white font-bold shadow-md'
+                  : 'bg-[#171426] text-slate-400 hover:text-white border border-violet-500/15'
+              }`}
+            >
+              Departments ({teamMeta.departments?.length || 0})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTeamSubTab('divisions')}
+              className={`px-4 py-2 text-xs font-mono rounded-xl transition-all whitespace-nowrap ${
+                teamSubTab === 'divisions'
+                  ? 'bg-violet-600 text-white font-bold shadow-md'
+                  : 'bg-[#171426] text-slate-400 hover:text-white border border-violet-500/15'
+              }`}
+            >
+              Divisions ({teamMeta.divisions?.length || 0})
+            </button>
+          </div>
+
+          {/* Subtab 1: Team Members Roster */}
+          {teamSubTab === 'members' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {teamMembers.map((member) => (
+                <div
+                  key={member.id}
+                  className={`p-6 rounded-2xl border transition-all flex flex-col justify-between space-y-4 ${
+                    member.is_founder
+                      ? 'bg-gradient-to-br from-[#1c1433] to-[#141026] border-violet-500/40 shadow-xl'
+                      : member.enabled !== false
+                      ? 'bg-[#171426] border-violet-500/20'
+                      : 'bg-[#12101e] border-slate-800 opacity-60'
+                  }`}
+                >
+                  <div className="space-y-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-14 h-14 rounded-2xl overflow-hidden border border-violet-500/30 bg-[#0d0c15] shrink-0">
+                          {member.avatar_url ? (
+                            <img
+                              src={member.avatar_url}
+                              alt={member.name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = '/images/team/mitesh_founder.jpg';
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center font-bold text-violet-300 font-mono text-sm">
+                              {member.name.slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="text-base font-bold text-white">{member.name}</h3>
+                            {member.is_founder && (
+                              <span className="px-2 py-0.5 text-[10px] font-mono bg-violet-950 text-violet-300 border border-violet-500/40 rounded font-semibold">
+                                Founder
+                              </span>
+                            )}
+                            {member.is_featured && !member.is_founder && (
+                              <span className="px-2 py-0.5 text-[10px] font-mono bg-amber-950 text-amber-300 border border-amber-500/30 rounded">
+                                Featured
+                              </span>
+                            )}
+                            {member.enabled === false && (
+                              <span className="px-2 py-0.5 text-[10px] font-mono bg-slate-900 text-slate-400 border border-slate-700 rounded">
+                                Hidden
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs font-mono text-violet-400">{member.role_name}</div>
+                          <div className="text-[11px] text-slate-400 font-mono">
+                            {member.department_name} · {member.academic_branch_name}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingTeamMember(member);
+                            setNewTeamMemberData(member);
+                            setShowTeamMemberModal(true);
+                          }}
+                          className="p-2 text-violet-300 hover:text-white bg-violet-950/60 border border-violet-500/30 rounded-lg transition-colors cursor-pointer"
+                          title="Edit Member"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        {!member.is_founder && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTeamMember(member.id, member.name)}
+                            className="p-2 text-red-400 hover:text-red-300 bg-red-950/40 border border-red-500/20 rounded-lg transition-colors cursor-pointer"
+                            title="Delete Member"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-xs font-mono text-violet-400">{member.role}</div>
-                    <div className="text-[11px] text-slate-400">{member.department} · {member.institution}</div>
+
+                    <p className="text-xs text-slate-300 leading-relaxed font-light line-clamp-3">
+                      {member.bio}
+                    </p>
+
+                    <div className="grid grid-cols-3 gap-2 p-3 bg-[#11101B] rounded-xl text-center font-mono text-xs">
+                      <div>
+                        <span className="text-[10px] text-slate-500 block uppercase">Division</span>
+                        <span className="text-white">{member.division || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block uppercase">Enrollment</span>
+                        <span className="text-violet-300">{member.enrollment_number || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block uppercase">Display Order</span>
+                        <span className="text-slate-300">{member.display_order || 99}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <p className="text-xs text-slate-300 leading-relaxed font-light">{member.bio}</p>
+              ))}
+            </div>
+          )}
+
+          {/* Subtab 2: Roles CRUD */}
+          {teamSubTab === 'roles' && (
+            <div className="p-6 bg-[#171426] border border-violet-500/20 rounded-2xl space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-violet-500/15">
+                <span className="text-xs font-mono text-slate-300 uppercase tracking-wider">Role Title &amp; Hierarchy</span>
+                <span className="text-xs font-mono text-slate-400">Order &amp; Status</span>
               </div>
-            ))}
-          </div>
+              <div className="divide-y divide-violet-500/10">
+                {(teamMeta.roles || []).map((r) => (
+                  <div key={r.id} className="py-3 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-sm font-bold text-white">{r.name}</div>
+                      {r.description && <div className="text-xs text-slate-400 font-light">{r.description}</div>}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-mono text-violet-400">Order: {r.display_order}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleSaveMetaItem('role', { ...r, enabled: !r.enabled })}
+                        className={`px-2.5 py-1 text-[11px] font-mono rounded border transition-colors ${
+                          r.enabled !== false
+                            ? 'bg-emerald-950 text-emerald-300 border-emerald-500/30'
+                            : 'bg-slate-900 text-slate-400 border-slate-700'
+                        }`}
+                      >
+                        {r.enabled !== false ? 'Enabled' : 'Disabled'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMetaItem('role', r.id)}
+                        className="p-1.5 text-red-400 hover:text-red-300"
+                        title="Delete Role"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Subtab 3: Academic Branches CRUD */}
+          {teamSubTab === 'branches' && (
+            <div className="p-6 bg-[#171426] border border-violet-500/20 rounded-2xl space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-violet-500/15">
+                <span className="text-xs font-mono text-slate-300 uppercase tracking-wider">Engineering Academic Discipline</span>
+                <span className="text-xs font-mono text-slate-400">Code &amp; Actions</span>
+              </div>
+              <div className="divide-y divide-violet-500/10">
+                {(teamMeta.branches || []).map((b) => (
+                  <div key={b.id} className="py-3 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <span className="w-10 h-7 rounded bg-violet-950 text-violet-300 border border-violet-500/30 font-mono text-xs flex items-center justify-center font-bold">
+                        {b.code}
+                      </span>
+                      <span className="text-sm font-bold text-white">{b.name}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleSaveMetaItem('branch', { ...b, enabled: !b.enabled })}
+                        className={`px-2.5 py-1 text-[11px] font-mono rounded border transition-colors ${
+                          b.enabled !== false
+                            ? 'bg-emerald-950 text-emerald-300 border-emerald-500/30'
+                            : 'bg-slate-900 text-slate-400 border-slate-700'
+                        }`}
+                      >
+                        {b.enabled !== false ? 'Active' : 'Inactive'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMetaItem('branch', b.id)}
+                        className="p-1.5 text-red-400 hover:text-red-300"
+                        title="Delete Branch"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Subtab 4: Functional Departments CRUD */}
+          {teamSubTab === 'departments' && (
+            <div className="p-6 bg-[#171426] border border-violet-500/20 rounded-2xl space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-violet-500/15">
+                <span className="text-xs font-mono text-slate-300 uppercase tracking-wider">Functional Department (Distinct from Branch)</span>
+                <span className="text-xs font-mono text-slate-400">Actions</span>
+              </div>
+              <div className="divide-y divide-violet-500/10">
+                {(teamMeta.departments || []).map((d) => (
+                  <div key={d.id} className="py-3 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-sm font-bold text-white">{d.name}</div>
+                      {d.description && <div className="text-xs text-slate-400 font-light">{d.description}</div>}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleSaveMetaItem('department', { ...d, enabled: !d.enabled })}
+                        className={`px-2.5 py-1 text-[11px] font-mono rounded border transition-colors ${
+                          d.enabled !== false
+                            ? 'bg-emerald-950 text-emerald-300 border-emerald-500/30'
+                            : 'bg-slate-900 text-slate-400 border-slate-700'
+                        }`}
+                      >
+                        {d.enabled !== false ? 'Active' : 'Inactive'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMetaItem('department', d.id)}
+                        className="p-1.5 text-red-400 hover:text-red-300"
+                        title="Delete Department"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Subtab 5: Divisions CRUD */}
+          {teamSubTab === 'divisions' && (
+            <div className="p-6 bg-[#171426] border border-violet-500/20 rounded-2xl space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-violet-500/15">
+                <span className="text-xs font-mono text-slate-300 uppercase tracking-wider">Classroom / Batch Division</span>
+                <span className="text-xs font-mono text-slate-400">Actions</span>
+              </div>
+              <div className="divide-y divide-violet-500/10">
+                {(teamMeta.divisions || []).map((div) => (
+                  <div key={div.id} className="py-3 flex items-center justify-between gap-4">
+                    <span className="text-sm font-bold text-white">{div.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteMetaItem('division', div.id)}
+                      className="p-1.5 text-red-400 hover:text-red-300"
+                      title="Delete Division"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
+
 
       {/* ========================================================
           TAB 9: PRIORITY 8 — SECURITY AUDIT LOGS
@@ -2456,11 +2951,13 @@ export const AdminPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Local Image Uploader (Priority 4) */}
-              <LocalImageUploader
-                currentImageUrl={newEventData.cover_image || newEventData.banner_image}
-                onImageUploaded={(url) => setNewEventData({ ...newEventData, cover_image: url, banner_image: url })}
-                label="Competition Cover Image (Choose from laptop)"
+              {/* Centralized Image Library Selector */}
+              <ImageSelector
+                label="Competition Cover Image"
+                value={newEventData.cover_image || newEventData.banner_image}
+                defaultCategory={newEventData.category || 'Vibe Coding / AI Hackathon'}
+                onChange={(url) => setNewEventData({ ...newEventData, cover_image: url, banner_image: url })}
+                helperText="Select high-resolution cover from NEXORA Image Library or upload new asset."
               />
 
               {/* Short & Full Description */}
@@ -2684,11 +3181,13 @@ export const AdminPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Local Image Uploader (Priority 4) */}
-              <LocalImageUploader
-                currentImageUrl={editingEvent.cover_image || editingEvent.banner_image}
-                onImageUploaded={(url) => setEditingEvent({ ...editingEvent, cover_image: url, banner_image: url })}
-                label="Competition Cover Image (Choose from laptop)"
+              {/* Centralized Image Library Selector */}
+              <ImageSelector
+                label="Competition Cover Image"
+                value={editingEvent.cover_image || editingEvent.banner_image}
+                defaultCategory={editingEvent.category || 'Vibe Coding / AI Hackathon'}
+                onChange={(url) => setEditingEvent({ ...editingEvent, cover_image: url, banner_image: url })}
+                helperText="Select high-resolution cover from NEXORA Image Library or upload new asset."
               />
 
               {/* Description */}
@@ -3140,6 +3639,336 @@ export const AdminPage: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ========================================================
+          MODAL: TEAM MEMBER (CREATE & EDIT CMS)
+      ======================================================== */}
+      {showTeamMemberModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="w-full max-w-2xl bg-[#171426] border border-violet-500/40 rounded-2xl p-6 space-y-5 shadow-2xl my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-violet-500/20">
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  {editingTeamMember ? `Edit Member: ${editingTeamMember.name}` : 'Add New Team Member'}
+                </h3>
+                <p className="text-xs text-slate-400 font-mono">
+                  Managed directly in Firestore CMS. Syncs immediately to /team.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTeamMemberModal(false);
+                  setEditingTeamMember(null);
+                }}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Photo Selector using Image Library */}
+              <div>
+                <ImageSelector
+                  label="Profile Picture / Avatar"
+                  value={newTeamMemberData.avatar_url || ''}
+                  onChange={(url) => setNewTeamMemberData({ ...newTeamMemberData, avatar_url: url })}
+                  defaultCategory="Team"
+                />
+              </div>
+
+              {/* Name & Role */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-300 font-mono mb-1">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g., Mitesh Pipaliya"
+                    value={newTeamMemberData.name || ''}
+                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, name: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-mono mb-1">Team Role *</label>
+                  <select
+                    value={newTeamMemberData.role_name || ''}
+                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, role_name: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
+                  >
+                    {(teamMeta.roles || []).map((r) => (
+                      <option key={r.id} value={r.name}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Functional Department & Academic Branch */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-300 font-mono mb-1">Functional Department (Team Unit) *</label>
+                  <select
+                    value={newTeamMemberData.department_name || ''}
+                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, department_name: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
+                  >
+                    {(teamMeta.departments || []).map((d) => (
+                      <option key={d.id} value={d.name}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-mono mb-1">Academic Engineering Branch *</label>
+                  <select
+                    value={newTeamMemberData.academic_branch_name || ''}
+                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, academic_branch_name: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
+                  >
+                    {(teamMeta.branches || []).map((b) => (
+                      <option key={b.id} value={b.name}>
+                        {b.name} ({b.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Division & Enrollment Number */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-slate-300 font-mono mb-1">Classroom Division</label>
+                  <select
+                    value={newTeamMemberData.division || ''}
+                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, division: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
+                  >
+                    {(teamMeta.divisions || []).map((div) => (
+                      <option key={div.id} value={div.name}>
+                        {div.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-mono mb-1">Enrollment Number</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., 23EL001"
+                    value={newTeamMemberData.enrollment_number || ''}
+                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, enrollment_number: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-mono mb-1">Display Order</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="999"
+                    value={newTeamMemberData.display_order ?? 10}
+                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, display_order: parseInt(e.target.value) || 10 })}
+                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Institution */}
+              <div>
+                <label className="block text-slate-300 font-mono mb-1">Institution</label>
+                <input
+                  type="text"
+                  placeholder="Birla Vishvakarma Mahavidyalaya"
+                  value={newTeamMemberData.institution || 'Birla Vishvakarma Mahavidyalaya'}
+                  onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, institution: e.target.value })}
+                  className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
+                />
+              </div>
+
+              {/* Bio */}
+              <div>
+                <label className="block text-slate-300 font-mono mb-1">Biography / Contributions</label>
+                <textarea
+                  rows={3}
+                  placeholder="Describe member focus, technical specialties, and platform responsibilities..."
+                  value={newTeamMemberData.bio || ''}
+                  onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, bio: e.target.value })}
+                  className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
+                />
+              </div>
+
+              {/* Flags */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-[#11101B] border border-violet-500/20 rounded-xl">
+                <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={newTeamMemberData.is_founder || false}
+                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, is_founder: e.target.checked })}
+                    className="accent-violet-500 rounded"
+                  />
+                  <span>Founder Badge</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={newTeamMemberData.is_featured || false}
+                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, is_featured: e.target.checked })}
+                    className="accent-violet-500 rounded"
+                  />
+                  <span>Featured Member</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={newTeamMemberData.enabled !== false}
+                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, enabled: e.target.checked })}
+                    className="accent-violet-500 rounded"
+                  />
+                  <span>Published on /team</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-violet-500/20 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTeamMemberModal(false);
+                  setEditingTeamMember(null);
+                }}
+                className="px-4 py-2 text-xs font-mono text-slate-400 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={handleSaveTeamMember}
+                className="px-5 py-2 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                <span>{editingTeamMember ? 'Save Changes' : 'Create Member'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          MODAL: ADD ORGANIZATIONAL META (ROLES, BRANCHES, ETC.)
+      ======================================================== */}
+      {showAddMetaModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-[#171426] border border-violet-500/40 rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-violet-500/20">
+              <div>
+                <h3 className="text-base font-bold text-white capitalize">
+                  Add {teamSubTab === 'branches' ? 'Academic Branch' : teamSubTab.slice(0, -1)}
+                </h3>
+                <p className="text-xs text-slate-400 font-mono">
+                  Expands selectable options across the team management directory.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddMetaModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-300 font-mono mb-1">
+                  {teamSubTab === 'branches' ? 'Branch Discipline Name *' : 'Title / Name *'}
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder={
+                    teamSubTab === 'branches'
+                      ? 'e.g., Artificial Intelligence & Data Science'
+                      : teamSubTab === 'departments'
+                      ? 'e.g., Autonomous Robotics & Embedded Lab'
+                      : teamSubTab === 'roles'
+                      ? 'e.g., Technical Lead'
+                      : 'e.g., Division C'
+                  }
+                  value={newMetaInput.name}
+                  onChange={(e) => setNewMetaInput({ ...newMetaInput, name: e.target.value })}
+                  className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
+                />
+              </div>
+
+              {teamSubTab === 'branches' && (
+                <div>
+                  <label className="block text-slate-300 font-mono mb-1">Discipline Code (Short) *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g., AIDS, ME, EC, CP"
+                    value={newMetaInput.code || ''}
+                    onChange={(e) => setNewMetaInput({ ...newMetaInput, code: e.target.value.toUpperCase() })}
+                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white font-mono"
+                  />
+                </div>
+              )}
+
+              {(teamSubTab === 'roles' || teamSubTab === 'departments') && (
+                <div>
+                  <label className="block text-slate-300 font-mono mb-1">Description (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="Brief description of responsibilities or scope"
+                    value={newMetaInput.description || ''}
+                    onChange={(e) => setNewMetaInput({ ...newMetaInput, description: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-violet-500/20 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowAddMetaModal(false)}
+                className="px-4 py-2 text-xs font-mono text-slate-400 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={loading || !newMetaInput.name.trim()}
+                onClick={() => {
+                  const type = teamSubTab === 'branches' ? 'branch' : (teamSubTab.slice(0, -1) as any);
+                  handleSaveMetaItem(type, newMetaInput);
+                }}
+                className="px-5 py-2 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                <span>Add Item</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          MODAL: DIRECT IMAGE LIBRARY BROWSER
+      ======================================================== */}
+      {showImageLibraryDirectModal && (
+        <ImageLibraryModal
+          isOpen={showImageLibraryDirectModal}
+          onClose={() => setShowImageLibraryDirectModal(false)}
+          onSelectImage={() => setShowImageLibraryDirectModal(false)}
+        />
       )}
     </div>
   );

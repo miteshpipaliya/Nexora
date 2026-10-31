@@ -6,6 +6,8 @@ interface CompetitionCardImageProps {
   event: CompetitionEvent;
   className?: string;
   isComingSoon?: boolean;
+  priority?: boolean;
+  hideInnerOverlay?: boolean;
 }
 
 export const getCompetitionDefaultImage = (slug: string): string => {
@@ -22,6 +24,15 @@ export const getCompetitionDefaultImage = (slug: string): string => {
   if (cleanSlug.includes('code') || cleanSlug.includes('rush') || cleanSlug.includes('algorithm')) {
     return '/images/competitions/coderush.jpg';
   }
+  if (cleanSlug.includes('pathfinder') || cleanSlug.includes('civil') || cleanSlug.includes('cad')) {
+    return '/images/competitions/pathfinder.jpg';
+  }
+  if (cleanSlug.includes('robo') || cleanSlug.includes('mech')) {
+    return '/images/competitions/roborace.jpg';
+  }
+  if (cleanSlug.includes('battle') || cleanSlug.includes('brain') || cleanSlug.includes('quiz')) {
+    return '/images/competitions/brainbattle.jpg';
+  }
   return '/images/competitions/zerocode.jpg';
 };
 
@@ -36,8 +47,10 @@ export const getCompetitionIcon = (slug: string) => {
 
 export const CompetitionCardImage: React.FC<CompetitionCardImageProps> = ({
   event,
-  className = 'h-52 w-full',
-  isComingSoon = false
+  className = 'w-full aspect-[16/9]',
+  isComingSoon = false,
+  priority = false,
+  hideInnerOverlay = false
 }) => {
   const defaultFallback = getCompetitionDefaultImage(event.slug);
   const primarySrc = event.cover_image || event.banner_image || defaultFallback;
@@ -70,12 +83,15 @@ export const CompetitionCardImage: React.FC<CompetitionCardImageProps> = ({
         <img
           src={currentSrc}
           alt={event.title}
+          loading={priority ? 'eager' : 'lazy'}
+          decoding="async"
+          {...(priority ? ({ fetchPriority: 'high' } as any) : {})}
           onLoad={() => setIsLoaded(true)}
           onError={handleError}
           referrerPolicy="no-referrer"
-          className={`w-full h-full object-cover transition-all duration-500 ${
+          className={`w-full h-full object-cover transition-all duration-300 ${
             isLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-105'
-          } ${isComingSoon ? 'filter blur-[3px] grayscale-[30%] opacity-60' : 'group-hover:scale-105'}`}
+          } ${isComingSoon ? 'grayscale-[30%] opacity-80' : 'group-hover:scale-105'}`}
         />
       ) : (
         /* Stylized Branded Fallback */
@@ -107,8 +123,8 @@ export const CompetitionCardImage: React.FC<CompetitionCardImageProps> = ({
         )}
       </div>
 
-      {/* Coming Soon Overlay */}
-      {isComingSoon && (
+      {/* Optional Inner Coming Soon Overlay (only if not handled by parent card) */}
+      {isComingSoon && !hideInnerOverlay && (
         <div className="absolute inset-0 z-20 bg-black/60 backdrop-blur-[2px] flex flex-col items-center justify-center p-4 text-center">
           <div className="px-4 py-1.5 rounded-full bg-violet-950/90 border border-violet-400/50 shadow-[0_0_20px_rgba(139,92,246,0.6)] mb-2">
             <span className="text-sm sm:text-base font-extrabold tracking-widest text-violet-200 font-mono">

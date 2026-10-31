@@ -12,25 +12,6 @@ import {
 } from 'lucide-react';
 
 export const AboutPage: React.FC = () => {
-  const faqs = [
-    {
-      q: 'What is the current official status of NEXORA at BVM?',
-      a: 'NEXORA is a student-initiated proposal conceptualized by students at Birla Vishvakarma Mahavidyalaya (BVM). It is currently being prepared for formal review and mentorship under distinguished faculty guidance before seeking official college ratification.'
-    },
-    {
-      q: 'How does NEXORA differ from standard college departmental clubs?',
-      a: 'Most clubs operate within single engineering disciplines. NEXORA is built from the ground up as a cross-disciplinary innovation platform connecting Electronics, Computer, IT, Mechanical, and Civil students with intercollege peers.'
-    },
-    {
-      q: 'Can students from other engineering colleges participate?',
-      a: 'Yes. Beginning with our intercollege expansion phase, students from GCET, ADIT, CHARUSAT, DDU, and other regional institutions are welcome in open competitions.'
-    },
-    {
-      q: 'How are competition fees handled?',
-      a: 'All fee schedules shown on the platform are proposed draft rates (₹50 for BVM students, ₹70 for external participants). No financial transactions occur until institutional approval is granted.'
-    }
-  ];
-
   return (
     <div className="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto space-y-20">
       
@@ -137,33 +118,6 @@ export const AboutPage: React.FC = () => {
         </div>
       </div>
 
-      {/* FAQ Accordion Section */}
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="text-center space-y-2">
-          <h2 className="text-2xl sm:text-3xl font-bold text-white">
-            Frequently Asked Questions
-          </h2>
-          <p className="text-sm text-slate-400">
-            Clarifying questions for students, faculty mentors, and academic administrators.
-          </p>
-        </div>
-
-        <div className="space-y-4">
-          {faqs.map((faq, i) => (
-            <div
-              key={i}
-              className="p-6 bg-[#171426] border border-violet-500/20 rounded-xl space-y-2"
-            >
-              <h4 className="text-base font-semibold text-white">
-                {faq.q}
-              </h4>
-              <p className="text-sm text-slate-300 leading-relaxed font-light">
-                {faq.a}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* CTA */}
       <div className="text-center pt-8">

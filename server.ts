@@ -5,6 +5,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { z } from 'zod';
+import { registerCmsEndpoints } from './src/server/cmsEndpoints';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1864,6 +1865,14 @@ apiRouter.post('/admin/upload-image', requireElevatedAdmin, (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Image upload failed.' });
   }
+});
+
+// Register CMS endpoints (Competitions, Broadcast Notifications, Image Library, Team CMS)
+registerCmsEndpoints({
+  apiRouter,
+  requireElevatedAdmin,
+  getAdminFirestore,
+  recordAudit
 });
 
 // Crucial: Mount apiRouter on both /api and root to handle direct and rewritten requests seamlessly
