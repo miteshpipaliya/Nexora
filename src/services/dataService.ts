@@ -1343,6 +1343,12 @@ class NexoraDataService {
 
     const sanitized = cleanFirestoreData(newEvent);
 
+    // Check hard ceiling before creation
+    const currentEvents = await this.getEvents();
+    if (currentEvents.length >= 15) {
+      throw new Error('Maximum competition limit reached (15/15 competitions). Archive or delete an existing competition to create a new one.');
+    }
+
     // Primary: Write through secure server-side endpoint with Admin SDK
     try {
       const res = await safeApiFetch<{ success: boolean; competition?: CompetitionEvent }>('/api/admin/competitions', {
@@ -1354,7 +1360,10 @@ class NexoraDataService {
         this.notify();
         return res.competition;
       }
-    } catch (apiErr) {
+    } catch (apiErr: any) {
+      if (apiErr?.status === 409 || apiErr?.message?.includes('limit')) {
+        throw apiErr;
+      }
       console.warn('[COMPETITION CREATE] Server endpoint fallback to direct Firestore:', apiErr);
       // Secondary Fallback: Direct client SDK write
       try {

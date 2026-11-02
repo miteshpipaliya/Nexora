@@ -1734,13 +1734,28 @@ export const AdminPage: React.FC = () => {
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 className="text-xl font-bold text-white tracking-tight">Competitions Portfolio Management</h2>
+              <div className="flex items-center gap-3 flex-wrap">
+                <h2 className="text-xl font-bold text-white tracking-tight">Competitions Portfolio Management</h2>
+                <span className={`px-2.5 py-0.5 text-xs font-mono font-bold rounded-lg border ${
+                  events.length >= 15
+                    ? 'bg-rose-950/80 text-rose-300 border-rose-500/40'
+                    : 'bg-violet-950/80 text-violet-300 border-violet-500/30'
+                }`}>
+                  {events.length} / 15 Competitions
+                </span>
+              </div>
               <p className="text-xs text-slate-400">All changes write directly to Firestore. Real-time updates propagate across NEXORA immediately.</p>
             </div>
             <button
               type="button"
+              disabled={events.length >= 15}
               onClick={() => setShowNewEventModal(true)}
-              className="px-4 py-2 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-md flex items-center gap-1.5 cursor-pointer shrink-0"
+              className={`px-4 py-2 text-xs font-semibold rounded-xl transition-colors shadow-md flex items-center gap-1.5 shrink-0 ${
+                events.length >= 15
+                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                  : 'text-white bg-violet-600 hover:bg-violet-500 cursor-pointer'
+              }`}
+              title={events.length >= 15 ? 'Maximum limit of 15 competitions reached.' : 'Create New Competition'}
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Create New Competition</span>

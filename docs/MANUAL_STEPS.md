@@ -1,44 +1,57 @@
-# Manual Steps for Operators & Administrators
+# NEXORA — Manual Administrative Operations & Action Guide
 
-The following operations must be performed manually in third-party dashboards or administrative consoles:
+This document specifies the required manual configuration steps in third-party service provider dashboards (Vercel, Brevo, and Firebase).
+
+---
 
 ## 1. Configure Vercel Environment Variables
-In the Vercel Dashboard -> Project Settings -> Environment Variables, add the following variables for **Production** and **Preview**:
 
-1. `FIREBASE_SERVICE_ACCOUNT`:
-   - Paste the service account JSON (either plain string or base64 encoded) generated from Firebase Console -> Project Settings -> Service Accounts -> Generate New Private Key.
-2. `OTP_HMAC_SECRET`:
-   - Generate a secure 32+ character random secret (e.g., `openssl rand -hex 32`).
-3. `ADMIN_SECURITY_PASSWORD` (Optional):
-   - Optional 16+ character master fallback password for elevated admin access.
-4. `BREVO_API_KEY`:
-   - Active Brevo transactional API key (`xkeysib-...`).
-5. `BREVO_SENDER_EMAIL`:
-   - Verified sender email in Brevo (e.g., `nexorabvm@gmail.com` or custom domain sender).
-6. `BREVO_SENDER_NAME`:
-   - `Nexora BVM`
-7. `FIREBASE_API_KEY`:
-   - Public Firebase Web API Key matching client configuration.
+In your Vercel Dashboard &rarr; Project `nexora` &rarr; **Settings** &rarr; **Environment Variables**, ensure the following variables are present for **Production**, **Preview**, and **Development**:
 
-## 2. Brevo IP Restriction Settings
-- Go to Brevo Dashboard -> Settings -> Security -> Authorized IPs.
-- Ensure authorized IP restrictions are **disabled** or set to allow dynamic cloud ranges, because Vercel serverless function IP addresses rotate dynamically across AWS/GCP regions.
+### 1.1 Client Public Configuration (`VITE_*`)
+- `VITE_FIREBASE_API_KEY`: Firebase Web API Key
+- `VITE_FIREBASE_AUTH_DOMAIN`: `gen-lang-client-0089073748.firebaseapp.com` (or your custom auth domain)
+- `VITE_FIREBASE_PROJECT_ID`: `gen-lang-client-0089073748`
+- `VITE_FIREBASE_STORAGE_BUCKET`: `gen-lang-client-0089073748.appspot.com`
+- `VITE_FIREBASE_MESSAGING_SENDER_ID`: `737604676344`
+- `VITE_FIREBASE_APP_ID`: `1:737604676344:web:03f27f8cf28e1620a5996f`
 
-## 3. Provision Admin Custom Claims
-To grant the initial founder or administrator elevated custom claims on Firebase Auth:
+### 1.2 Server Private Credentials (Protected Runtimes Only)
+- `BREVO_API_KEY`: Your live Brevo transactional API key (`xkeysib-...`, without surrounding quotes).
+- `BREVO_SENDER_EMAIL`: `nexora.bvm@gmail.com` (must be confirmed in Brevo).
+- `BREVO_SENDER_NAME`: `NEXORA`
+- `OTP_HMAC_SECRET`: 32+ character random hex string for keyed HMAC-SHA256 OTP hashing.
+- `FIREBASE_SERVICE_ACCOUNT` (Optional for serverless): Firebase Admin Service Account JSON string or base64 string.
+
+---
+
+## 2. Brevo Sender Verification & IP Rules
+
+1. **Verify Sender Email:**
+   - Go to [Brevo Dashboard](https://app.brevo.com) &rarr; **Senders & IP** &rarr; **Senders**.
+   - Ensure `nexora.bvm@gmail.com` is added and confirmed via the email verification link.
+2. **Dynamic Serverless IP Compatibility:**
+   - In Brevo &rarr; **Security** &rarr; **Authorized IPs**:
+   - Ensure the IP whitelist is empty. Vercel Serverless Function IP addresses rotate dynamically across AWS and GCP regions.
+
+---
+
+## 3. Administrator Access & Custom Claims
+
+1. Sign in to `https://www.nexora-bvm.online/auth` using:
+   - **Email:** `miteshpipaliya2202@gmail.com`
+2. The system will automatically call `POST /api/admin/auth/sync-claim` to grant `{ admin: true }` custom claims to your account.
+3. Access `/admin` and enter your Admin Security Password.
+4. If you have not yet set up your Admin Security Password, follow the onscreen setup wizard which dispatches a setup OTP to `miteshpipaliya2202@gmail.com`.
+
+---
+
+## 4. Trigger Production Build on Vercel
+
+Push the changes to `main`:
 ```bash
-npm run admin:claim -- founder@bvmengineering.ac.in
+git push origin main
 ```
-After the claim is set, sign out of the Nexora web interface and sign back in for the new token claims to take effect.
-
-## 4. Deploy Firestore Rules and Indexes
-Deploy the security rules and composite index definitions to your Firebase project:
-```bash
-firebase deploy --only firestore:rules,firestore:indexes
-```
-
-## 5. Rotate Secrets if Exposed
-If `.env` was ever committed or shared publicly, immediately rotate:
-1. Brevo API key in the Brevo console.
-2. `OTP_HMAC_SECRET` in Vercel settings.
-3. Firebase Service Account private key in the Google Cloud Console.
+Vercel will automatically trigger a build using the bundled pipeline:
+- `vite build && esbuild server.ts --bundle --platform=node --format=esm --outfile=server.js --packages=external`
+- The deployment will transition to **Ready** in approximately 60–90 seconds.

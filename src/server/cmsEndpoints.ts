@@ -304,6 +304,17 @@ export function registerCmsEndpoints({
         return;
       }
 
+      // Enforce hard ceiling of 15 competitions
+      const eventsSnap = await db.collection('events').get();
+      if (eventsSnap.size >= 15) {
+        res.status(409).json({
+          error: 'Maximum competition limit reached (15/15 competitions). Archive or delete an existing competition to create a new one.',
+          limit: 15,
+          current: eventsSnap.size
+        });
+        return;
+      }
+
       // Check collision
       const existing = await db.collection('events').doc(slug).get();
       if (existing.exists) {

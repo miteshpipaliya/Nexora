@@ -259,6 +259,167 @@ export const INITIAL_EVENTS: CompetitionEvent[] = [
       { question: 'Can students from different branches form a team of 5?', answer: 'Yes! Cross-departmental multidisciplinary squads are encouraged to cover a broad spectrum of engineering domains.' },
       { question: 'What topics are covered?', answer: 'Core computer science, digital electronics, tech history, science breakthroughs, and logical problem solving.' }
     ]
+  },
+  {
+    id: 'evt-hackathon',
+    slug: 'hackathon',
+    title: 'NEXORA Hackathon',
+    tagline: '24 HOURS. ONE VISION. INFINITE CODE.',
+    description:
+      'A flagship sprint where engineering teams build functional web, mobile, and hardware prototypes solving real campus and regional challenges.',
+    category: 'Full-Stack & Systems',
+    difficulty: 'Intermediate to Advanced',
+    status: 'Published',
+    registration_open: true,
+    event_date: 'Proposed Schedule — Post Institutional Approval',
+    duration: '24 Hours',
+    team_size: '2–4 Members per Team',
+    min_team_size: 2,
+    max_team_size: 4,
+    capacity: 60,
+    registered_count: 0,
+    fee_per_participant: 50,
+    banner_image: '/images/competitions/hackathon.jpg',
+    prizes: {
+      first_place: '₹5,000 Cash Prize',
+      second_place: '₹2,500 Cash Prize',
+      special_rewards: 'Best Innovation & Domain Impact'
+    },
+    rules: [
+      'Teams must consist of 2 to 4 members.',
+      'All code and assets must be developed during the official hackathon window.',
+      'Pre-existing libraries, open-source packages, and public APIs are permitted.',
+      'Live working prototype demonstration is mandatory for final jury evaluation.'
+    ],
+    judging_criteria: [
+      { label: 'Technical Execution & Architecture', percentage: 40, description: 'Code quality, system stability, and engineering depth.' },
+      { label: 'Innovation & Originality', percentage: 35, description: 'Uniqueness of approach and real-world applicability.' },
+      { label: 'UI/UX & Presentation', percentage: 25, description: 'Clarity of pitch, user experience, and visual polish.' }
+    ],
+    faq: [
+      { question: 'Can we build hardware-software hybrid prototypes?', answer: 'Yes! IoT and hardware integrations are welcome and encouraged.' },
+      { question: 'Is mentorship provided during the hackathon?', answer: 'Yes, industry mentors and senior faculty will conduct periodic checkpoint reviews.' }
+    ]
+  },
+  {
+    id: 'evt-circuitrix',
+    slug: 'circuitrix',
+    title: 'Circuitrix',
+    tagline: 'DECODE THE SILICON. MASTER THE VOLTAGE.',
+    description:
+      'An electronics design and debugging championship where students design, breadboard, simulate, and troubleshoot analog and digital circuit topologies under time pressure.',
+    category: 'Electronics & Hardware',
+    difficulty: 'Hardware / Circuits',
+    status: 'Published',
+    registration_open: true,
+    event_date: 'Proposed Schedule — Post Institutional Approval',
+    duration: '2 Hours',
+    team_size: '1–2 Members per Team',
+    min_team_size: 1,
+    max_team_size: 2,
+    capacity: 50,
+    registered_count: 0,
+    fee_per_participant: 50,
+    banner_image: '/images/competitions/circuitrix.jpg',
+    prizes: {
+      first_place: '₹2,500 Cash Prize',
+      second_place: '₹1,500 Cash Prize',
+      special_rewards: 'Best Debugging Precision Award'
+    },
+    rules: [
+      'Round 1: Schematic analysis and theoretical circuit debugging on paper.',
+      'Round 2: Practical hardware breadboard assembly and oscilloscope waveform verification.',
+      'All test probes, multimeters, and components are provided at the inspection bench.',
+      'Safety protocols and voltage boundaries must be strictly observed.'
+    ],
+    judging_criteria: [
+      { label: 'Hardware Output Accuracy', percentage: 60, description: 'Correct voltage thresholds, signal fidelity, and target circuit response.' },
+      { label: 'Assembly Cleanliness & Speed', percentage: 25, description: 'Wiring neatness, layout discipline, and completion speed.' },
+      { label: 'Theoretical Reasoning', percentage: 15, description: 'Accurate technical justification during viva evaluation.' }
+    ],
+    faq: [
+      { question: 'What components are used in Circuitrix?', answer: 'Operational amplifiers, 555 timers, logic gates, transistors, and passive RLC components.' },
+      { question: 'Can 1st year engineering students participate?', answer: 'Yes, Round 1 begins with fundamental electrical and electronics network principles.' }
+    ]
+  },
+  {
+    id: 'evt-signalhunt',
+    slug: 'signalhunt',
+    title: 'Signal Hunt',
+    tagline: 'UNMASK THE FREQUENCY. ISOLATE THE CARRIER.',
+    description:
+      'An RF and digital communications challenge requiring participants to demodulate hidden transmissions, decode frequency-shifted signals, and track transmission beacons across campus.',
+    category: 'Telecommunications & DSP',
+    difficulty: 'Intermediate',
+    status: 'Published',
+    registration_open: true,
+    event_date: 'Proposed Schedule — Post Institutional Approval',
+    duration: '2.5 Hours',
+    team_size: '1–2 Members per Team',
+    min_team_size: 1,
+    max_team_size: 2,
+    capacity: 50,
+    registered_count: 0,
+    fee_per_participant: 50,
+    banner_image: '/images/competitions/signalhunt.jpg',
+    prizes: {
+      first_place: '₹2,500 Cash Prize',
+      second_place: '₹1,500 Cash Prize',
+      special_rewards: 'Fastest Beacon Demodulation'
+    },
+    rules: [
+      'Teams receive spectrum waterfall plots and raw audio/RF captures.',
+      'Demodulate signals using software-defined radio tools or mathematical signal analysis.',
+      'Physical beacons hidden across designated campus zones emit weak RF pulses.',
+      'All transmissions stay within designated amateur bands with compliant power levels.'
+    ],
+    judging_criteria: [
+      { label: 'Signal Extraction & Decoded Data', percentage: 70, description: 'Accurate extraction of hidden payload bytes and coordinates.' },
+      { label: 'Time Elapsed', percentage: 30, description: 'Speed of beacon triangulation and submission.' }
+    ],
+    faq: [
+      { question: 'Are laptops required for Signal Hunt?', answer: 'Yes, teams need a laptop with audio processing or SDR decoding software.' }
+    ]
+  },
+  {
+    id: 'evt-bridgemania',
+    slug: 'bridgemania',
+    title: 'Bridge Mania',
+    tagline: 'GEOMETRY UNDER TENSION. STRUCTURE UNDER LOAD.',
+    description:
+      'A structural engineering competition where teams engineer high-efficiency truss bridges evaluated on strength-to-weight ratio and deflection before destruction testing.',
+    category: 'Civil & Structural Design',
+    difficulty: 'Structural Engineering',
+    status: 'Published',
+    registration_open: true,
+    event_date: 'Proposed Schedule — Post Institutional Approval',
+    duration: '3 Hours Construction + Testing',
+    team_size: '2–3 Members per Team',
+    min_team_size: 2,
+    max_team_size: 3,
+    capacity: 45,
+    registered_count: 0,
+    fee_per_participant: 50,
+    banner_image: '/images/competitions/bridgemania.jpg',
+    prizes: {
+      first_place: '₹3,000 Cash Prize',
+      second_place: '₹1,500 Cash Prize',
+      special_rewards: 'Highest Strength-to-Weight Ratio'
+    },
+    rules: [
+      'Teams build truss bridges using only standard materials provided at event start.',
+      'Span length: exactly 50 cm between testing support abutments.',
+      'Maximum allowable bridge self-weight: 300 grams.',
+      'Failure occurs upon catastrophic break or vertical deflection exceeding 25 mm.'
+    ],
+    judging_criteria: [
+      { label: 'Load-to-Weight Efficiency Ratio', percentage: 75, description: 'Maximum failure load divided by dry self-weight of the bridge.' },
+      { label: 'Aesthetic & Truss Precision', percentage: 25, description: 'Symmetry, joint quality, and alignment accuracy.' }
+    ],
+    faq: [
+      { question: 'What adhesive is provided?', answer: 'Standard rapid-cure synthetic adhesive is provided to all registered teams.' },
+      { question: 'Can students from non-civil branches enter?', answer: 'Yes! Bridge Mania welcomes students from all engineering disciplines.' }
+    ]
   }
 ];
 

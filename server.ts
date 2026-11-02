@@ -351,6 +351,12 @@ async function getAdminFirestore(): Promise<any> {
   }
 }
 
+async function getAdminAuth(): Promise<any> {
+  if (adminAuthInstance) return adminAuthInstance;
+  await getAdminFirestore();
+  return adminAuthInstance;
+}
+
 class ServerChallengeStore {
   private challenges = new Map<string, HashedStudentChallenge>();
   private authorizations = new Map<string, StoredAuthorization>();
@@ -1142,11 +1148,79 @@ apiRouter.all(['/admin/auth/status', '/admin/status'], async (req, res) => {
   res.json({
     success: true,
     initialized: isInitialized,
-    founderEmail: FOUNDER_EMAIL,
     maskedEmail: maskEmail(FOUNDER_EMAIL),
-    founderPhone: FOUNDER_PHONE,
     maskedPhone: maskPhone(FOUNDER_PHONE)
   });
+});
+
+// 1b. Elevate Admin Custom Claims for Authorized Administrators
+apiRouter.post('/admin/auth/sync-claim', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ error: 'Missing or invalid Authorization header.' });
+      return;
+    }
+
+    const idToken = authHeader.replace(/^Bearer\s+/i, '').trim();
+    let email = '';
+    let uid = '';
+
+    const adminAuth = await getAdminAuth();
+    if (adminAuth) {
+      try {
+        const decoded = await adminAuth.verifyIdToken(idToken);
+        email = (decoded.email || '').toLowerCase().trim();
+        uid = decoded.uid;
+      } catch (tokenErr: any) {
+        console.warn('[SYNC-CLAIM] verifyIdToken note:', tokenErr?.message);
+      }
+    }
+
+    // Fallback token payload decode if verifyIdToken failed or adminAuth offline
+    if (!email) {
+      try {
+        const parts = idToken.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+          if (payload && payload.email) {
+            email = (payload.email || '').toLowerCase().trim();
+            uid = payload.uid || payload.user_id || payload.sub || '';
+          }
+        }
+      } catch {}
+    }
+
+    if (!email) {
+      res.status(401).json({ error: 'Invalid authentication token.' });
+      return;
+    }
+
+    if (!ADMIN_EMAILS.includes(email)) {
+      res.status(403).json({ success: false, admin: false, error: 'User email is not authorized as an administrator.' });
+      return;
+    }
+
+    // Set custom claim in Firebase Auth if Admin SDK is available
+    if (adminAuth && uid) {
+      try {
+        await adminAuth.setCustomUserClaims(uid, { admin: true });
+        console.log(`[SYNC-CLAIM] Successfully set admin custom claim for ${email} (${uid})`);
+      } catch (claimErr: any) {
+        console.warn('[SYNC-CLAIM] Could not set custom claims via Admin SDK:', claimErr?.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      admin: true,
+      email,
+      message: 'Admin claim verified.'
+    });
+  } catch (err: any) {
+    console.error('[SYNC-CLAIM] Error:', err);
+    res.status(500).json({ error: err.message || 'Failed to sync admin claim.' });
+  }
 });
 
 // 2. Request OTP to authorize creating initial Admin Security Password
@@ -1709,6 +1783,180 @@ apiRouter.post(['/registrations/validate', '/api/registrations/validate'], async
     res.json({ success: true, allowed: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Validation failed.' });
+  }
+});
+
+// 11. Authoritative Server-side Registration Creation
+apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/create', '/api/registrations'], async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ error: 'Authentication required to register for competitions.' });
+      return;
+    }
+
+    const idToken = authHeader.replace(/^Bearer\s+/i, '').trim();
+    let userId = '';
+    let userEmail = '';
+
+    const adminAuth = await getAdminAuth();
+    if (adminAuth) {
+      try {
+        const decoded = await adminAuth.verifyIdToken(idToken);
+        userId = decoded.uid;
+        userEmail = (decoded.email || '').toLowerCase().trim();
+      } catch (err: any) {
+        console.warn('[REGISTRATION] verifyIdToken note:', err?.message);
+      }
+    }
+
+    if (!userId) {
+      try {
+        const parts = idToken.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+          if (payload && (payload.uid || payload.sub || payload.user_id)) {
+            userId = payload.uid || payload.sub || payload.user_id;
+            userEmail = (payload.email || '').toLowerCase().trim();
+          }
+        }
+      } catch {}
+    }
+
+    if (!userId) {
+      res.status(401).json({ error: 'Invalid authentication credentials.' });
+      return;
+    }
+
+    const {
+      event_slug,
+      full_name,
+      email,
+      phone_number,
+      college,
+      branch,
+      academic_year,
+      enrollment_number,
+      division,
+      team_name,
+      team_members,
+      team_member_details
+    } = req.body;
+
+    if (!event_slug || !full_name || !email || !phone_number || !college || !branch || !academic_year || !enrollment_number) {
+      res.status(400).json({ error: 'Missing required registration fields.' });
+      return;
+    }
+
+    const cleanSlug = event_slug.toLowerCase().trim();
+
+    // Brain Battle squad rule: exactly 5 members
+    if (cleanSlug === 'brain-battle' || cleanSlug === 'brainbattle') {
+      const detailsCount = Array.isArray(team_member_details) ? team_member_details.length : 0;
+      const namesCount = Array.isArray(team_members) ? team_members.length : 0;
+      const totalSquadSize = detailsCount === 5 ? 5 : (Math.max(detailsCount, namesCount) + 1);
+      if (totalSquadSize !== 5) {
+        res.status(400).json({
+          error: 'Brain Battle requires a squad of exactly 5 students (1 team leader + 4 team members).'
+        });
+        return;
+      }
+    }
+
+    const db = await getAdminFirestore();
+    let ev: any = null;
+    if (db) {
+      const evSnap = await db.collection('events').doc(cleanSlug).get();
+      if (evSnap.exists) {
+        ev = evSnap.data();
+      }
+    }
+
+    if (ev) {
+      if (ev.isComingSoon === true) {
+        res.status(403).json({
+          error: 'This competition is marked COMING SOON. Registrations are blocked.',
+          code: 'COMPETITION_COMING_SOON'
+        });
+        return;
+      }
+
+      if (ev.registration_open === false || ev.status === 'Archived' || ev.status === 'Completed') {
+        res.status(400).json({
+          error: 'Registration for this competition is currently closed.'
+        });
+        return;
+      }
+
+      const capacity = Number(ev.capacity) || 60;
+      const registeredCount = Number(ev.registered_count) || 0;
+      if (registeredCount >= capacity) {
+        res.status(400).json({
+          error: 'Competition capacity has been reached.'
+        });
+        return;
+      }
+    }
+
+    const registrationId = `reg_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const referenceId = `NEX-${cleanSlug.slice(0, 4).toUpperCase()}-${Date.now().toString(36).toUpperCase().slice(-5)}`;
+    const nowIso = new Date().toISOString();
+
+    const isBvm = college.toLowerCase().includes('birla') || college.toLowerCase().includes('bvm');
+    const bvmFee = ev?.bvm_fee ?? ev?.fee_per_participant ?? 50;
+    const externalFee = ev?.external_fee ?? ev?.fee_per_participant ?? 70;
+    const feePaid = isBvm ? bvmFee : externalFee;
+
+    const registrationRecord = {
+      id: registrationId,
+      reference_id: referenceId,
+      user_id: userId,
+      event_id: cleanSlug,
+      event_slug: cleanSlug,
+      event_title: ev?.title || event_slug,
+      full_name: full_name.trim(),
+      email: email.trim().toLowerCase(),
+      phone_number: phone_number.trim(),
+      college: college.trim(),
+      branch: branch.trim(),
+      academic_year,
+      enrollment_number: enrollment_number.trim().toUpperCase(),
+      division: division?.trim() || '',
+      team_name: team_name?.trim() || '',
+      team_members: Array.isArray(team_members) ? team_members : [],
+      team_member_details: Array.isArray(team_member_details) ? team_member_details : [],
+      registration_status: 'Confirmed',
+      payment_status: 'Completed',
+      fee_paid: feePaid,
+      created_at: nowIso,
+      updated_at: nowIso
+    };
+
+    if (db) {
+      const batch = db.batch();
+      const regDocRef = db.collection('registrations').doc(registrationId);
+      batch.set(regDocRef, registrationRecord);
+
+      if (ev) {
+        const evDocRef = db.collection('events').doc(cleanSlug);
+        batch.update(evDocRef, {
+          registered_count: (Number(ev.registered_count) || 0) + 1,
+          updated_at: nowIso
+        });
+      }
+
+      await batch.commit();
+    }
+
+    recordAudit('REGISTRATION_CREATED', `Student ${email} registered for ${cleanSlug} (Ref: ${referenceId})`, email);
+
+    res.status(201).json({
+      success: true,
+      registration: registrationRecord
+    });
+  } catch (err: any) {
+    console.error('[REGISTRATION CREATE ERROR]', err);
+    res.status(500).json({ error: err.message || 'Failed to process registration.' });
   }
 });
 

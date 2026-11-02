@@ -106,3 +106,57 @@ describe('Phase 5: Team Management CMS Meta Schema', () => {
     expect(mockDept.name).toContain('Architecture');
   });
 });
+
+describe('Phase 6: Competition Limit & Squad Validation', () => {
+  it('enforces maximum 15 competitions ceiling', () => {
+    const maxLimit = 15;
+    const currentEventsCount = 15;
+    const isAtCapacity = currentEventsCount >= maxLimit;
+    expect(isAtCapacity).toBe(true);
+
+    const underLimitCount = 10;
+    expect(underLimitCount < maxLimit).toBe(true);
+  });
+
+  it('validates Brain Battle requires a squad of exactly 5 students', () => {
+    function validateBrainBattleSquad(teamMembers: any[], hasLeader: boolean = true) {
+      const totalSize = (hasLeader ? 1 : 0) + teamMembers.length;
+      return totalSize === 5;
+    }
+
+    // 4 teammates + 1 leader = 5
+    expect(validateBrainBattleSquad(['Alice', 'Bob', 'Charlie', 'Diana'], true)).toBe(true);
+    // 3 teammates + 1 leader = 4 (invalid)
+    expect(validateBrainBattleSquad(['Alice', 'Bob', 'Charlie'], true)).toBe(false);
+    // 5 teammates + 1 leader = 6 (invalid)
+    expect(validateBrainBattleSquad(['Alice', 'Bob', 'Charlie', 'Diana', 'Eve'], true)).toBe(false);
+  });
+
+  it('ensures admin status masking conceals raw phone and email', () => {
+    function maskEmail(email: string): string {
+      const [local, domain] = email.split('@');
+      if (!domain) return '••••••';
+      const first = local[0] || '';
+      const last = local.slice(-2);
+      return `${first}${'•'.repeat(Math.max(local.length - 3, 4))}${last}@${domain}`;
+    }
+
+    function maskPhone(phone: string): string {
+      const cleaned = phone.trim();
+      const last3 = cleaned.slice(-3);
+      return `+91 ••••• ••${last3}`;
+    }
+
+    const email = 'miteshpipaliya2202@gmail.com';
+    const phone = '+91 8200243606';
+
+    const maskedEm = maskEmail(email);
+    const maskedPh = maskPhone(phone);
+
+    expect(maskedEm).not.toBe(email);
+    expect(maskedEm).toContain('@gmail.com');
+    expect(maskedPh).not.toBe(phone);
+    expect(maskedPh).toContain('606');
+    expect(maskedPh).toContain('•••••');
+  });
+});

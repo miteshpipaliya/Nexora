@@ -1,0 +1,1217 @@
+# NEXORA — ULTIMATE PRODUCTION RECOVERY, SECURITY AUDIT & LAUNCH MASTER PROMPT
+
+**Project:** NEXORA — BVM Engineering College  
+**GitHub Repository:** https://github.com/miteshpipaliya/Nexora  
+**Production Website:** https://www.nexora-bvm.online  
+**GitHub Owner:** miteshpipaliya  
+**Primary Admin Account:** miteshpipaliya2202@gmail.com  
+**Hosting:** Vercel  
+**Development Workflow:** Google AI Studio → GitHub → Vercel  
+**Database & Authentication:** Firebase / Firestore / Firebase Authentication  
+**Email Provider:** Brevo
+
+---
+
+# YOUR ROLE
+
+Act as a Senior Full-Stack Software Architect, Security Engineer, Firebase Specialist, DevOps Engineer, UI/UX Engineer, QA Automation Engineer, and Production Reliability Engineer.
+
+You are responsible for taking the existing NEXORA codebase from its current condition to a stable, secure, fully functional, production-ready application.
+
+This is NOT a request to create a new website.
+
+This is NOT a request to redesign the existing website.
+
+This is a complete audit, debugging, repair, integration, testing, and production-hardening operation on the existing project.
+
+You must inspect the actual GitHub repository and work with the existing architecture.
+
+Do not blindly rewrite working code.
+
+Do not remove existing features to make the build pass.
+
+Do not replace real functionality with mock data, placeholder responses, simulated success messages, or frontend-only implementations.
+
+**Every feature must work through its actual backend, database, authentication, and storage integrations.**
+
+# PHASE 0 — REPOSITORY DISCOVERY AND COMPLETE AUDIT
+
+Before modifying any code, inspect the entire repository.
+
+Inspect:
+
+1. All branches and their latest commits.
+2. All folders and source files.
+3. package.json and all lockfiles.
+4. Vite and TypeScript configuration.
+5. React components and application entry points.
+6. Authentication Context and protected routes.
+7. Firebase initialization and configuration.
+8. Firestore database structure.
+9. Firestore security rules.
+10. Firebase Storage configuration and rules.
+11. Every API endpoint.
+12. Vercel configuration and serverless functions.
+13. Admin dashboard and CMS.
+14. Competition registration system.
+15. Image upload and image rendering systems.
+16. Brevo email integration.
+17. OTP generation and verification.
+18. Forgot-password workflow.
+19. Environment variable references.
+20. Build scripts and deployment configuration.
+
+Search for:
+
+- Missing imports.
+- Duplicate imports.
+- Incorrect file paths.
+- Unused components.
+- Missing dependencies.
+- Invalid exports.
+- Incorrect API URLs.
+- Undefined variables.
+- Incorrect async/await handling.
+- Unhandled promise rejections.
+- Empty catch blocks.
+- Broken event handlers.
+- Invalid Firestore queries.
+- Incorrect Firebase permissions.
+- Hardcoded credentials.
+- Missing server-side validation.
+- Dead code.
+- Routes that return 404.
+- Server functions that crash at runtime.
+- Components that render without required data.
+
+Inspect every relevant code path, not just filenames.
+
+Create:
+
+`docs/PRODUCTION_AUDIT.md`
+
+For every issue, record:
+
+- Issue ID.
+- File and exact location.
+- Root cause.
+- Severity: Critical, High, Medium, Low.
+- User-facing impact.
+- Recommended fix.
+- Test required to verify the fix.
+- Final status: OPEN, FIXED, VERIFIED, or BLOCKED.
+
+Do not mark anything VERIFIED without actual test evidence.
+
+---
+
+# PHASE 1 — FIX BUILD SYSTEM AND VERCEL DEPLOYMENT
+
+One of the major problems is that changes committed through Google AI Studio are sometimes not appearing on the live website.
+
+Investigate the entire deployment pipeline.
+
+## 1.1 GitHub integration
+
+Verify:
+
+- Vercel is connected to the correct GitHub repository.
+- The production branch is `main`.
+- Production deployments are triggered by commits to `main`.
+- The correct project and root directory are configured.
+- The correct GitHub repository is connected.
+- No unexpected deployment-ignore configuration exists.
+- No incorrect branch is being deployed.
+- The latest successful deployment corresponds to the latest intended commit.
+
+## 1.2 Vercel configuration
+
+Inspect:
+
+- Build Command.
+- Install Command.
+- Output Directory.
+- Framework Preset.
+- Node.js version.
+- Environment variables.
+- Serverless function configuration.
+- API routing.
+- Domain configuration.
+- Deployment logs.
+
+Verify that both domains work correctly:
+
+- https://www.nexora-bvm.online
+- https://nexora-bvm.online
+
+Ensure both resolve to the intended production deployment.
+
+## 1.3 Build failures
+
+Previously identified potential issues include:
+
+- Duplicate `BroadcastPopup` imports in `App.tsx`.
+- Stale `package-lock.json`.
+- Conflicting `bun.lock` and npm installation workflows.
+- Server imports that may not be bundled into Vercel functions.
+- Missing server-side modules.
+
+Recheck each issue against the current code.
+
+Choose ONE package manager and establish one authoritative lockfile.
+
+Do not delete dependencies or lockfiles blindly.
+
+Verify the server build separately from the frontend build.
+
+If `server.ts` uses esbuild, verify that all local server modules are included in the output.
+
+In particular, investigate the previously reported missing module:
+
+`src/server/cmsEndpoints`
+
+If the current architecture still uses this module, ensure that it is correctly bundled and available in the deployed serverless function.
+
+Do not solve bundling errors by externalizing local modules that Vercel cannot resolve.
+
+## 1.4 Deployment acceptance tests
+
+The following must pass:
+
+- Clean dependency installation.
+- TypeScript type checking.
+- ESLint, if configured.
+- Unit tests.
+- Production frontend build.
+- Production server build.
+- Serverless function startup.
+- API health check.
+- Production smoke tests.
+
+Create:
+
+`scripts/production-smoke-test`
+
+It must verify the important public endpoints and detect HTTP 404, 500, malformed JSON, and unexpected redirects.
+
+Never report a successful deployment merely because Vite compiled successfully.
+
+---
+
+# PHASE 2 — REPAIR ADMIN AUTHENTICATION COMPLETELY
+
+This is one of the highest-priority tasks.
+
+My administrator account is:
+
+`miteshpipaliya2202@gmail.com`
+
+The Admin option is not appearing correctly.
+
+Previously identified possible cause:
+
+The client calls:
+
+`POST /api/admin/auth/sync-claim`
+
+However, the server may not implement this endpoint.
+
+Investigate whether this remains true.
+
+## 2.1 Admin authentication
+
+Implement a complete and secure administrator authentication workflow.
+
+Requirements:
+
+1. Firebase Authentication must authenticate the user.
+2. The backend must verify the Firebase ID token.
+3. The backend must verify the administrator's authorization.
+4. Admin permissions must be determined by trusted server-side authorization.
+5. Admin permissions must never be granted based only on a frontend email comparison.
+6. Custom claims must be managed through Firebase Admin SDK.
+7. The client must refresh its authentication token after legitimate claim changes.
+8. Admin routes must remain protected after page refresh.
+9. Admin sessions must handle expiration correctly.
+10. Unauthorized users must never access Admin APIs.
+
+## 2.2 Implement missing synchronization endpoint
+
+If missing, implement:
+
+`POST /api/admin/auth/sync-claim`
+
+It must:
+
+- Require a valid Firebase ID token.
+- Verify the authenticated identity.
+- Check an existing trusted authorization source.
+- Never allow an ordinary user to grant themselves admin access.
+- Assign the custom claim only through a trusted server-side process.
+- Return a clear response.
+- Handle invalid credentials and unauthorized requests securely.
+
+Do not create an endpoint that grants admin access simply because someone supplies the administrator email.
+
+## 2.3 Restore the Admin navigation option
+
+Check:
+
+- Navbar.
+- AuthContext.
+- ProtectedRoute.
+- AdminRoute.
+- Admin dashboard.
+- Token refresh logic.
+- Firebase custom claims.
+- Loading states.
+
+The Admin link should appear for authorized administrators.
+
+It should not briefly disappear because of an authentication loading race.
+
+Unauthorized users must not see or access the dashboard.
+
+## 2.4 ADMIN PASSWORD RECREATION — MANDATORY
+
+After repairing Admin authentication, establish a secure process for creating a new administrator password.
+
+I want a fresh Admin password instead of depending on the previous password.
+
+Implement a secure administrator credential reset procedure.
+
+Requirements:
+
+1. Identify the administrator Firebase Authentication account.
+2. Verify the administrator's identity through a trusted recovery process.
+3. Generate a password-reset link using Firebase Admin SDK or another supported secure mechanism.
+4. Allow the administrator to set a new password.
+5. Never hardcode the new password in source code.
+6. Never print passwords in deployment logs.
+7. Never store passwords in Firestore or browser localStorage.
+8. Invalidate existing sessions where supported and refresh authentication.
+9. Confirm that the new credentials work.
+10. Confirm that ordinary users cannot use the administrator reset procedure to obtain privileges.
+
+Provide a secure manual procedure in:
+
+`docs/ADMIN_CREDENTIAL_RECOVERY.md`
+
+Include the exact commands, required environment variables, and PowerShell instructions.
+
+Do not invent or expose a password. I will enter the new password privately.
+
+---
+
+# PHASE 3 — FIX FIREBASE DATABASE AND SECURITY
+
+Audit the complete Firebase architecture.
+
+## 3.1 Firestore
+
+Inspect all collections and documents used by:
+
+- Users.
+- Competitions.
+- Registrations.
+- Announcements.
+- Notifications.
+- Admin settings.
+- Site configuration.
+- Event images.
+- Password recovery, if custom OTP functionality is used.
+
+Check all Firestore queries, document IDs, field names, timestamps, indexes, and data types.
+
+Ensure frontend and backend use the same database schema.
+
+## 3.2 Security rules
+
+Review:
+
+`firestore.rules`
+
+Previously identified concern:
+
+Some registration permissions may be too broad, potentially allowing authenticated users to write arbitrary registration fields.
+
+Verify this.
+
+Rules must ensure:
+
+- Users can read and update only their permitted personal information.
+- Users cannot assign themselves admin privileges.
+- Users cannot manipulate registration ownership.
+- Users cannot change protected competition settings.
+- Users cannot edit another user's registration.
+- Only authorized administrators can manage competitions.
+- Draft announcements are not publicly readable.
+- Scheduled announcements cannot be read before publication.
+- Private information is never publicly accessible.
+
+Create and test Firebase emulator security-rule tests.
+
+Do not rely only on frontend restrictions.
+
+## 3.3 Admin API security
+
+Previously identified concern:
+
+`/api/admin/status` may expose administrator email or phone information publicly.
+
+Verify and fix.
+
+All administrative endpoints must enforce authorization on the server.
+
+Never return private administrator information to anonymous users.
+
+---
+
+# PHASE 4 — FIX ALL API ENDPOINTS
+
+Perform an endpoint-by-endpoint audit.
+
+Previously reported missing or problematic endpoints include:
+
+- `POST /api/admin/auth/sync-claim`
+- `POST /api/registrations/create`
+- CMS endpoints.
+- OTP endpoints.
+- Password-reset endpoints.
+- Admin status endpoint.
+- Image upload endpoints.
+
+These are audit leads, not assumptions. Verify every route against its actual frontend caller.
+
+Build an API inventory:
+
+`docs/API_ENDPOINT_AUDIT.md`
+
+For every endpoint document:
+
+- HTTP method.
+- Route.
+- Purpose.
+- Frontend caller.
+- Authentication requirements.
+- Authorization requirements.
+- Input validation.
+- Database operations.
+- Expected success response.
+- Error responses.
+- Test status.
+
+## Mandatory requirements
+
+1. Every frontend API call must have a real backend implementation.
+2. No broken endpoint should silently fail.
+3. No API should return fake success.
+4. Invalid requests must return appropriate HTTP status codes.
+5. All responses must use consistent JSON formatting.
+6. Server errors must be logged safely.
+7. Sensitive implementation details must not be exposed to users.
+8. Validate request bodies and query parameters.
+9. Apply reasonable rate limits to sensitive endpoints.
+10. Prevent unauthorized cross-user data access.
+
+Use appropriate status codes:
+
+- 200: Successful request.
+- 201: Resource created.
+- 400: Invalid request.
+- 401: Authentication required.
+- 403: Unauthorized.
+- 404: Resource not found.
+- 409: Conflict.
+- 429: Rate limit exceeded.
+- 500: Internal server error.
+
+Create a centralized error-handling mechanism.
+
+---
+
+# PHASE 5 — REPAIR BREVO EMAIL AND OTP SYSTEM
+
+Brevo integration is currently unreliable.
+
+Forgot Password is also failing to send OTP emails.
+
+This is a critical launch blocker.
+
+Investigate the actual reason instead of replacing the email provider unnecessarily.
+
+## 5.1 Brevo configuration
+
+Verify:
+
+- API key validity.
+- Correct API endpoint.
+- Correct authorization header.
+- Sender email verification.
+- Sender domain authentication.
+- Account activation.
+- Authorized IP restrictions.
+- Vercel environment variable configuration.
+- Production versus preview environment differences.
+- Request payload format.
+- API response parsing.
+
+Use a server-side environment variable:
+
+`BREVO_API_KEY`
+
+Never expose this key in:
+
+- Frontend JavaScript.
+- Vite public environment variables.
+- GitHub source code.
+- Browser network responses.
+- Client-side configuration.
+
+Rotate the existing Brevo API key if it has been exposed.
+
+Also rotate any exposed OTP signing or HMAC secret.
+
+## 5.2 OTP generation
+
+Implement a secure OTP system.
+
+Requirements:
+
+- Generate cryptographically secure six-digit OTPs.
+- Store only a secure hash of the OTP.
+- Associate OTPs with the intended email and purpose.
+- Set a five-minute expiry.
+- Limit verification attempts.
+- Implement a 30-second resend cooldown.
+- Apply rate limits to OTP requests.
+- Invalidate previously issued OTPs when appropriate.
+- Prevent OTP reuse.
+- Prevent account enumeration.
+- Avoid exposing OTPs in server logs.
+
+## 5.3 Forgot Password
+
+The complete flow must work:
+
+1. User enters their registered email.
+2. Backend validates the request.
+3. OTP is generated.
+4. Brevo sends the OTP.
+5. User receives the email.
+6. User enters the OTP.
+7. Backend verifies the OTP.
+8. User enters a new password.
+9. Firebase Authentication updates the password through an appropriate secure flow.
+10. User can sign in with the new password.
+
+Important:
+
+Do not implement a custom OTP flow that bypasses Firebase's secure password-reset mechanism without a carefully designed and tested server-side recovery process.
+
+Prefer Firebase's native password-reset mechanism where it meets the requirements.
+
+If the existing application requires custom OTP verification, ensure that the backend securely coordinates the recovery process.
+
+## 5.4 Email templates
+
+Create professional NEXORA-branded emails for:
+
+- Password reset.
+- OTP verification.
+- Registration confirmation.
+- Admin notifications.
+- Important announcements, if required.
+
+Email sending failures must be reported accurately.
+
+Never display "OTP sent successfully" if Brevo rejected the request.
+
+Create:
+
+`docs/BREVO_SETUP_AND_TESTING.md`
+
+Include the environment variables and manual steps I must perform in Brevo and Vercel.
+
+---
+
+# PHASE 6 — COMPLETE ADMIN CMS REBUILD AND REPAIR
+
+The Admin dashboard must become a genuinely functional content-management system.
+
+Do not make a decorative dashboard with buttons that do nothing.
+
+Every action must communicate with the actual backend and persist to Firebase.
+
+## 6.1 Competition management
+
+Maximum competition capacity:
+
+**15 competitions.**
+
+Currently, the initial catalogue contains these 10 competitions:
+
+1. ZeroCode.
+2. CTF — Capture the Flag.
+3. Hackathon.
+4. PathFinder.
+5. CodeRush.
+6. Circuitrix.
+7. Signal Hunt.
+8. RoboRace.
+9. Bridge Mania.
+10. Brain Battle.
+
+The Admin should be able to create five additional competitions.
+
+Implement complete CRUD:
+
+- Create.
+- Read.
+- Update.
+- Delete.
+
+Requirements:
+
+1. Create a competition.
+2. Edit its name.
+3. Edit its description.
+4. Edit its category.
+5. Edit its image.
+6. Edit its registration status.
+7. Edit its date and time.
+8. Edit its venue.
+9. Edit its eligibility.
+10. Edit its participation limits.
+11. Edit its rules.
+12. Edit its prizes.
+13. Edit its registration deadline.
+14. Publish and unpublish competitions.
+15. Delete competitions with appropriate confirmation.
+
+Do not hardcode the competition list in the frontend.
+
+Fetch competition data dynamically from Firestore.
+
+## 6.2 Competition capacity
+
+Implement a hard maximum of 15 competitions.
+
+The capacity must be enforced by the backend, not just the Admin interface.
+
+Requirements:
+
+- Reject creation when 15 active competition records already exist.
+- Prevent simultaneous requests from exceeding the limit.
+- Use a Firestore transaction or another reliable concurrency-safe approach.
+- Prevent duplicate competitions caused by repeated submissions.
+- Show the current competition count.
+- Show remaining capacity.
+- Display a clear error when the limit is reached.
+
+The UI should show:
+
+`10 / 15 Competitions`
+
+as an example of the dynamic counter, not a hardcoded value.
+
+## 6.3 Admin image upload system
+
+Image upload is currently unreliable.
+
+Investigate the existing upload architecture and repair it.
+
+Support:
+
+- JPG.
+- JPEG.
+- PNG.
+- WEBP.
+
+Provide two image-upload methods:
+
+**Option A — Upload from device**
+
+The administrator can select an image from their computer.
+
+**Option B — Image URL**
+
+The administrator can paste a valid image URL.
+
+Also support replacing and deleting existing images.
+
+Requirements:
+
+- Upload images to Firebase Storage or the existing properly configured image-storage provider.
+- Save the resulting image URL in Firestore.
+- Validate file type.
+- Validate file size.
+- Reject invalid files.
+- Show upload progress.
+- Show a preview before publishing.
+- Show clear success and error messages.
+- Prevent broken image references.
+- Ensure images remain available after page refresh.
+- Restrict uploads to authorized administrators.
+- Apply appropriate Firebase Storage security rules.
+
+Never save temporary local blob URLs as permanent competition image URLs.
+
+Never store image binary data inside Firestore documents.
+
+## 6.4 Admin dashboard quality
+
+The dashboard must have working:
+
+- Competition management.
+- Registration management.
+- User management, with appropriate permissions.
+- Announcement management.
+- Image management.
+- Site content management.
+- Dashboard statistics.
+- Admin account controls.
+
+Every button must perform its advertised action.
+
+Every form must validate its inputs.
+
+Every delete action must require confirmation.
+
+Show loading states, success messages, and meaningful errors.
+
+---
+
+# PHASE 7 — FIX IMAGE LOADING THROUGHOUT THE WEBSITE
+
+The website currently has inconsistent image loading.
+
+This must be investigated systematically.
+
+Previously identified potential issues:
+
+- Seven missing local image files.
+- Missing `*_hero.png` files referenced by seed data.
+- Preset image libraries using external Unsplash URLs.
+- Incorrect image paths.
+- Image references that do not exist in `public/`.
+
+Verify these findings.
+
+## 7.1 Image audit
+
+Inspect:
+
+- Every competition image.
+- Hero images.
+- Gallery images.
+- Event cards.
+- Admin image previews.
+- Profile images.
+- Logos and decorative assets.
+- Background images.
+
+Create:
+
+`docs/IMAGE_AUDIT.md`
+
+List every image reference and whether it exists and loads.
+
+## 7.2 Competition-specific images
+
+Each competition must have a relevant image.
+
+Do not reuse unrelated images.
+
+Examples:
+
+| Competition | Required image concept |
+|---|---|
+| ZeroCode | AI-assisted website/app development and digital creation |
+| CTF | Cybersecurity, digital forensics, cryptography |
+| Hackathon | Team collaborating on a technology project |
+| PathFinder | Maze, navigation, route planning |
+| CodeRush | Fast programming and competitive coding |
+| Circuitrix | Electronic circuits, PCB and components |
+| Signal Hunt | Oscilloscope waveforms and signal analysis |
+| RoboRace | Racing robots on a track |
+| Bridge Mania | Engineering bridge model construction |
+| Brain Battle | Students participating in a technology quiz |
+
+Use original generated illustrations or properly licensed images.
+
+Do not use unrelated stock photographs merely to fill empty spaces.
+
+## 7.3 Image rendering
+
+Implement reliable image handling:
+
+- Correct asset paths.
+- Lazy loading where appropriate.
+- Responsive image sizing.
+- Aspect-ratio consistency.
+- Loading placeholders.
+- Error fallbacks.
+- Correct caching headers.
+- No broken-image icons.
+- No permanent dependence on temporary URLs.
+
+Check image URLs before saving them.
+
+Ensure the Admin preview and public competition cards use the same saved image source.
+
+---
+
+# PHASE 8 — REPAIR REGISTRATION SYSTEM
+
+Registration must work from start to finish.
+
+Previously identified concern:
+
+The frontend calls:
+
+`POST /api/registrations/create`
+
+Verify whether the endpoint exists.
+
+Implement it if missing.
+
+Requirements:
+
+1. User authentication.
+2. Competition selection.
+3. Required field validation.
+4. Correct user identification.
+5. Server-side validation.
+6. Duplicate registration prevention.
+7. Competition availability checks.
+8. Registration capacity enforcement, if applicable.
+9. Firestore persistence.
+10. Registration confirmation.
+11. Admin visibility.
+12. User registration history.
+
+For Brain Battle:
+
+- Each team must contain exactly five students.
+- Validate all five team members.
+- Prevent incomplete team submissions.
+- Prevent duplicate team registrations where applicable.
+
+Ensure users cannot manipulate registration ownership or submit arbitrary administrative fields.
+
+Test the entire flow using actual test accounts.
+
+---
+
+# PHASE 9 — ANNOUNCEMENTS AND BROADCAST POPUP SYSTEM
+
+Repair the existing announcement and broadcast system.
+
+The previous implementation reportedly had these problems:
+
+- Announcements only appeared in the notification bell.
+- Popup functionality was missing.
+- `createNotification` discarded `publish_at` and `expires_at`.
+- Admin scheduling fields were missing.
+- Draft and future announcements were potentially publicly readable.
+- Admin claim refresh problems interfered with publishing.
+
+Verify all these findings.
+
+## Required functionality
+
+The Admin can:
+
+1. Create an announcement.
+2. Edit an announcement.
+3. Delete an announcement.
+4. Publish immediately.
+5. Schedule future publication.
+6. Set an expiration time.
+7. Choose announcement priority.
+8. Preview the announcement.
+
+## Popup behavior
+
+When an announcement is published:
+
+- Show it to eligible website visitors as a popup.
+- Default popup delay: 2 minutes after publication.
+- Allow the Admin to configure the delay.
+- Do not require a page refresh.
+- Avoid showing the same announcement repeatedly.
+- Support late visitors within the configured retention period.
+- Respect expiration.
+- Do not interrupt login, registration, or Admin workflows.
+
+Support:
+
+- Normal.
+- Important.
+- Urgent.
+
+All scheduling timestamps must use Asia/Kolkata (IST) consistently.
+
+Firestore rules must prevent public access to unpublished announcements.
+
+Implement reliable real-time updates without requiring expensive unnecessary polling.
+
+---
+
+# PHASE 10 — SECURITY HARDENING
+
+Conduct a complete security audit.
+
+Check:
+
+- Firebase Admin SDK configuration.
+- API authentication.
+- Admin authorization.
+- Firestore rules.
+- Storage rules.
+- CORS.
+- CSRF where applicable.
+- XSS.
+- Input sanitization.
+- Rate limiting.
+- Password-reset abuse.
+- OTP brute-force protection.
+- Session management.
+- Secret exposure.
+- Public information leakage.
+- IDOR vulnerabilities.
+- Dependency vulnerabilities.
+- Server error disclosure.
+
+Investigate previously reported issues:
+
+- Hardcoded HMAC fallback.
+- Empty catch blocks.
+- Error messages exposing internal server details.
+- Unprotected admin status information.
+- Overly permissive Firestore rules.
+- Missing Storage rules.
+- Incorrect serverless routing.
+
+Do not simply suppress security warnings.
+
+Fix the underlying problems.
+
+Do not place service-account credentials or API secrets in the GitHub repository.
+
+Use environment variables in the correct Vercel environment.
+
+Create:
+
+`docs/SECURITY_AUDIT.md`
+
+---
+
+# PHASE 11 — PRESERVE AND TEST THE ENTIRE WEBSITE
+
+This is extremely important.
+
+While fixing the Admin dashboard and backend, do not break the existing public website.
+
+Preserve the current NEXORA design language, branding, animations, responsive layout, and existing working features.
+
+Test:
+
+### Public website
+
+- Homepage.
+- Navbar.
+- Footer.
+- Hero section.
+- Competition listing.
+- Competition details.
+- About NEXORA.
+- Contact section.
+- Registration.
+- Login.
+- Signup.
+- Forgot password.
+- User profile.
+- Announcements.
+- Notification bell.
+- Broadcast popups.
+- Mobile navigation.
+
+### Admin website
+
+- Admin navigation.
+- Admin login.
+- Dashboard.
+- Competition CRUD.
+- Image uploads.
+- Image URL uploads.
+- Registration management.
+- Announcement CRUD.
+- Notification scheduling.
+- User management.
+- Logout.
+- Authentication persistence.
+
+### Responsive testing
+
+Test:
+
+- Desktop.
+- Laptop.
+- Tablet.
+- Mobile.
+
+No horizontal overflow, broken layouts, or inaccessible controls.
+
+Do not remove any working feature simply because it is difficult to repair.
+
+---
+
+# PHASE 12 — TESTING AND VERIFICATION
+
+You must establish actual evidence that the application works.
+
+Run:
+
+1. Clean dependency installation.
+2. TypeScript checks.
+3. Lint checks.
+4. Unit tests.
+5. Integration tests.
+6. Firestore emulator tests.
+7. Storage security-rule tests.
+8. API endpoint tests.
+9. Authentication tests.
+10. Admin authorization tests.
+11. OTP email tests.
+12. Password-reset tests.
+13. Registration tests.
+14. Image upload tests.
+15. Competition CRUD tests.
+16. Announcement scheduling tests.
+17. Production build.
+18. Serverless function tests.
+19. Browser-based end-to-end tests.
+
+Use real test accounts and test data.
+
+Do not use production users or real competition records for destructive testing.
+
+Do not send repeated OTP emails to real users during testing.
+
+Clean up test records after testing.
+
+## Mandatory acceptance criteria
+
+| Feature | Required result |
+|---|---|
+| Production build | PASS |
+| Vercel deployment | PASS |
+| Homepage | PASS |
+| Admin authentication | PASS |
+| Admin navigation | PASS |
+| Admin credential recovery | PASS |
+| Brevo email | PASS |
+| Forgot password | PASS |
+| OTP verification | PASS |
+| API endpoints | PASS |
+| Firestore security | PASS |
+| Registration | PASS |
+| Competition CRUD | PASS |
+| 15 competition limit | PASS |
+| Image upload | PASS |
+| Image URL upload | PASS |
+| Competition images | PASS |
+| Announcements | PASS |
+| Scheduled popup | PASS |
+| Mobile responsiveness | PASS |
+
+If something cannot be tested because credentials, permissions, or external configuration are missing, mark it BLOCKED.
+
+Never mark an untested feature as PASS.
+
+---
+
+# PHASE 13 — PERFORMANCE AND PRODUCTION OPTIMIZATION
+
+Optimize without damaging functionality.
+
+Inspect:
+
+- JavaScript bundle size.
+- Unused dependencies.
+- Duplicate dependencies.
+- Image sizes.
+- Lazy loading.
+- Database query efficiency.
+- Unnecessary Firestore listeners.
+- React rendering performance.
+- API response times.
+- Serverless cold starts.
+- Caching.
+- Security headers.
+
+Avoid unnecessary architectural rewrites.
+
+Use code splitting where appropriate.
+
+Optimize images while maintaining visual quality.
+
+Do not add unnecessary dependencies.
+
+Create:
+
+`docs/PERFORMANCE_REPORT.md`
+
+---
+
+# PHASE 14 — GITHUB AND DEPLOYMENT WORKFLOW
+
+The development workflow is:
+
+Google AI Studio → GitHub → Vercel → Production Website.
+
+Ensure this workflow is reliable.
+
+Requirements:
+
+1. Changes must be committed to the correct repository.
+2. Production branch must be `main`.
+3. Every production commit must trigger the intended Vercel deployment.
+4. Failed builds must not replace the previous working deployment.
+5. Deployment status must be checked.
+6. The deployed commit SHA must match the intended GitHub commit.
+7. The production domain must serve the latest successful deployment.
+8. No stale build or incorrect branch should be presented as the latest release.
+
+Create a deployment checklist:
+
+`docs/DEPLOYMENT_CHECKLIST.md`
+
+Include a simple workflow for future Google AI Studio commits.
+
+Do not claim that a deployment is live unless its actual deployment status has been verified.
+
+---
+
+# PHASE 15 — FINAL PRODUCTION REPORT
+
+After completing the work, create:
+
+1. `docs/PRODUCTION_AUDIT.md`
+2. `docs/API_ENDPOINT_AUDIT.md`
+3. `docs/SECURITY_AUDIT.md`
+4. `docs/IMAGE_AUDIT.md`
+5. `docs/BREVO_SETUP_AND_TESTING.md`
+6. `docs/ADMIN_CREDENTIAL_RECOVERY.md`
+7. `docs/DEPLOYMENT_CHECKLIST.md`
+8. `docs/PRODUCTION_TEST_REPORT.md`
+9. `docs/MANUAL_STEPS.md`
+
+The final report must contain:
+
+- All discovered bugs.
+- Their original root causes.
+- Files modified.
+- Files created.
+- Files removed, with justification.
+- Database changes.
+- Firebase rule changes.
+- New API endpoints.
+- Repaired API endpoints.
+- Environment variables required.
+- Vercel configuration changes.
+- Brevo configuration requirements.
+- Admin recovery instructions.
+- Tests executed.
+- Tests passed.
+- Tests failed.
+- Tests not executed.
+- Remaining blockers.
+
+Provide the exact Git commit SHA after committing changes.
+
+---
+
+# STRICT DEVELOPMENT RULES
+
+These rules are mandatory.
+
+1. Do not redesign the entire NEXORA website.
+2. Do not delete working features.
+3. Do not replace Firebase with another database.
+4. Do not replace Brevo without first investigating the existing integration.
+5. Do not introduce mock authentication.
+6. Do not simulate successful email delivery.
+7. Do not simulate image uploads.
+8. Do not create frontend-only CRUD operations.
+9. Do not hardcode administrator passwords.
+10. Do not expose API keys.
+11. Do not disable Firestore security rules to make the application work.
+12. Do not bypass authentication.
+13. Do not use placeholder competition images in production.
+14. Do not ignore TypeScript errors.
+15. Do not suppress runtime errors without fixing their cause.
+16. Do not claim successful testing without evidence.
+17. Do not modify production database records unnecessarily.
+18. Do not perform destructive database migrations without a backup and approval.
+19. Do not deploy unverified security changes.
+20. Do not overwrite existing working components unnecessarily.
+
+## CHANGE MANAGEMENT
+
+Before major modifications:
+
+- Inspect the current implementation.
+- Explain the root cause.
+- Identify affected files.
+- Plan the smallest safe repair.
+- Preserve existing functionality.
+- Implement the repair.
+- Run relevant tests.
+- Review the diff.
+- Document the outcome.
+
+Make changes in logical, reviewable commits.
+
+Do not put the entire application into one massive unreviewed rewrite.
+
+If an operation requires manual approval, external credentials, Firebase console access, or a production configuration change, stop and document the exact steps required.
+
+---
+
+# FINAL OBJECTIVE
+
+I want NEXORA to become a fully functional student technology platform for BVM Engineering College.
+
+The final application must have:
+
+- A stable and attractive public website.
+- A working administrator account.
+- A secure Admin dashboard.
+- A complete competition CMS supporting up to 15 competitions.
+- Fully working Create, Read, Update, Delete operations.
+- Reliable image uploads from a computer.
+- Image URL upload support.
+- Relevant images for every competition.
+- Working student registration.
+- Working Firebase authentication.
+- Working password recovery.
+- Working Brevo email integration.
+- Secure OTP verification.
+- Functional announcements and scheduled popups.
+- Secure database permissions.
+- Working serverless APIs.
+- Reliable GitHub-to-Vercel deployments.
+- Responsive desktop and mobile interfaces.
+
+**The most important requirement: Every visible feature must actually work.**
+
+A beautiful interface with broken buttons, fake API responses, missing images, nonfunctional registration, or inaccessible Admin controls is NOT an acceptable result.
+
+Work systematically, verify everything, and prioritize security and reliability over simply finishing quickly.
+
+Begin with Phase 0. Do not skip the audit. Then proceed through the phases, documenting blockers and evidence as you go.
+
+**NEXORA must be production-ready, not merely build-ready.**
