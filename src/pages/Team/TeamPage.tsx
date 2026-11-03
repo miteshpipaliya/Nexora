@@ -201,9 +201,11 @@ export const TeamPage: React.FC = () => {
             {regularMembers.length === 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {[
-                  { role: 'Technical Operations Lead', dept: 'Platform Engineering & Architecture' },
+                  { role: 'Technical Operations Head', dept: 'Platform Engineering & Architecture' },
+                  { role: 'Full-Stack Engineering Lead', dept: 'Software Systems & Core API' },
                   { role: 'Event Coordinator', dept: 'Competition Operations & Logistics' },
-                  { role: 'Creative & Media Director', dept: 'Design & Media Communications' }
+                  { role: 'Design & Creative Director', dept: 'Design & Media Communications' },
+                  { role: 'Public Relations & Outreach Head', dept: 'External Relations & Partnerships' }
                 ].map((pos, idx) => (
                   <div
                     key={idx}
@@ -221,7 +223,7 @@ export const TeamPage: React.FC = () => {
                       <h3 className="text-lg font-bold text-white">{pos.role}</h3>
                       <div className="text-xs font-mono text-slate-400">{pos.dept}</div>
                       <p className="text-xs text-slate-300 leading-relaxed font-light">
-                        Nominations and portfolio reviews for this role will proceed following faculty mentorship alignment.
+                        Nominations and portfolio reviews for this role proceed through student council appointment.
                       </p>
                     </div>
                     <div className="pt-3 border-t border-violet-500/10 text-[11px] font-mono text-slate-500 flex items-center justify-between">
@@ -233,14 +235,14 @@ export const TeamPage: React.FC = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {regularMembers.map((member) => (
+                {regularMembers.filter(m => m.role_key !== 'faculty_guide').map((member) => (
                   <div
                     key={member.id}
-                    className="p-6 rounded-2xl bg-[#171426]/80 border border-violet-500/20 space-y-4 hover:border-violet-500/40 transition-all flex flex-col justify-between"
+                    className="p-6 rounded-2xl bg-[#171426]/80 border border-violet-500/20 space-y-4 hover:border-violet-500/40 transition-all flex flex-col justify-between group shadow-lg"
                   >
                     <div className="space-y-3">
                       <div className="flex items-center justify-between user-select-none">
-                        <div className="w-12 h-12 rounded-xl overflow-hidden border border-violet-500/30 bg-[#0d0c15]">
+                        <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-violet-500/30 bg-[#0d0c15] shadow-[0_0_15px_-3px_rgba(139,92,246,0.4)]">
                           {member.avatar_url ? (
                             <img
                               src={member.avatar_url}
@@ -251,7 +253,7 @@ export const TeamPage: React.FC = () => {
                               }}
                             />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-violet-400 font-mono font-bold text-xs bg-violet-950/60">
+                            <div className="w-full h-full flex items-center justify-center text-violet-300 font-mono font-bold text-sm bg-violet-950/80">
                               {member.name.slice(0, 2).toUpperCase()}
                             </div>
                           )}
@@ -272,18 +274,43 @@ export const TeamPage: React.FC = () => {
 
                       <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
                         <span>{member.academic_branch_name}</span>
-                        {member.division && <span>· {member.division}</span>}
+                        {member.division && <span>· Div {member.division}</span>}
                       </div>
 
                       <p className="text-xs text-slate-300 leading-relaxed font-light select-text">
                         {member.bio}
                       </p>
+
+                      {member.social_links && (
+                        <div className="pt-2 flex items-center gap-3 text-slate-400">
+                          {member.social_links.linkedin && (
+                            <a href={member.social_links.linkedin} target="_blank" rel="noopener noreferrer" className="hover:text-violet-400 transition-colors">
+                              <Linkedin className="w-4 h-4" />
+                            </a>
+                          )}
+                          {member.social_links.github && (
+                            <a href={member.social_links.github} target="_blank" rel="noopener noreferrer" className="hover:text-violet-400 transition-colors">
+                              <Github className="w-4 h-4" />
+                            </a>
+                          )}
+                          {member.social_links.twitter && (
+                            <a href={member.social_links.twitter} target="_blank" rel="noopener noreferrer" className="hover:text-violet-400 transition-colors">
+                              <Twitter className="w-4 h-4" />
+                            </a>
+                          )}
+                          {member.social_links.email && (
+                            <a href={`mailto:${member.social_links.email}`} className="hover:text-violet-400 transition-colors">
+                              <Mail className="w-4 h-4" />
+                            </a>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="pt-3 border-t border-violet-500/15 text-[11px] font-mono text-slate-400 flex items-center justify-between user-select-none">
                       <span>{member.institution || 'BVM Engineering'}</span>
                       {member.enrollment_number && (
-                        <span className="text-violet-400">{member.enrollment_number}</span>
+                        <span className="text-violet-400">ID: {member.enrollment_number}</span>
                       )}
                     </div>
                   </div>
@@ -291,10 +318,67 @@ export const TeamPage: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* Faculty Member & Guide Section */}
+          {(() => {
+            const facultyGuide = members.find(m => m.role_key === 'faculty_guide');
+            if (facultyGuide) {
+              return (
+                <div className="p-8 rounded-3xl bg-gradient-to-br from-[#1c1730]/90 to-[#100e1c] border border-violet-500/35 max-w-4xl mx-auto space-y-6 shadow-2xl">
+                  <div className="flex flex-col sm:flex-row items-center gap-6">
+                    <div className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-violet-500/50 shadow-[0_0_20px_rgba(139,92,246,0.4)] shrink-0 bg-[#0d0c15]">
+                      {facultyGuide.avatar_url ? (
+                        <img
+                          src={facultyGuide.avatar_url}
+                          alt={facultyGuide.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-violet-300 font-mono font-bold text-2xl bg-violet-950/80">
+                          {facultyGuide.name.slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-1.5 text-center sm:text-left flex-1">
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-mono text-violet-300 bg-violet-950/80 border border-violet-500/30 rounded-md">
+                        <GraduationCap className="w-3.5 h-3.5 text-violet-400" />
+                        <span>FACULTY MENTOR &amp; GUIDE</span>
+                      </div>
+                      <h3 className="text-2xl font-bold text-white">{facultyGuide.name}</h3>
+                      <p className="text-sm text-violet-300 font-mono">{facultyGuide.faculty_designation || facultyGuide.role_name}</p>
+                      <p className="text-xs text-slate-400 font-mono">{facultyGuide.department_name} · {facultyGuide.institution || 'Birla Vishvakarma Mahavidyalaya'}</p>
+                    </div>
+                  </div>
+
+                  {facultyGuide.bio && (
+                    <p className="text-sm text-slate-300 leading-relaxed font-light">
+                      {facultyGuide.bio}
+                    </p>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-[#11101B]/80 rounded-xl border border-violet-500/15 font-mono text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-500 uppercase block">Office / Cabin</span>
+                      <span className="text-white font-medium">{facultyGuide.faculty_cabin || 'Faculty Cabin, BVM'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 uppercase block">Research Focus</span>
+                      <span className="text-white font-medium">{facultyGuide.faculty_research || 'Computer Science & Engineering'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 uppercase block">Office Hours</span>
+                      <span className="text-violet-300 font-medium">{facultyGuide.faculty_office_hours || 'By Appointment'}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
         </>
       )}
 
-      {/* Faculty Mentorship Statement */}
+      {/* Faculty Mentorship Alignment Statement */}
       <div className="p-8 rounded-3xl bg-[#11101B]/80 border border-violet-500/25 max-w-4xl mx-auto space-y-3 text-center">
         <GraduationCap className="w-8 h-8 text-violet-400 mx-auto" />
         <h3 className="text-xl font-bold text-white user-select-none">Faculty Mentorship Alignment</h3>

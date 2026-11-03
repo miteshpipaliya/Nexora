@@ -10,17 +10,26 @@ import {
   Rocket, 
   Users2, 
   AlertCircle,
-  Trophy
+  Trophy,
+  Bell,
+  Megaphone,
+  X,
+  ExternalLink,
+  Radio,
+  Users
 } from 'lucide-react';
 import { CosmicHeroObject } from '../../components/three/CosmicHeroObject';
 import { dataService } from '../../services/dataService';
 import { EventRegistrationModal } from '../../components/forms/EventRegistrationModal';
-import { CompetitionEvent, SiteContent } from '../../types';
+import { CompetitionEvent, SiteContent, InAppNotification } from '../../types';
 import { CompetitionCardImage } from '../../components/ui/CompetitionCardImage';
 
 export const HomePage: React.FC = () => {
   const [events, setEvents] = useState<CompetitionEvent[]>([]);
   const [siteContent, setSiteContent] = useState<SiteContent | null>(null);
+  const [notifications, setNotifications] = useState<InAppNotification[]>([]);
+  const [dismissedAlerts, setDismissedAlerts] = useState<Record<string, boolean>>({});
+  const [displayModes, setDisplayModes] = useState<Record<string, 'capacity' | 'count'>>({});
   const [selectedEventForModal, setSelectedEventForModal] = useState<CompetitionEvent | null>(null);
   const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
 
@@ -38,9 +47,16 @@ export const HomePage: React.FC = () => {
       setSiteContent(content);
     });
 
+    // Real-time notifications subscription
+    const unsubNotifs = dataService.subscribeNotifications('all', (allNotifs: InAppNotification[]) => {
+      const live = allNotifs.filter(n => n.status === 'Published');
+      setNotifications(live);
+    });
+
     return () => {
       unsubEvents();
       unsubContent();
+      unsubNotifs();
     };
   }, []);
 
@@ -94,9 +110,54 @@ export const HomePage: React.FC = () => {
     }
   ];
 
+  const urgentAlerts = notifications.filter(
+    n => (n.priority === 'Urgent' || n.category === 'Emergency Notice' || n.category === 'Important') && !dismissedAlerts[n.id]
+  );
+
   return (
     <div className="relative w-full overflow-hidden">
-      
+      {/* Top Urgent Broadcast Alert Banner if present */}
+      {urgentAlerts.length > 0 && (
+        <aside aria-label="Urgent Alerts" className="relative z-40 bg-gradient-to-r from-red-950/95 via-amber-950/90 to-purple-950/95 border-b border-red-500/40 text-white px-4 py-3 shadow-[0_4px_25px_rgba(239,68,68,0.25)]">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <span className="relative flex h-2.5 w-2.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+              </span>
+              <div className="flex items-center gap-2 text-xs sm:text-sm font-mono truncate">
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-500/20 border border-red-500/40 text-red-200 shrink-0">
+                  {urgentAlerts[0].category}
+                </span>
+                <strong className="font-semibold text-white truncate">{urgentAlerts[0].title}:</strong>
+                <span className="text-slate-200 truncate font-sans text-xs sm:text-sm">{urgentAlerts[0].message}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              {urgentAlerts[0].link_url && (
+                <a
+                  href={urgentAlerts[0].link_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hidden sm:inline-flex items-center gap-1 text-xs font-mono text-amber-300 hover:text-amber-200 underline"
+                >
+                  <span>{urgentAlerts[0].link_text || 'Details'}</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => setDismissedAlerts(prev => ({ ...prev, [urgentAlerts[0].id]: true }))}
+                className="p-1 rounded text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                title="Dismiss"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </aside>
+      )}
+
       {/* Hero Section */}
       <section className="relative pt-12 pb-20 md:pt-20 md:pb-28 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
@@ -155,6 +216,96 @@ export const HomePage: React.FC = () => {
               <CosmicHeroObject />
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Global Real-Time Announcement Broadcast Section (Phase 4) */}
+      <section className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        <div className="rounded-3xl bg-gradient-to-b from-[#171426]/90 to-[#0e0c17]/90 border border-violet-500/25 p-6 sm:p-8 backdrop-blur-md shadow-[0_15px_40px_-15px_rgba(139,92,246,0.25)] space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-violet-500/15 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-violet-500" />
+              </div>
+              <div>
+                <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                  <Megaphone className="w-5 h-5 text-violet-400" />
+                  <span>CAMPUS DISPATCHES &amp; LIVE ANNOUNCEMENTS</span>
+                </h2>
+                <p className="text-xs text-slate-400 font-mono">
+                  Direct official broadcasts from the NEXORA Organizing Desk
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-xs font-mono text-violet-300">
+              <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
+              <span>LIVE FREQUENCY: REAL-TIME</span>
+            </div>
+          </div>
+
+          {notifications.length === 0 ? (
+            <div className="py-6 text-center text-xs font-mono text-slate-400 flex items-center justify-center gap-2">
+              <Sparkles className="w-4 h-4 text-violet-400" />
+              <span>All campus systems nominal · No emergency notices or schedule updates currently active.</span>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {notifications.slice(0, 3).map((notif) => {
+                let badgeClass = 'bg-violet-950/80 border-violet-500/40 text-violet-300';
+                if (notif.category === 'Emergency Notice') {
+                  badgeClass = 'bg-red-950/80 border-red-500/50 text-red-300';
+                } else if (notif.category === 'Important') {
+                  badgeClass = 'bg-amber-950/80 border-amber-500/50 text-amber-300';
+                } else if (notif.category === 'Registration Update') {
+                  badgeClass = 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300';
+                } else if (notif.category === 'Competition Update') {
+                  badgeClass = 'bg-cyan-950/80 border-cyan-500/50 text-cyan-300';
+                }
+
+                return (
+                  <div
+                    key={notif.id}
+                    className="p-5 rounded-2xl bg-[#11101B]/80 border border-violet-500/20 hover:border-violet-500/40 transition-all space-y-3 flex flex-col justify-between"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider border ${badgeClass}`}>
+                          {notif.category}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-500">
+                          {new Date(notif.created_at).toLocaleDateString('en-IN', {
+                            month: 'short',
+                            day: 'numeric'
+                          })}
+                        </span>
+                      </div>
+                      <h3 className="text-base font-bold text-white leading-snug">
+                        {notif.title}
+                      </h3>
+                      <p className="text-xs text-slate-300 font-light leading-relaxed line-clamp-3">
+                        {notif.message}
+                      </p>
+                    </div>
+
+                    {notif.link_url && (
+                      <div className="pt-2 border-t border-violet-500/10">
+                        <a
+                          href={notif.link_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-mono text-violet-400 hover:text-violet-300"
+                        >
+                          <span>{notif.link_text || 'View Details'}</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 
@@ -282,7 +433,24 @@ export const HomePage: React.FC = () => {
 
                       <div className="pt-4 border-t border-violet-500/15 flex items-center justify-between gap-2">
                         <div className="text-xs text-slate-400 font-mono user-select-none">
-                          <div>Capacity: {event.capacity} seats</div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDisplayModes(prev => {
+                                const currentMode = prev[event.id] || event.registration_display_mode || 'capacity';
+                                return { ...prev, [event.id]: currentMode === 'capacity' ? 'count' : 'capacity' };
+                              });
+                            }}
+                            title="Click to toggle between capacity ratio and simple registration count"
+                            className="hover:text-violet-300 transition-colors text-left font-mono cursor-pointer flex items-center gap-1 group/btn"
+                          >
+                            <Users className="w-3.5 h-3.5 text-violet-400 group-hover/btn:scale-110 transition-transform" />
+                            <span>
+                              {(displayModes[event.id] || event.registration_display_mode || 'capacity') === 'capacity'
+                                ? `${event.registered_count || 0} / ${event.capacity} registered`
+                                : `${event.registered_count || 0} registered`}
+                            </span>
+                          </button>
                           <div className="text-violet-300 font-semibold">
                             {event.fee_per_participant === 0 ? 'Free Entry' : `Fee: ₹${event.fee_per_participant}`}
                           </div>

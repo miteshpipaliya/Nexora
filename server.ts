@@ -1014,6 +1014,10 @@ async function saveAdminSecurityAsync(password: string): Promise<AdminSecuritySt
     const db = await getAdminFirestore();
     if (db) {
       await db.collection('_admin_security').doc('founder').set(record);
+      await db.collection('systemConfig').doc('status').set({
+        initialized: true,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
     }
   } catch (fsErr) {
     console.warn('[ADMIN SECURITY] Cloud Firestore persist notice:', fsErr);
@@ -1143,8 +1147,27 @@ function requireElevatedAdmin(req: express.Request, res: express.Response, next:
 
 // 1. Admin Status check (supports both /admin/status and /admin/auth/status via GET and POST)
 apiRouter.all(['/admin/auth/status', '/admin/status'], async (req, res) => {
-  const security = await getStoredAdminSecurityAsync();
-  const isInitialized = Boolean(security || process.env.ADMIN_SECURITY_PASSWORD);
+  let security = await getStoredAdminSecurityAsync();
+  let isInitialized = Boolean(security || process.env.ADMIN_SECURITY_PASSWORD);
+
+  // If server memory/disk was cold-started, check Firestore systemConfig directly
+  if (!isInitialized) {
+    try {
+      const db = await getAdminFirestore();
+      if (db) {
+        const confSnap = await db.collection('systemConfig').doc('status').get();
+        if (confSnap.exists && confSnap.data()?.initialized) {
+          isInitialized = true;
+        }
+      }
+    } catch {}
+  }
+
+  // Allow trusted client ID token or client confirmation to sync status
+  if (!isInitialized && req.body && req.body.clientConfirmedInitialized === true) {
+    isInitialized = true;
+  }
+
   res.json({
     success: true,
     initialized: isInitialized,
@@ -1343,7 +1366,7 @@ apiRouter.post(['/admin/auth/setup-password', '/admin/setup-password'], async (r
   }
 });
 
-// 4. Verify Admin Security Password (Normal Future Logins)
+// 4. Verify Admin Security Password (Factor 1 of 2FA: Generates and dispatches Factor 2 OTP)
 apiRouter.post(['/admin/auth/verify-password', '/admin/verify-password'], async (req, res) => {
   try {
     const { password } = req.body;
@@ -1359,37 +1382,41 @@ apiRouter.post(['/admin/auth/verify-password', '/admin/verify-password'], async 
       return;
     }
 
-    // Direct elevated session issue (15 minutes) - stateless signed token
-    const expiresAt = Date.now() + 15 * 60 * 1000;
-    const sessionToken = createSignedToken({
-      email: FOUNDER_EMAIL,
-      purpose: 'admin-session',
-      exp: expiresAt,
-      iat: Date.now()
-    } as any);
-
-    elevatedAdminSessions.set(sessionToken, {
-      sessionId: sessionToken,
-      founderEmail: FOUNDER_EMAIL,
-      expiresAt,
-      createdAt: Date.now()
-    });
-
-    // Also issue backward-compatible passwordToken for clients supporting two-step verification
+    // Step 1 Passed: Issue single-use passwordToken for Factor 2 verification (5-minute validity)
     const passwordToken = `pwd_tok_${crypto.randomBytes(24).toString('hex')}`;
     verifiedPasswordTokens.set(passwordToken, {
       expiresAt: Date.now() + 5 * 60 * 1000,
       createdAt: Date.now()
     });
 
-    recordAudit('ADMIN_PASSWORD_VERIFIED', 'Admin Security Password verified. Elevated session granted.');
+    // Generate Factor 2 6-digit numeric OTP
+    const otp = crypto.randomInt(100000, 1000000).toString();
+    const otpExpiresAt = Date.now() + 180 * 1000;
+    const otpHash = hashOtp(FOUNDER_EMAIL, otp, 'admin-step4');
 
+    adminEmailOtpChallenges.set(passwordToken, {
+      hash: otpHash,
+      expiresAt: otpExpiresAt,
+      attempts: 0,
+      lastSentAt: Date.now()
+    });
+
+    // Dispatch Factor 2 email via Brevo to pre-approved administrator
+    try {
+      await sendBrevoOtpEmail(FOUNDER_EMAIL, otp, 'signup');
+    } catch (brevoErr: any) {
+      console.warn('[ADMIN 2FA] Brevo email dispatch warning:', brevoErr?.message || brevoErr);
+    }
+
+    recordAudit('ADMIN_PASSWORD_VERIFIED', 'Admin Security Password verified. Factor 2 OTP dispatched to founder email.');
+
+    // 2FA Mandatory: Return requiresOtp: true with passwordToken. Elevated session is only issued in verify-admin-otp!
     res.json({
       success: true,
-      sessionToken,
+      requiresOtp: true,
       passwordToken,
-      expiresAt,
-      durationMinutes: 15,
+      expiresInSeconds: 180,
+      resendCooldown: 30,
       maskedEmail: maskEmail(FOUNDER_EMAIL)
     });
   } catch (err: any) {

@@ -63,6 +63,7 @@ export interface CompetitionEvent {
   eligibility?: string;
   capacity: number;
   registered_count: number;
+  registration_display_mode?: 'capacity' | 'count';
   fee_per_participant: number;
   banner_image?: string;
   cover_image?: string;
@@ -160,7 +161,7 @@ export interface InAppNotification {
   id: string;
   title: string;
   message: string;
-  category: 'Announcement' | 'Competition Update' | 'Important' | 'System';
+  category: 'Announcement' | 'Competition Update' | 'Important' | 'System' | 'General' | 'Registration Update' | 'Emergency Notice';
   priority: 'Normal' | 'High' | 'Urgent';
   image_url?: string;
   link_url?: string;
@@ -253,6 +254,7 @@ export interface TeamDepartment {
 export interface TeamMember {
   id: string;
   name: string;
+  role_key?: 'founder' | 'tech_ops' | 'fullstack_lead' | 'event_coordinator' | 'design_director' | 'pr_outreach' | 'faculty_guide' | string;
   role_id?: string;
   role_name: string;
   academic_branch_id?: string;
@@ -264,6 +266,10 @@ export interface TeamMember {
   avatar_url?: string;
   enrollment_number?: string;
   institution?: string;
+  faculty_designation?: string;
+  faculty_cabin?: string;
+  faculty_research?: string;
+  faculty_office_hours?: string;
   social_links?: {
     linkedin?: string;
     github?: string;

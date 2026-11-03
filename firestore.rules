@@ -149,9 +149,9 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Internal Security Store (Explicitly disallow all client reads/writes)
+    // Internal Security Store (Managed by authenticated administrator or server Admin SDK)
     match /_admin_security/{docId} {
-      allow read, write: if false;
+      allow read, write: if isAdmin();
     }
     match /_admin_challenges/{docId} {
       allow read, write: if false;

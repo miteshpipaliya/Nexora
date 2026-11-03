@@ -38,6 +38,7 @@ import {
   Archive,
   Trash2,
   ExternalLink,
+  Sparkles,
   Edit2
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -63,7 +64,112 @@ import { LocalImageUploader } from '../../components/admin/LocalImageUploader';
 import { ImageSelector } from '../../components/admin/ImageSelector';
 import { ImageLibraryModal } from '../../components/admin/ImageLibraryModal';
 import { PrizePoolEditor } from '../../components/admin/PrizePoolEditor';
-import { FOUNDING_TEAM } from '../../services/mockData';
+import { FOUNDING_TEAM, INITIAL_EVENTS } from '../../services/mockData';
+
+export const STANDARD_TEAM_ROLES = [
+  {
+    key: 'founder',
+    role_name: 'Founder & Lead Architect',
+    default_name: 'Mitesh Pipaliya',
+    department_name: 'Platform Engineering & Architecture',
+    academic_branch_name: 'Electronics Engineering',
+    division: 'Division A',
+    institution: 'Birla Vishvakarma Mahavidyalaya',
+    enrollment_number: '23EL001',
+    bio: 'Pioneering student-led engineering innovation at BVM. Architecting high-performance web systems, competitive platforms, and multidisciplinary student technology ecosystems.',
+    avatar_url: '/images/team/mitesh_founder.jpg',
+    is_founder: true,
+    display_order: 1
+  },
+  {
+    key: 'tech_ops',
+    role_name: 'Technical Operations Head',
+    default_name: 'Technical Operations Lead',
+    department_name: 'Platform Infrastructure & Cloud Systems',
+    academic_branch_name: 'Information Technology',
+    division: 'Division A',
+    institution: 'Birla Vishvakarma Mahavidyalaya',
+    enrollment_number: '23IT042',
+    bio: 'Oversees infrastructure deployment, sandbox evaluation environments, serverless endpoints, and high-availability contest telemetry.',
+    avatar_url: '',
+    is_founder: false,
+    display_order: 2
+  },
+  {
+    key: 'fullstack_lead',
+    role_name: 'Full-Stack Engineering Lead',
+    default_name: 'Engineering Lead',
+    department_name: 'Web & Applications Engineering',
+    academic_branch_name: 'Computer Engineering',
+    division: 'Division B',
+    institution: 'Birla Vishvakarma Mahavidyalaya',
+    enrollment_number: '23CP088',
+    bio: 'Drives client and server-side feature implementations, real-time Firestore listeners, automated test coverage, and responsive frontend performance.',
+    avatar_url: '',
+    is_founder: false,
+    display_order: 3
+  },
+  {
+    key: 'event_coordinator',
+    role_name: 'Event Coordinator',
+    default_name: 'Lead Event Coordinator',
+    department_name: 'Competition Operations & Logistics',
+    academic_branch_name: 'Electronics & Communication',
+    division: 'Division A',
+    institution: 'Birla Vishvakarma Mahavidyalaya',
+    enrollment_number: '23EC015',
+    bio: 'Coordinates contest schedules, rule compliance, venue logistics, live scoring desks, and participant onboarding across departments.',
+    avatar_url: '',
+    is_founder: false,
+    display_order: 4
+  },
+  {
+    key: 'design_director',
+    role_name: 'Design & Creative Director',
+    default_name: 'Creative Director',
+    department_name: 'Design & Media Communications',
+    academic_branch_name: 'Information Technology',
+    division: 'Division A',
+    institution: 'Birla Vishvakarma Mahavidyalaya',
+    enrollment_number: '23IT071',
+    bio: 'Shapes the NEXORA visual identity, motion graphics, cyber-minimalist typography, digital credentials, and interactive student badges.',
+    avatar_url: '',
+    is_founder: false,
+    display_order: 5
+  },
+  {
+    key: 'pr_outreach',
+    role_name: 'Public Relations & Outreach Head',
+    default_name: 'Outreach & Campus Relations Head',
+    department_name: 'Campus Partnerships & External Relations',
+    academic_branch_name: 'Computer Engineering',
+    division: 'Division A',
+    institution: 'Birla Vishvakarma Mahavidyalaya',
+    enrollment_number: '23CP023',
+    bio: 'Fosters intercollegiate partnerships across GCET, ADIT, and leading Gujarat engineering institutes while driving student engagement.',
+    avatar_url: '',
+    is_founder: false,
+    display_order: 6
+  },
+  {
+    key: 'faculty_guide',
+    role_name: 'Faculty Member & Guide',
+    default_name: 'Faculty Advisor & Mentor',
+    department_name: 'Department of Electronics Engineering',
+    academic_branch_name: 'Faculty Mentor',
+    division: 'Faculty Advisory Council',
+    institution: 'Birla Vishvakarma Mahavidyalaya',
+    enrollment_number: 'FACULTY-BVM-01',
+    bio: 'Providing academic guidance, pedagogical alignment, institutional mentorship, and ethical oversight for NEXORA student technological initiatives.',
+    avatar_url: '',
+    is_founder: false,
+    display_order: 7,
+    faculty_designation: 'Associate Professor & Advisor',
+    faculty_cabin: 'BVM Room 204, Main Building',
+    faculty_research: 'VLSI Systems, Embedded Intelligence, Cloud Computing',
+    faculty_office_hours: 'Monday – Friday: 03:00 PM – 05:00 PM'
+  }
+];
 
 export const AdminPage: React.FC = () => {
   const { user, isAdmin, elevatedAdminVerified, setElevatedAdminVerified, refreshAdminClaim } = useAuth();
@@ -793,6 +899,98 @@ export const AdminPage: React.FC = () => {
       showErrorToast(err.message || 'Could not delete competition.');
     } finally {
       setDeletingEvent(false);
+    }
+  };
+
+  // Quick Toggle Registration Count Display Mode ('capacity' vs 'count')
+  const handleToggleRegistrationDisplay = async (ev: CompetitionEvent) => {
+    const newMode = ev.registration_display_mode === 'count' ? 'capacity' : 'count';
+    try {
+      await dataService.updateCompetition(ev.slug, { registration_display_mode: newMode });
+      showSuccessToast(`Registration counter for "${ev.title}" switched to ${newMode === 'count' ? 'Simple Count ("78 registered")' : 'Capacity View ("78 / 120 registered")'}.`);
+      loadDashboardData();
+    } catch (err: any) {
+      showErrorToast(err.message || 'Failed to update registration display.');
+    }
+  };
+
+  // Quick 1-Click Publish Prebuilt Draft Template
+  const handleQuickPublishDraftTemplate = async (template: CompetitionEvent) => {
+    setLoading(true);
+    try {
+      const existing = events.find(e => e.slug === template.slug || e.id === template.id);
+      if (existing) {
+        await dataService.publishCompetition(existing.slug, true);
+        showSuccessToast(`Competition "${existing.title}" is now PUBLISHED & LIVE!`);
+      } else {
+        await dataService.createCompetition({
+          ...template,
+          status: 'Published',
+          is_published: true,
+          registration_open: true,
+          isComingSoon: false
+        });
+        showSuccessToast(`Draft template "${template.title}" has been Published LIVE to the website!`);
+      }
+      loadDashboardData();
+    } catch (err: any) {
+      showErrorToast(err.message || 'Failed to publish draft competition template.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Quick 1-Click Publish Standard Leadership Role
+  const handlePublishStandardRole = async (roleDef: typeof STANDARD_TEAM_ROLES[0]) => {
+    setLoading(true);
+    try {
+      const existing = teamMembers.find(m => m.role_key === roleDef.key || m.role_name === roleDef.role_name);
+      if (existing) {
+        const nextEnabled = existing.enabled === false;
+        await dataService.updateTeamMember(existing.id, { enabled: nextEnabled });
+        showSuccessToast(`Role "${roleDef.role_name}" is now ${nextEnabled ? 'LIVE on /team page' : 'DRAFT / HIDDEN'}.`);
+      } else {
+        const newMember: Partial<TeamMember> = {
+          name: roleDef.default_name,
+          role_key: roleDef.key,
+          role_name: roleDef.role_name,
+          academic_branch_name: roleDef.academic_branch_name,
+          division: roleDef.division,
+          department_name: roleDef.department_name,
+          bio: roleDef.bio,
+          avatar_url: roleDef.avatar_url || '/images/team/mitesh_founder.jpg',
+          enrollment_number: roleDef.enrollment_number,
+          institution: roleDef.institution,
+          display_order: roleDef.display_order,
+          is_founder: roleDef.is_founder || false,
+          is_featured: roleDef.is_founder || false,
+          enabled: true,
+          ...(roleDef.faculty_designation ? {
+            faculty_designation: roleDef.faculty_designation,
+            faculty_cabin: roleDef.faculty_cabin,
+            faculty_research: roleDef.faculty_research,
+            faculty_office_hours: roleDef.faculty_office_hours
+          } : {})
+        };
+        await dataService.createTeamMember(newMember);
+        showSuccessToast(`Published "${roleDef.role_name}" profile LIVE to website!`);
+      }
+      await loadDashboardData();
+    } catch (err: any) {
+      showErrorToast(err.message || 'Failed to publish role.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleTeamMemberPublish = async (member: TeamMember) => {
+    const nextVal = member.enabled === false;
+    try {
+      await dataService.updateTeamMember(member.id, { enabled: nextVal });
+      showSuccessToast(`Profile "${member.name}" is now ${nextVal ? 'LIVE on /team page' : 'DRAFT / HIDDEN'}.`);
+      loadDashboardData();
+    } catch (err: any) {
+      showErrorToast(err.message || 'Failed to update publishing status.');
     }
   };
 
@@ -1762,11 +1960,92 @@ export const AdminPage: React.FC = () => {
             </button>
           </div>
 
+          {/* Prebuilt Draft Competitions Quick Launch Tray */}
+          <div className="p-5 bg-gradient-to-br from-[#1c1433] to-[#141026] border border-violet-500/40 rounded-2xl shadow-xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-violet-500/20 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-violet-400" />
+                  <h3 className="text-sm font-bold text-white tracking-wide uppercase font-mono">
+                    Prebuilt Draft Competition Templates
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-300 font-light">
+                  Pre-configured flagship technical challenges ready for 1-click publishing or custom edits.
+                </p>
+              </div>
+              <span className="text-[11px] font-mono text-violet-300 bg-violet-950/80 px-2.5 py-1 rounded-md border border-violet-500/30">
+                10 Official Templates Available
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              {INITIAL_EVENTS.map((tpl) => {
+                const existingInDb = events.find((e) => e.slug === tpl.slug || e.id === tpl.id);
+                const isLive = existingInDb && (existingInDb.status === 'Published' || existingInDb.status === 'Open');
+
+                return (
+                  <div
+                    key={tpl.id}
+                    className={`p-3.5 rounded-xl border flex flex-col justify-between space-y-3 transition-all ${
+                      isLive
+                        ? 'bg-emerald-950/20 border-emerald-500/30 shadow-sm'
+                        : 'bg-[#11101B] border-violet-500/20 hover:border-violet-500/40'
+                    }`}
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-xs font-bold text-white truncate" title={tpl.title}>
+                          {tpl.title}
+                        </span>
+                        <span className={`px-1.5 py-0.5 text-[9px] font-mono rounded font-semibold ${
+                          isLive
+                            ? 'bg-emerald-900/80 text-emerald-300 border border-emerald-500/40'
+                            : 'bg-amber-950/80 text-amber-300 border border-amber-500/30'
+                        }`}>
+                          {isLive ? 'LIVE' : 'DRAFT'}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-violet-400 font-mono truncate">{tpl.category}</div>
+                      <div className="text-[10px] text-slate-400 font-mono">Cap: {tpl.capacity} seats · ₹{tpl.fee_per_participant}</div>
+                    </div>
+
+                    <div className="pt-2 border-t border-violet-500/15 flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleQuickPublishDraftTemplate(tpl)}
+                        className={`flex-1 py-1.5 px-2 text-[10px] font-mono font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1 ${
+                          isLive
+                            ? 'bg-slate-800 text-slate-300 hover:text-white border border-slate-700'
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm'
+                        }`}
+                        title={isLive ? 'Currently Live on public website' : 'Click to instantly publish this competition live'}
+                      >
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>{isLive ? 'Published' : 'Go Live'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingEvent(existingInDb || tpl);
+                        }}
+                        className="py-1.5 px-2 text-[10px] font-mono text-violet-300 hover:text-white bg-violet-950/70 border border-violet-500/30 rounded-lg cursor-pointer"
+                        title="Edit competition information before publishing"
+                      >
+                        <Edit2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {events.length === 0 ? (
             <div className="p-12 bg-[#171426] border border-violet-500/20 rounded-2xl text-center space-y-3">
               <Trophy className="w-10 h-10 text-violet-400 mx-auto" />
               <h3 className="text-base font-bold text-white">No Competitions Created Yet</h3>
-              <p className="text-xs text-slate-400">Click &quot;Create New Competition&quot; to add your first flagship challenge to Firestore.</p>
+              <p className="text-xs text-slate-400">Click &quot;Go Live&quot; on any prebuilt template above to activate your first flagship challenge in Firestore.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1774,6 +2053,7 @@ export const AdminPage: React.FC = () => {
                 const isPublished = ev.status === 'Published' || ev.status === 'Open';
                 const isArchived = ev.status === 'Archived';
                 const imageSrc = ev.cover_image || ev.banner_image || '/images/competitions/zerocode.jpg';
+                const isSimpleCount = ev.registration_display_mode === 'count';
 
                 return (
                   <div
@@ -1792,16 +2072,19 @@ export const AdminPage: React.FC = () => {
                           src={imageSrc}
                           alt={ev.title}
                           className="w-20 h-20 rounded-xl object-cover border border-violet-500/30 shrink-0 bg-black/40"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = '/images/competitions/zerocode.jpg';
+                          }}
                         />
                         <div className="space-y-1 flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="text-base font-bold text-white truncate">{ev.title}</h3>
                             <span className={`px-2 py-0.5 text-[10px] font-mono rounded border ${
                               isPublished
-                                ? 'bg-emerald-950 text-emerald-300 border-emerald-500/30'
+                                ? 'bg-emerald-950 text-emerald-300 border-emerald-500/30 font-semibold'
                                 : isArchived
                                 ? 'bg-slate-900 text-slate-400 border-slate-700'
-                                : 'bg-amber-950 text-amber-300 border-amber-500/30'
+                                : 'bg-amber-950 text-amber-300 border-amber-500/30 font-semibold'
                             }`}>
                               {ev.status}
                             </span>
@@ -1825,10 +2108,24 @@ export const AdminPage: React.FC = () => {
                           <span className="text-[10px] text-slate-500 block uppercase">Fee</span>
                           <span className="text-white font-bold">{ev.fee_per_participant === 0 ? 'Free' : `₹${ev.fee_per_participant}`}</span>
                         </div>
-                        <div>
-                          <span className="text-[10px] text-slate-500 block uppercase">Registered</span>
-                          <span className="text-violet-300 font-bold">{ev.registered_count || 0} / {ev.capacity}</span>
+
+                        {/* Registration Display Toggle Card */}
+                        <div
+                          onClick={() => handleToggleRegistrationDisplay(ev)}
+                          className="cursor-pointer group hover:bg-violet-950/40 rounded-lg p-1 transition-colors border border-transparent hover:border-violet-500/30"
+                          title="Click to toggle between: Capacity View ('78 / 120 registered') vs Simple View ('78 registered')"
+                        >
+                          <span className="text-[10px] text-slate-500 uppercase flex items-center justify-center gap-1">
+                            <span>Registered</span>
+                            <span className="text-[9px] text-violet-400 font-bold group-hover:text-white">⇄ Toggle</span>
+                          </span>
+                          <span className="text-violet-300 font-bold block mt-0.5">
+                            {isSimpleCount
+                              ? `${ev.registered_count || 0} registered`
+                              : `${ev.registered_count || 0} / ${ev.capacity}`}
+                          </span>
                         </div>
+
                         <div>
                           <span className="text-[10px] text-slate-500 block uppercase">Registration</span>
                           <span className={`font-bold ${ev.isComingSoon ? 'text-purple-400' : ev.registration_open ? 'text-emerald-400' : 'text-slate-500'}`}>
@@ -1855,20 +2152,25 @@ export const AdminPage: React.FC = () => {
                           title="Toggle Coming Soon overlay & registration lock"
                           className={`px-2.5 py-1.5 text-xs font-mono rounded-lg transition-colors border cursor-pointer ${
                             ev.isComingSoon
-                              ? 'bg-purple-950 text-purple-300 border-purple-500/40 shadow-sm'
+                              ? 'bg-purple-950 text-purple-300 border-purple-500/40 shadow-sm font-bold'
                               : 'bg-[#11101B] text-slate-400 hover:text-white border-violet-500/20'
                           }`}
                         >
                           {ev.isComingSoon ? 'Coming Soon: ON' : 'Coming Soon: OFF'}
                         </button>
 
-                        {/* Publish / Unpublish Toggle */}
+                        {/* Publish / Go Live or Unpublish Toggle */}
                         <button
                           type="button"
                           onClick={() => handleTogglePublish(ev)}
-                          className="px-2.5 py-1.5 text-xs font-mono rounded-lg transition-colors border bg-[#11101B] text-slate-300 hover:text-white border-violet-500/20 cursor-pointer"
+                          className={`px-3 py-1.5 text-xs font-mono font-bold rounded-lg transition-colors border cursor-pointer ${
+                            isPublished
+                              ? 'bg-[#11101B] text-slate-300 hover:text-white border-violet-500/20'
+                              : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm border-emerald-400'
+                          }`}
+                          title={isPublished ? 'Unpublish to Draft' : 'Publish & Make Live immediately'}
                         >
-                          {isPublished ? 'Unpublish' : 'Publish'}
+                          {isPublished ? 'Unpublish' : 'Publish / Go Live'}
                         </button>
 
                         {/* Archive button */}
@@ -2539,112 +2841,263 @@ export const AdminPage: React.FC = () => {
             </button>
           </div>
 
-          {/* Subtab 1: Team Members Roster */}
+          {/* Subtab 1: 7 Dedicated Leadership Profile Cards */}
           {teamSubTab === 'members' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {teamMembers.map((member) => (
-                <div
-                  key={member.id}
-                  className={`p-6 rounded-2xl border transition-all flex flex-col justify-between space-y-4 ${
-                    member.is_founder
-                      ? 'bg-gradient-to-br from-[#1c1433] to-[#141026] border-violet-500/40 shadow-xl'
-                      : member.enabled !== false
-                      ? 'bg-[#171426] border-violet-500/20'
-                      : 'bg-[#12101e] border-slate-800 opacity-60'
-                  }`}
-                >
-                  <div className="space-y-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-14 h-14 rounded-2xl overflow-hidden border border-violet-500/30 bg-[#0d0c15] shrink-0">
-                          {member.avatar_url ? (
-                            <img
-                              src={member.avatar_url}
-                              alt={member.name}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).src = '/images/team/mitesh_founder.jpg';
-                              }}
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center font-bold text-violet-300 font-mono text-sm">
-                              {member.name.slice(0, 2).toUpperCase()}
+            <div className="space-y-8">
+              <div>
+                <div className="flex items-center justify-between pb-3 border-b border-violet-500/20">
+                  <div>
+                    <h3 className="text-sm font-bold text-white font-mono uppercase tracking-wider flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-violet-400" />
+                      <span>7 Core Leadership Roles (Live CMS Management)</span>
+                    </h3>
+                    <p className="text-xs text-slate-300 font-light mt-0.5">
+                      Dedicated management cards for all seven primary organizational positions. Toggle &quot;Go Live&quot; independently for each profile.
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-mono text-violet-300 bg-violet-950 px-2.5 py-1 rounded-md border border-violet-500/30">
+                    7 Standard Roles
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6">
+                  {STANDARD_TEAM_ROLES.map((roleDef, idx) => {
+                    const existing = teamMembers.find(
+                      (m) => m.role_key === roleDef.key || m.role_name === roleDef.role_name
+                    );
+                    const isPublished = existing ? existing.enabled !== false : false;
+                    const avatarSrc = existing?.avatar_url || roleDef.avatar_url;
+
+                    return (
+                      <div
+                        key={roleDef.key}
+                        className={`p-6 rounded-2xl border transition-all flex flex-col justify-between space-y-4 ${
+                          roleDef.is_founder
+                            ? 'bg-gradient-to-br from-[#1c1433] to-[#141026] border-violet-500/40 shadow-xl'
+                            : isPublished
+                            ? 'bg-[#171426] border-violet-500/30 shadow-lg'
+                            : 'bg-[#12101e] border-slate-800 opacity-80'
+                        }`}
+                      >
+                        <div className="space-y-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-center gap-3.5">
+                              <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-violet-500/40 bg-[#0d0c15] shrink-0 shadow-md">
+                                {avatarSrc ? (
+                                  <img
+                                    src={avatarSrc}
+                                    alt={existing?.name || roleDef.default_name}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).src = '/images/team/mitesh_founder.jpg';
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center font-bold text-violet-300 font-mono text-base bg-violet-950/60">
+                                    {(existing?.name || roleDef.default_name).slice(0, 2).toUpperCase()}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-[10px] font-mono text-slate-500">#{idx + 1}</span>
+                                  <h3 className="text-base font-bold text-white">
+                                    {existing?.name || roleDef.default_name}
+                                  </h3>
+                                  {roleDef.is_founder && (
+                                    <span className="px-2 py-0.5 text-[10px] font-mono bg-violet-950 text-violet-300 border border-violet-500/40 rounded font-semibold">
+                                      Founder
+                                    </span>
+                                  )}
+                                  <span className={`px-2 py-0.5 text-[10px] font-mono rounded font-semibold border ${
+                                    isPublished
+                                      ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+                                      : 'bg-amber-950 text-amber-300 border-amber-500/30'
+                                  }`}>
+                                    {isPublished ? 'LIVE ON /TEAM' : 'DRAFT'}
+                                  </span>
+                                </div>
+                                <div className="text-xs font-mono text-violet-400 font-semibold">
+                                  {roleDef.role_name}
+                                </div>
+                                <div className="text-[11px] text-slate-400 font-mono">
+                                  {existing?.department_name || roleDef.department_name} · {existing?.academic_branch_name || roleDef.academic_branch_name}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <p className="text-xs text-slate-300 leading-relaxed font-light">
+                            {existing?.bio || roleDef.bio}
+                          </p>
+
+                          {/* Faculty Specific Fields Display */}
+                          {roleDef.key === 'faculty_guide' && (
+                            <div className="p-3 bg-[#11101B] border border-violet-500/20 rounded-xl space-y-1.5 font-mono text-[11px]">
+                              <div className="flex justify-between text-slate-300">
+                                <span className="text-slate-500">Designation:</span>
+                                <span className="text-violet-300 font-semibold">{existing?.faculty_designation || roleDef.faculty_designation}</span>
+                              </div>
+                              <div className="flex justify-between text-slate-300">
+                                <span className="text-slate-500">Cabin / Office:</span>
+                                <span className="text-white">{existing?.faculty_cabin || roleDef.faculty_cabin}</span>
+                              </div>
+                              <div className="flex justify-between text-slate-300">
+                                <span className="text-slate-500">Research Focus:</span>
+                                <span className="text-violet-300 truncate max-w-[200px]">{existing?.faculty_research || roleDef.faculty_research}</span>
+                              </div>
+                              <div className="flex justify-between text-slate-300">
+                                <span className="text-slate-500">Office Hours:</span>
+                                <span className="text-emerald-400">{existing?.faculty_office_hours || roleDef.faculty_office_hours}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Student Academic Details Grid */}
+                          {roleDef.key !== 'faculty_guide' && (
+                            <div className="grid grid-cols-3 gap-2 p-3 bg-[#11101B] rounded-xl text-center font-mono text-xs">
+                              <div>
+                                <span className="text-[10px] text-slate-500 block uppercase">Division</span>
+                                <span className="text-white">{existing?.division || roleDef.division || '—'}</span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-slate-500 block uppercase">Enrollment</span>
+                                <span className="text-violet-300">{existing?.enrollment_number || roleDef.enrollment_number || '—'}</span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-slate-500 block uppercase">Order</span>
+                                <span className="text-slate-300">{existing?.display_order || roleDef.display_order}</span>
+                              </div>
                             </div>
                           )}
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-base font-bold text-white">{member.name}</h3>
-                            {member.is_founder && (
-                              <span className="px-2 py-0.5 text-[10px] font-mono bg-violet-950 text-violet-300 border border-violet-500/40 rounded font-semibold">
-                                Founder
-                              </span>
-                            )}
-                            {member.is_featured && !member.is_founder && (
-                              <span className="px-2 py-0.5 text-[10px] font-mono bg-amber-950 text-amber-300 border border-amber-500/30 rounded">
-                                Featured
-                              </span>
-                            )}
-                            {member.enabled === false && (
-                              <span className="px-2 py-0.5 text-[10px] font-mono bg-slate-900 text-slate-400 border border-slate-700 rounded">
-                                Hidden
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-xs font-mono text-violet-400">{member.role_name}</div>
-                          <div className="text-[11px] text-slate-400 font-mono">
-                            {member.department_name} · {member.academic_branch_name}
+
+                        {/* Card Actions: Dedicated Go Live / Publish Button & Edit Button */}
+                        <div className="pt-3 border-t border-violet-500/15 flex items-center justify-between gap-3">
+                          <span className="text-[11px] font-mono text-slate-400">
+                            {isPublished ? '● Profile Visible' : '○ Profile Hidden'}
+                          </span>
+
+                          <div className="flex items-center gap-2">
+                            {/* Independent Go Live / Publish Button */}
+                            <button
+                              type="button"
+                              onClick={() => handlePublishStandardRole(roleDef)}
+                              className={`px-3.5 py-1.5 text-xs font-mono font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer ${
+                                isPublished
+                                  ? 'bg-[#11101B] text-slate-300 hover:text-white border border-violet-500/25 hover:border-violet-400'
+                                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]'
+                              }`}
+                              title={isPublished ? 'Click to unpublish and hide profile' : 'Click to publish profile LIVE immediately'}
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>{isPublished ? 'Unpublish' : 'Go Live / Publish'}</span>
+                            </button>
+
+                            {/* Edit Details */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (existing) {
+                                  setEditingTeamMember(existing);
+                                  setNewTeamMemberData(existing);
+                                } else {
+                                  setEditingTeamMember(null);
+                                  setNewTeamMemberData({
+                                    name: roleDef.default_name,
+                                    role_key: roleDef.key,
+                                    role_name: roleDef.role_name,
+                                    academic_branch_name: roleDef.academic_branch_name,
+                                    division: roleDef.division,
+                                    department_name: roleDef.department_name,
+                                    bio: roleDef.bio,
+                                    avatar_url: roleDef.avatar_url || '/images/team/mitesh_founder.jpg',
+                                    enrollment_number: roleDef.enrollment_number,
+                                    institution: roleDef.institution,
+                                    display_order: roleDef.display_order,
+                                    is_founder: roleDef.is_founder || false,
+                                    is_featured: roleDef.is_founder || false,
+                                    enabled: true,
+                                    ...(roleDef.faculty_designation ? {
+                                      faculty_designation: roleDef.faculty_designation,
+                                      faculty_cabin: roleDef.faculty_cabin,
+                                      faculty_research: roleDef.faculty_research,
+                                      faculty_office_hours: roleDef.faculty_office_hours
+                                    } : {})
+                                  });
+                                }
+                                setShowTeamMemberModal(true);
+                              }}
+                              className="px-3 py-1.5 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-sm flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                              <span>Edit</span>
+                            </button>
                           </div>
                         </div>
                       </div>
+                    );
+                  })}
+                </div>
+              </div>
 
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingTeamMember(member);
-                            setNewTeamMemberData(member);
-                            setShowTeamMemberModal(true);
-                          }}
-                          className="p-2 text-violet-300 hover:text-white bg-violet-950/60 border border-violet-500/30 rounded-lg transition-colors cursor-pointer"
-                          title="Edit Member"
+              {/* Additional Custom Members (Beyond the 7 standard roles) */}
+              {teamMembers.filter(m => !STANDARD_TEAM_ROLES.some(r => r.key === m.role_key || r.role_name === m.role_name)).length > 0 && (
+                <div className="space-y-4 pt-4 border-t border-violet-500/20">
+                  <h4 className="text-xs font-mono text-slate-400 uppercase tracking-wider">
+                    Additional Appointed Team Members
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {teamMembers
+                      .filter(m => !STANDARD_TEAM_ROLES.some(r => r.key === m.role_key || r.role_name === m.role_name))
+                      .map((member) => (
+                        <div
+                          key={member.id}
+                          className="p-6 rounded-2xl border border-violet-500/20 bg-[#171426] flex flex-col justify-between space-y-4"
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        {!member.is_founder && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteTeamMember(member.id, member.name)}
-                            className="p-2 text-red-400 hover:text-red-300 bg-red-950/40 border border-red-500/20 rounded-lg transition-colors cursor-pointer"
-                            title="Delete Member"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-slate-300 leading-relaxed font-light line-clamp-3">
-                      {member.bio}
-                    </p>
-
-                    <div className="grid grid-cols-3 gap-2 p-3 bg-[#11101B] rounded-xl text-center font-mono text-xs">
-                      <div>
-                        <span className="text-[10px] text-slate-500 block uppercase">Division</span>
-                        <span className="text-white">{member.division || '—'}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-slate-500 block uppercase">Enrollment</span>
-                        <span className="text-violet-300">{member.enrollment_number || '—'}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-slate-500 block uppercase">Display Order</span>
-                        <span className="text-slate-300">{member.display_order || 99}</span>
-                      </div>
-                    </div>
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-12 h-12 rounded-xl overflow-hidden border border-violet-500/30 bg-[#0d0c15] shrink-0">
+                                {member.avatar_url ? (
+                                  <img src={member.avatar_url} alt={member.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center font-bold text-violet-300 font-mono text-sm">
+                                    {member.name.slice(0, 2).toUpperCase()}
+                                  </div>
+                                )}
+                              </div>
+                              <div>
+                                <h4 className="text-sm font-bold text-white">{member.name}</h4>
+                                <div className="text-xs text-violet-400 font-mono">{member.role_name}</div>
+                                <div className="text-[11px] text-slate-400 font-mono">{member.department_name}</div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingTeamMember(member);
+                                  setNewTeamMemberData(member);
+                                  setShowTeamMemberModal(true);
+                                }}
+                                className="p-2 text-violet-300 hover:text-white bg-violet-950/60 border border-violet-500/30 rounded-lg cursor-pointer"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTeamMember(member.id, member.name)}
+                                className="p-2 text-red-400 hover:text-red-300 bg-red-950/40 border border-red-500/20 rounded-lg cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                   </div>
                 </div>
-              ))}
+              )}
             </div>
           )}
 

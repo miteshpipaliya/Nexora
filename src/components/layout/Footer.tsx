@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, MapPin, Building, Send, CheckCircle2, AlertCircle } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { NexoraLogo } from '../ui/NexoraLogo';
+import { CompetitionEvent } from '../../types';
 
 export const Footer: React.FC = () => {
+  const [liveCompetitions, setLiveCompetitions] = useState<CompetitionEvent[]>([]);
   const [contactSubject, setContactSubject] = useState('');
   const [contactMessage, setContactMessage] = useState('');
   const [senderName, setSenderName] = useState('');
@@ -12,6 +14,16 @@ export const Footer: React.FC = () => {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsub = dataService.subscribeEvents((events: CompetitionEvent[]) => {
+      const active = events.filter(
+        (e) => (e.status === 'Published' || e.status === 'Open') && !e.isComingSoon
+      );
+      setLiveCompetitions(active);
+    });
+    return () => unsub();
+  }, []);
 
   const handleQuickContact = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,7 +96,7 @@ export const Footer: React.FC = () => {
             </div>
           </div>
 
-          {/* Navigation Links (Store removed) */}
+          {/* Navigation Links */}
           <div className="space-y-3">
             <h4 className="text-xs font-semibold text-slate-200 uppercase tracking-wider font-mono user-select-none">
               Platform
@@ -108,39 +120,39 @@ export const Footer: React.FC = () => {
               <li>
                 <Link to="/profile" className="hover:text-white transition-colors">Student Profile</Link>
               </li>
+              <li>
+                <Link to="/privacy" className="hover:text-white transition-colors text-xs text-slate-400">Privacy Policy</Link>
+              </li>
+              <li>
+                <Link to="/terms" className="hover:text-white transition-colors text-xs text-slate-400">Terms of Participation</Link>
+              </li>
             </ul>
           </div>
 
-          {/* Competitions */}
+          {/* Live Competitions (Dynamically rendered from real database) */}
           <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-slate-200 uppercase tracking-wider font-mono user-select-none">
-              Competitions
+            <h4 className="text-xs font-semibold text-slate-200 uppercase tracking-wider font-mono user-select-none flex items-center gap-2">
+              <span>Live Competitions</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             </h4>
             <ul className="space-y-2 text-sm user-select-none">
-              <li>
-                <Link to="/competitions/zerocode" className="hover:text-white transition-colors">ZeroCode Challenge</Link>
-              </li>
-              <li>
-                <Link to="/competitions/coderush" className="hover:text-white transition-colors">CodeRush Algorithmic</Link>
-              </li>
-              <li>
-                <Link to="/competitions/pathfinder" className="hover:text-white transition-colors">PathFinder Labyrinth</Link>
-              </li>
-              <li>
-                <Link to="/competitions/ctf" className="hover:text-white transition-colors">Capture The Flag (CTF)</Link>
-              </li>
-              <li>
-                <Link to="/competitions/roborace" className="hover:text-white transition-colors">RoboRace Arena</Link>
-              </li>
-              <li>
-                <Link to="/competitions/brainbattle" className="hover:text-white transition-colors">BrainBattle Quiz</Link>
-              </li>
-              <li>
-                <Link to="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
-              </li>
-              <li>
-                <Link to="/terms" className="hover:text-white transition-colors">Terms of Participation</Link>
-              </li>
+              {liveCompetitions.length > 0 ? (
+                liveCompetitions.map((ev) => (
+                  <li key={ev.slug}>
+                    <Link
+                      to={`/competitions/${ev.slug}`}
+                      className="hover:text-white transition-colors block truncate max-w-[200px]"
+                      title={ev.title}
+                    >
+                      {ev.title}
+                    </Link>
+                  </li>
+                ))
+              ) : (
+                <li className="text-xs text-slate-500 font-mono italic">
+                  Competitions Announcing Soon
+                </li>
+              )}
             </ul>
           </div>
 
