@@ -6,6 +6,8 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { z } from 'zod';
 import { registerCmsEndpoints } from './src/server/cmsEndpoints';
+import { hashPasswordScrypt, verifyPasswordScrypt, normalizePassword } from './src/server/adminSecurity';
+import { getBrevoConfig, sendBrevoOtpEmail, BrevoServiceError, type BrevoConfig } from './src/server/brevoMailer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -108,17 +110,11 @@ function getOrCreateHmacSecret(): string {
 
 const HMAC_SECRET = getOrCreateHmacSecret();
 
-// Brevo sender credentials (sanitized without surrounding quotes/whitespace)
-export function getBrevoApiKey(): string {
-  const key = process.env.BREVO_API_KEY;
-  if (!key || !key.trim()) {
-    throw new Error('BREVO_API_KEY is not configured in the server environment. Please configure your Brevo API key in the environment variables.');
-  }
-  return key.trim().replace(/^["']|["']$/g, '');
-}
+export { type BrevoConfig, getBrevoConfig, sendBrevoOtpEmail, BrevoServiceError };
 
-const BREVO_SENDER_EMAIL = (process.env.BREVO_SENDER_EMAIL || 'nexora.bvm@gmail.com').trim().replace(/^["']|["']$/g, '');
-const BREVO_SENDER_NAME = (process.env.BREVO_SENDER_NAME || 'NEXORA').trim().replace(/^["']|["']$/g, '');
+export function getBrevoApiKey(): string {
+  return getBrevoConfig().apiKey;
+}
 
 // Helper to compute keyed HMAC-SHA256 of OTP (never store raw OTP)
 function hashOtp(email: string, otp: string, purpose: string): string {
@@ -155,110 +151,6 @@ function verifySignedToken(token: string, expectedPurpose: string, expectedEmail
     return parsed;
   } catch {
     return null;
-  }
-}
-
-// Brevo Transactional Email Dispatcher via POST https://api.brevo.com/v3/smtp/email
-async function sendBrevoOtpEmail(toEmail: string, otp: string, purpose: 'signup' | 'reset-password' = 'signup'): Promise<void> {
-  const apiKey = getBrevoApiKey();
-
-  const isReset = purpose === 'reset-password';
-  const subject = isReset 
-    ? 'NEXORA — Password Recovery Verification Code' 
-    : 'NEXORA — Your Email Verification Code';
-
-  const heading = isReset ? 'Password Recovery' : 'Email Verification';
-  const subtext = isReset
-    ? 'We received a request to reset the password for your NEXORA account.'
-    : 'Welcome to NEXORA! We received a request to verify your email address for student registration.';
-
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html lang="en">
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${subject}</title>
-      </head>
-      <body style="margin: 0; padding: 0; background-color: #08080D; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #F8FAFC;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #08080D; padding: 40px 16px;">
-          <tr>
-            <td align="center">
-              <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 480px; background-color: #11101B; border: 1px solid rgba(139, 92, 246, 0.35); border-radius: 16px; padding: 32px 24px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8);">
-                <tr>
-                  <td align="center" style="padding-bottom: 24px;">
-                    <div style="font-size: 26px; font-weight: 800; letter-spacing: 0.18em; color: #FFFFFF; text-transform: uppercase;">NEXORA</div>
-                    <div style="font-size: 11px; color: #A78BFA; margin-top: 4px; letter-spacing: 0.08em; font-family: monospace;">STUDENT TECHNOLOGY &amp; INNOVATION COMMUNITY</div>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="color: #F8FAFC; font-size: 14px; line-height: 1.6;">
-                    <p style="margin: 0 0 12px; font-size: 18px; font-weight: 700; color: #FFFFFF;">${heading}</p>
-                    <p style="margin: 0 0 20px; color: #CBD5E1;">${subtext}</p>
-                    <p style="margin: 0 0 12px; color: #94A3B8; font-size: 13px;">Your six-digit verification code is:</p>
-                    <div style="text-align: center; margin: 16px 0 20px; padding: 18px; background-color: #08080D; border: 1px solid rgba(139, 92, 246, 0.5); border-radius: 12px;">
-                      <span style="font-family: 'Courier New', Courier, monospace; font-size: 34px; font-weight: 700; letter-spacing: 0.35em; color: #C4B5FD;">${otp}</span>
-                    </div>
-                    <p style="margin: 0 0 16px; font-size: 13px; color: #F87171; text-align: center;"><strong>This verification code expires in 3 minutes.</strong></p>
-                    <p style="margin: 0 0 8px; font-size: 12px; color: #94A3B8;">If you did not request this verification code, please disregard this message.</p>
-                    <p style="margin: 0 0 24px; font-size: 12px; color: #94A3B8;">Never share this verification code with anyone.</p>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="border-top: 1px solid rgba(139, 92, 246, 0.18); padding-top: 20px; text-align: center; font-size: 11px; color: #64748B;">
-                    <strong style="color: #A78BFA;">NEXORA</strong><br>
-                    Student Technology &amp; Innovation Community<br>
-                    Birla Vishvakarma Mahavidyalaya (BVM)
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </body>
-    </html>
-  `;
-
-  const textContent = `${heading}\n\n${subtext}\n\nYour verification code is:\n\n${otp}\n\nThis verification code expires in 3 minutes.\n\nIf you did not request this code, please ignore this email.\nNever share your verification code with anyone.\n\nNEXORA\nStudent Technology & Innovation Community\nBirla Vishvakarma Mahavidyalaya (BVM)`;
-
-  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST',
-    headers: {
-      'api-key': apiKey.trim(),
-      'Content-Type': 'application/json',
-      'accept': 'application/json'
-    },
-    body: JSON.stringify({
-      sender: { name: BREVO_SENDER_NAME, email: BREVO_SENDER_EMAIL },
-      to: [{ email: toEmail }],
-      subject,
-      htmlContent,
-      textContent
-    })
-  });
-
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    console.error('[BREVO DISPATCH FAILED] Status:', response.status, 'Message:', errData.message);
-    if (response.status === 401) {
-      if (errData.message && errData.message.toLowerCase().includes('ip')) {
-        throw new Error('Brevo IP authorization: Please ensure server IPs are permitted in your Brevo settings.');
-      }
-      throw new Error('Brevo API key rejected or invalid (401). Please check the BREVO_API_KEY environment variable.');
-    }
-    if (response.status === 403) {
-      throw new Error('Brevo API access denied (403). Please verify that Transactional Email permissions are enabled for this key in Brevo.');
-    }
-    if (response.status === 400) {
-      if (errData.message && errData.message.toLowerCase().includes('sender')) {
-        throw new Error(`Brevo sender error: The sender email (${BREVO_SENDER_EMAIL}) must be verified in Brevo.`);
-      }
-      throw new Error(errData.message || 'Invalid email dispatch parameters.');
-    }
-    if (response.status === 402 || response.status === 429) {
-      throw new Error('Email service quota or rate limit reached. Please try again later.');
-    }
-    throw new Error(errData.message || `Brevo delivery failed with status ${response.status}`);
   }
 }
 
@@ -641,8 +533,8 @@ apiRouter.get('/health', async (req, res) => {
     checks: {
       brevoEmail: {
         configured: Boolean(brevoKey && brevoKey.length > 8),
-        senderEmail: BREVO_SENDER_EMAIL,
-        senderName: BREVO_SENDER_NAME
+        senderEmail: (process.env.BREVO_SENDER_EMAIL || '').trim().replace(/^["']|["']$/g, ''),
+        senderName: (process.env.BREVO_SENDER_NAME || 'NEXORA').trim().replace(/^["']|["']$/g, '')
       },
       otpSecurity: {
         hmacConfigured: Boolean(hmacSecret && hmacSecret.length >= 16),
@@ -992,8 +884,7 @@ function getStoredAdminSecurity(): AdminSecurityStore | null {
 }
 
 async function saveAdminSecurityAsync(password: string): Promise<AdminSecurityStore> {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const passwordHash = crypto.scryptSync(password, salt, 64).toString('hex');
+  const { passwordHash, salt } = hashPasswordScrypt(password);
   const record: AdminSecurityStore = {
     passwordHash,
     salt,
@@ -1002,18 +893,16 @@ async function saveAdminSecurityAsync(password: string): Promise<AdminSecuritySt
   memoryAdminSecurity = record;
   sessionRevokedBeforeTimestamp = record.updatedAt;
 
-  // 1. Write to local disk cache
-  try {
-    fs.writeFileSync(ADMIN_SECURITY_FILE, JSON.stringify(record, null, 2), 'utf8');
-  } catch (err) {
-    console.warn('[ADMIN SECURITY] Disk write error:', err);
-  }
-
-  // 2. Write to authoritative Cloud Firestore document
+  // 1. Authoritative write to Cloud Firestore document with read-back verification
+  let firestoreConfirmed = false;
   try {
     const db = await getAdminFirestore();
     if (db) {
       await db.collection('_admin_security').doc('founder').set(record);
+      const snap = await db.collection('_admin_security').doc('founder').get();
+      if (snap.exists && snap.data()?.passwordHash === record.passwordHash) {
+        firestoreConfirmed = true;
+      }
       await db.collection('systemConfig').doc('status').set({
         initialized: true,
         updatedAt: new Date().toISOString()
@@ -1021,6 +910,13 @@ async function saveAdminSecurityAsync(password: string): Promise<AdminSecuritySt
     }
   } catch (fsErr) {
     console.warn('[ADMIN SECURITY] Cloud Firestore persist notice:', fsErr);
+  }
+
+  // 2. Secondary local disk cache
+  try {
+    fs.writeFileSync(ADMIN_SECURITY_FILE, JSON.stringify(record, null, 2), 'utf8');
+  } catch (err) {
+    console.warn('[ADMIN SECURITY] Disk write error:', err);
   }
 
   return record;
@@ -1035,17 +931,16 @@ function saveAdminSecurity(password: string): void {
 async function verifyAdminSecurityPasswordAsync(password: string): Promise<boolean> {
   const security = await getStoredAdminSecurityAsync();
   if (security) {
-    const hash = crypto.scryptSync(password, security.salt, 64).toString('hex');
-    const hashBuf = Buffer.from(hash, 'hex');
-    const storedBuf = Buffer.from(security.passwordHash, 'hex');
-    if (hashBuf.length === storedBuf.length && crypto.timingSafeEqual(hashBuf, storedBuf)) {
-      return true;
+    const isValid = verifyPasswordScrypt(password, security);
+    if (!isValid) {
+      console.warn('[ADMIN SECURITY] Password verification failed against stored hash.');
     }
+    return isValid;
   }
+  // Fallback: If and only if no password stored yet, check env var
   if (process.env.ADMIN_SECURITY_PASSWORD && process.env.ADMIN_SECURITY_PASSWORD.trim()) {
-    if (password.trim() === process.env.ADMIN_SECURITY_PASSWORD.trim()) {
-      return true;
-    }
+    console.warn('[ADMIN SECURITY NOTICE] Using ADMIN_SECURITY_PASSWORD environment variable fallback. Please set a permanent password via setup or CLI.');
+    return normalizePassword(password) === normalizePassword(process.env.ADMIN_SECURITY_PASSWORD);
   }
   return false;
 }
@@ -1053,17 +948,10 @@ async function verifyAdminSecurityPasswordAsync(password: string): Promise<boole
 function verifyAdminSecurityPassword(password: string): boolean {
   const security = getStoredAdminSecurity();
   if (security) {
-    const hash = crypto.scryptSync(password, security.salt, 64).toString('hex');
-    const hashBuf = Buffer.from(hash, 'hex');
-    const storedBuf = Buffer.from(security.passwordHash, 'hex');
-    if (hashBuf.length === storedBuf.length && crypto.timingSafeEqual(hashBuf, storedBuf)) {
-      return true;
-    }
+    return verifyPasswordScrypt(password, security);
   }
   if (process.env.ADMIN_SECURITY_PASSWORD && process.env.ADMIN_SECURITY_PASSWORD.trim()) {
-    if (password.trim() === process.env.ADMIN_SECURITY_PASSWORD.trim()) {
-      return true;
-    }
+    return normalizePassword(password) === normalizePassword(process.env.ADMIN_SECURITY_PASSWORD);
   }
   return false;
 }
@@ -1779,6 +1667,106 @@ apiRouter.post(['/admin/auth/lock', '/admin/lock'], (req, res) => {
   }
   recordAudit('ADMIN_LOCKED', 'Elevated admin session was manually locked.');
   res.json({ success: true, message: 'Admin session revoked.' });
+});
+
+// 9b. Brevo Email Diagnostics & Test Email (WP7)
+apiRouter.get('/admin/email-diagnostics', async (req, res) => {
+  try {
+    const sessionToken = (req.headers['x-admin-session'] as string) || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
+    const isElevated = sessionToken && (
+      Boolean(elevatedAdminSessions.get(sessionToken)) || 
+      Boolean(verifySignedToken(sessionToken, 'admin-session'))
+    );
+    if (!isElevated) {
+      res.status(401).json({ error: 'Elevated admin session required.' });
+      return;
+    }
+
+    let config;
+    try {
+      config = getBrevoConfig();
+    } catch (cfgErr: any) {
+      res.status(503).json({
+        configured: false,
+        error: cfgErr.message,
+        code: cfgErr.code || 'EMAIL_NOT_CONFIGURED'
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    let keyAccepted = false;
+    let httpStatus = 0;
+    let senderVerified = false;
+    let transactionalEnabled = false;
+
+    try {
+      // 1. Check account info
+      const accountRes = await fetch('https://api.brevo.com/v3/account', {
+        headers: { 'api-key': config.apiKey },
+        signal: controller.signal
+      });
+      httpStatus = accountRes.status;
+      if (accountRes.ok) {
+        keyAccepted = true;
+        const accountData = await accountRes.json().catch(() => ({}));
+        transactionalEnabled = Boolean(accountData && accountData.plan);
+      }
+
+      // 2. Check senders info
+      const sendersRes = await fetch('https://api.brevo.com/v3/senders', {
+        headers: { 'api-key': config.apiKey },
+        signal: controller.signal
+      });
+      if (sendersRes.ok) {
+        const sendersData = await sendersRes.json().catch(() => ({}));
+        const sendersList = Array.isArray(sendersData?.senders) ? sendersData.senders : [];
+        const match = sendersList.find((s: any) => s.email?.toLowerCase() === config.senderEmail.toLowerCase());
+        senderVerified = Boolean(match && match.active);
+      }
+
+      res.json({
+        success: true,
+        keyAccepted,
+        httpStatus,
+        senderConfigured: config.senderEmail,
+        senderVerified,
+        transactionalEnabled
+      });
+    } catch (fetchErr: any) {
+      res.status(502).json({
+        success: false,
+        error: fetchErr.name === 'AbortError' ? 'Brevo diagnostic request timed out' : 'Failed to connect to Brevo API',
+        code: fetchErr.name === 'AbortError' ? 'EMAIL_TIMEOUT' : 'EMAIL_PROVIDER_REJECTED'
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: 'Internal diagnostics failure' });
+  }
+});
+
+apiRouter.post('/admin/send-test-email', async (req, res) => {
+  try {
+    const sessionToken = (req.headers['x-admin-session'] as string) || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
+    const isElevated = sessionToken && (
+      Boolean(elevatedAdminSessions.get(sessionToken)) || 
+      Boolean(verifySignedToken(sessionToken, 'admin-session'))
+    );
+    if (!isElevated) {
+      res.status(401).json({ error: 'Elevated admin session required.' });
+      return;
+    }
+
+    const testOtp = crypto.randomInt(100000, 1000000).toString();
+    await sendBrevoOtpEmail(FOUNDER_EMAIL, testOtp, 'signup');
+    res.json({ success: true, message: `Test verification email dispatched to ${FOUNDER_EMAIL}.` });
+  } catch (err: any) {
+    res.status(err.status || 500).json({ error: err.message || 'Failed to send test email', code: err.code });
+  }
 });
 
 // 10. Server-side Coming Soon Validation & Registration Guard

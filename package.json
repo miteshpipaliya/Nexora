@@ -13,7 +13,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "rules:test": "vitest run tests/rules.test.ts",
-    "admin:claim": "tsx scripts/set-admin-claim.ts"
+    "admin:claim": "tsx scripts/set-admin-claim.ts",
+    "admin:password": "tsx scripts/admin-password-cli.ts"
   },
   "engines": {
     "node": "24.x"

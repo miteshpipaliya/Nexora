@@ -207,11 +207,13 @@ export const INITIAL_IMAGE_LIBRARY_ITEMS = [
 export const DEFAULT_TEAM_META = {
   roles: [
     { id: 'role-founder', name: 'Founder & Lead Architect', display_order: 1, enabled: true, description: 'Initiative founder and visionary' },
-    { id: 'role-tech-ops', name: 'Technical Operations Head', display_order: 2, enabled: true, description: 'Arena infrastructure and servers' },
-    { id: 'role-eng-lead', name: 'Full-Stack Engineering Lead', display_order: 3, enabled: true, description: 'Web platform and API development' },
-    { id: 'role-event-coord', name: 'Event Coordinator', display_order: 4, enabled: true, description: 'Logistics and judging desk' },
-    { id: 'role-creative-dir', name: 'Design & Creative Director', display_order: 5, enabled: true, description: 'Brand identity and UI/UX' },
-    { id: 'role-outreach-head', name: 'Public Relations & Outreach Head', display_order: 6, enabled: true, description: 'Intercollege partnerships and sponsorships' }
+    { id: 'role-faculty', name: 'Faculty Member', display_order: 2, enabled: true, description: 'Faculty coordinator or mentor' },
+    { id: 'role-tech-ops', name: 'Technical Operations Head', display_order: 3, enabled: true, description: 'Arena infrastructure and competition systems' },
+    { id: 'role-eng-lead', name: 'Full-Stack Engineering Lead', display_order: 4, enabled: true, description: 'Web platform and API development' },
+    { id: 'role-event-coord', name: 'Event Coordinator', display_order: 5, enabled: true, description: 'Logistics and judging desk' },
+    { id: 'role-creative-dir', name: 'Design & Creative Director', display_order: 6, enabled: true, description: 'Brand identity and UI/UX' },
+    { id: 'role-outreach-head', name: 'Public Relations & Outreach Head', display_order: 7, enabled: true, description: 'Intercollege partnerships and sponsorships' },
+    { id: 'role-volunteer', name: 'Member or Volunteer', display_order: 8, enabled: true, description: 'Active student contributor or volunteer' }
   ],
   branches: [
     { id: 'branch-el', name: 'Electronics Engineering', code: 'EL', display_order: 1, enabled: true },
@@ -336,6 +338,7 @@ export function registerCmsEndpoints({
         registration_open: data.registration_open !== false,
         is_published: data.status === 'Published',
         isComingSoon: Boolean(data.isComingSoon),
+        show_capacity: data.show_capacity !== false,
         capacity: Number(data.capacity) || 60,
         registered_count: Number(data.registered_count) || 0,
         fee_per_participant: Number(data.fee_per_participant) ?? 50,
@@ -389,6 +392,7 @@ export function registerCmsEndpoints({
         ...data,
         slug,
         isComingSoon: Boolean(data.isComingSoon),
+        ...(data.show_capacity !== undefined ? { show_capacity: Boolean(data.show_capacity) } : {}),
         updated_at: new Date().toISOString()
       });
 
@@ -838,7 +842,7 @@ export function registerCmsEndpoints({
     }
   });
 
-  // Public endpoint for `/team` page (reads with fallback)
+  // Public endpoint for `/team` page (reads with fallback and hierarchical role ordering)
   apiRouter.get('/team/public', async (req: Request, res: Response) => {
     try {
       const db = await getAdminFirestore();
@@ -852,17 +856,32 @@ export function registerCmsEndpoints({
         db.collection('teamConfig').doc('meta').get()
       ]);
 
+      const meta = metaSnap.exists ? metaSnap.data() : DEFAULT_TEAM_META;
+      const roleOrderMap = new Map<string, number>();
+      if (meta && Array.isArray(meta.roles)) {
+        meta.roles.forEach((r: any) => {
+          if (r.name) roleOrderMap.set(r.name.toLowerCase().trim(), Number(r.display_order) || 99);
+        });
+      }
+
       let members: any[] = [];
       if (!membersSnap.empty) {
         members = membersSnap.docs
           .map((d: any) => ({ id: d.id, ...d.data() }))
           .filter((m: any) => m.enabled !== false);
-        members.sort((a: any, b: any) => (a.display_order || 999) - (b.display_order || 999));
       } else {
         members = DEFAULT_TEAM_MEMBERS;
       }
 
-      const meta = metaSnap.exists ? metaSnap.data() : DEFAULT_TEAM_META;
+      members.sort((a: any, b: any) => {
+        if (a.is_founder) return -1;
+        if (b.is_founder) return 1;
+        const roleA = roleOrderMap.get((a.role_name || '').toLowerCase().trim()) ?? 99;
+        const roleB = roleOrderMap.get((b.role_name || '').toLowerCase().trim()) ?? 99;
+        if (roleA !== roleB) return roleA - roleB;
+        return (Number(a.display_order) || 999) - (Number(b.display_order) || 999);
+      });
+
       res.json({ success: true, members, meta });
     } catch (err: any) {
       res.json({ success: true, members: DEFAULT_TEAM_MEMBERS, meta: DEFAULT_TEAM_META });

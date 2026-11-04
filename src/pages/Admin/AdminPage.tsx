@@ -82,6 +82,24 @@ export const STANDARD_TEAM_ROLES = [
     display_order: 1
   },
   {
+    key: 'faculty_guide',
+    role_name: 'Faculty Member',
+    default_name: 'Faculty Advisor & Mentor',
+    department_name: 'Department of Electronics Engineering',
+    academic_branch_name: 'Faculty Mentor',
+    division: 'Faculty Advisory Council',
+    institution: 'Birla Vishvakarma Mahavidyalaya',
+    enrollment_number: 'FACULTY-BVM-01',
+    bio: 'Providing academic guidance, pedagogical alignment, institutional mentorship, and ethical oversight for NEXORA student technological initiatives.',
+    avatar_url: '',
+    is_founder: false,
+    display_order: 2,
+    faculty_designation: 'Associate Professor & Advisor',
+    faculty_cabin: 'BVM Room 204, Main Building',
+    faculty_research: 'VLSI Systems, Embedded Intelligence, Cloud Computing',
+    faculty_office_hours: 'Monday – Friday: 03:00 PM – 05:00 PM'
+  },
+  {
     key: 'tech_ops',
     role_name: 'Technical Operations Head',
     default_name: 'Technical Operations Lead',
@@ -93,7 +111,7 @@ export const STANDARD_TEAM_ROLES = [
     bio: 'Oversees infrastructure deployment, sandbox evaluation environments, serverless endpoints, and high-availability contest telemetry.',
     avatar_url: '',
     is_founder: false,
-    display_order: 2
+    display_order: 3
   },
   {
     key: 'fullstack_lead',
@@ -107,7 +125,7 @@ export const STANDARD_TEAM_ROLES = [
     bio: 'Drives client and server-side feature implementations, real-time Firestore listeners, automated test coverage, and responsive frontend performance.',
     avatar_url: '',
     is_founder: false,
-    display_order: 3
+    display_order: 4
   },
   {
     key: 'event_coordinator',
@@ -121,7 +139,7 @@ export const STANDARD_TEAM_ROLES = [
     bio: 'Coordinates contest schedules, rule compliance, venue logistics, live scoring desks, and participant onboarding across departments.',
     avatar_url: '',
     is_founder: false,
-    display_order: 4
+    display_order: 5
   },
   {
     key: 'design_director',
@@ -135,7 +153,7 @@ export const STANDARD_TEAM_ROLES = [
     bio: 'Shapes the NEXORA visual identity, motion graphics, cyber-minimalist typography, digital credentials, and interactive student badges.',
     avatar_url: '',
     is_founder: false,
-    display_order: 5
+    display_order: 6
   },
   {
     key: 'pr_outreach',
@@ -149,25 +167,21 @@ export const STANDARD_TEAM_ROLES = [
     bio: 'Fosters intercollegiate partnerships across GCET, ADIT, and leading Gujarat engineering institutes while driving student engagement.',
     avatar_url: '',
     is_founder: false,
-    display_order: 6
+    display_order: 7
   },
   {
-    key: 'faculty_guide',
-    role_name: 'Faculty Member & Guide',
-    default_name: 'Faculty Advisor & Mentor',
-    department_name: 'Department of Electronics Engineering',
-    academic_branch_name: 'Faculty Mentor',
-    division: 'Faculty Advisory Council',
+    key: 'volunteer',
+    role_name: 'Member or Volunteer',
+    default_name: 'Executive Student Volunteer',
+    department_name: 'Student Operations & Support',
+    academic_branch_name: 'Engineering',
+    division: 'Division A',
     institution: 'Birla Vishvakarma Mahavidyalaya',
-    enrollment_number: 'FACULTY-BVM-01',
-    bio: 'Providing academic guidance, pedagogical alignment, institutional mentorship, and ethical oversight for NEXORA student technological initiatives.',
+    enrollment_number: '23EN000',
+    bio: 'Active student volunteer contributing to event operations, arena logistics, and community engagement.',
     avatar_url: '',
     is_founder: false,
-    display_order: 7,
-    faculty_designation: 'Associate Professor & Advisor',
-    faculty_cabin: 'BVM Room 204, Main Building',
-    faculty_research: 'VLSI Systems, Embedded Intelligence, Cloud Computing',
-    faculty_office_hours: 'Monday – Friday: 03:00 PM – 05:00 PM'
+    display_order: 8
   }
 ];
 
@@ -2828,17 +2842,6 @@ export const AdminPage: React.FC = () => {
             >
               Departments ({teamMeta.departments?.length || 0})
             </button>
-            <button
-              type="button"
-              onClick={() => setTeamSubTab('divisions')}
-              className={`px-4 py-2 text-xs font-mono rounded-xl transition-all whitespace-nowrap ${
-                teamSubTab === 'divisions'
-                  ? 'bg-violet-600 text-white font-bold shadow-md'
-                  : 'bg-[#171426] text-slate-400 hover:text-white border border-violet-500/15'
-              }`}
-            >
-              Divisions ({teamMeta.divisions?.length || 0})
-            </button>
           </div>
 
           {/* Subtab 1: 7 Dedicated Leadership Profile Cards */}
@@ -3116,7 +3119,17 @@ export const AdminPage: React.FC = () => {
                       {r.description && <div className="text-xs text-slate-400 font-light">{r.description}</div>}
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs font-mono text-violet-400">Order: {r.display_order}</span>
+                      <div className="flex items-center gap-1.5 font-mono text-xs text-slate-300">
+                        <span className="text-[10px] text-slate-500 uppercase">Order:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={99}
+                          value={r.display_order}
+                          onChange={(e) => handleSaveMetaItem('role', { ...r, display_order: parseInt(e.target.value) || 1 })}
+                          className="w-14 px-2 py-1 bg-[#08080D] border border-violet-500/30 rounded-lg text-white font-mono text-xs text-center focus:outline-none focus:border-violet-400"
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={() => handleSaveMetaItem('role', { ...r, enabled: !r.enabled })}
@@ -3221,31 +3234,6 @@ export const AdminPage: React.FC = () => {
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Subtab 5: Divisions CRUD */}
-          {teamSubTab === 'divisions' && (
-            <div className="p-6 bg-[#171426] border border-violet-500/20 rounded-2xl space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-violet-500/15">
-                <span className="text-xs font-mono text-slate-300 uppercase tracking-wider">Classroom / Batch Division</span>
-                <span className="text-xs font-mono text-slate-400">Actions</span>
-              </div>
-              <div className="divide-y divide-violet-500/10">
-                {(teamMeta.divisions || []).map((div) => (
-                  <div key={div.id} className="py-3 flex items-center justify-between gap-4">
-                    <span className="text-sm font-bold text-white">{div.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteMetaItem('division', div.id)}
-                      className="p-1.5 text-red-400 hover:text-red-300"
-                      title="Delete Division"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
                   </div>
                 ))}
               </div>
@@ -3476,6 +3464,36 @@ export const AdminPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Show seat limit / capacity counter switch (WP4) */}
+              <div className="p-4 bg-[#11101B] border border-violet-500/30 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-mono font-bold text-white block">
+                      Show seat limit (registered / capacity)
+                    </span>
+                    <span className="text-[11px] text-slate-400 block font-mono">
+                      {newEventData.show_capacity !== false 
+                        ? `Live preview: ${newEventData.registered_count || 0} / ${newEventData.capacity || 45} registered` 
+                        : `Live preview: ${newEventData.registered_count || 48} students registered`}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNewEventData({ 
+                      ...newEventData, 
+                      show_capacity: newEventData.show_capacity === false ? true : false 
+                    })}
+                    className={`px-3.5 py-1.5 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer ${
+                      newEventData.show_capacity !== false 
+                        ? 'bg-violet-600 text-white shadow-[0_0_15px_rgba(139,92,246,0.5)] border border-violet-400' 
+                        : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'
+                    }`}
+                  >
+                    {newEventData.show_capacity !== false ? 'Seat Limit: ON' : 'Seat Limit: OFF'}
+                  </button>
+                </div>
+              </div>
+
               {/* Event Date & Venue */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -3703,6 +3721,36 @@ export const AdminPage: React.FC = () => {
                     <option value="open">Open for Registration</option>
                     <option value="closed">Closed</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Show seat limit / capacity counter switch (WP4) */}
+              <div className="p-4 bg-[#11101B] border border-violet-500/30 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-mono font-bold text-white block">
+                      Show seat limit (registered / capacity)
+                    </span>
+                    <span className="text-[11px] text-slate-400 block font-mono">
+                      {editingEvent.show_capacity !== false 
+                        ? `Live preview: ${editingEvent.registered_count || 0} / ${editingEvent.capacity || 45} registered` 
+                        : `Live preview: ${editingEvent.registered_count || 48} students registered`}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditingEvent({ 
+                      ...editingEvent, 
+                      show_capacity: editingEvent.show_capacity === false ? true : false 
+                    })}
+                    className={`px-3.5 py-1.5 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer ${
+                      editingEvent.show_capacity !== false 
+                        ? 'bg-violet-600 text-white shadow-[0_0_15px_rgba(139,92,246,0.5)] border border-violet-400' 
+                        : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'
+                    }`}
+                  >
+                    {editingEvent.show_capacity !== false ? 'Seat Limit: ON' : 'Seat Limit: OFF'}
+                  </button>
                 </div>
               </div>
 
@@ -4212,17 +4260,14 @@ export const AdminPage: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-slate-300 font-mono mb-1">Classroom Division</label>
-                  <select
+                  <input
+                    type="text"
+                    maxLength={20}
+                    placeholder="e.g. Division A"
                     value={newTeamMemberData.division || ''}
                     onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, division: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
-                  >
-                    {(teamMeta.divisions || []).map((div) => (
-                      <option key={div.id} value={div.name}>
-                        {div.name}
-                      </option>
-                    ))}
-                  </select>
+                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white font-mono"
+                  />
                 </div>
                 <div>
                   <label className="block text-slate-300 font-mono mb-1">Enrollment Number</label>

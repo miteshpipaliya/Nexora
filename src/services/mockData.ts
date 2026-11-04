@@ -18,9 +18,11 @@ export const INITIAL_EVENTS: CompetitionEvent[] = [
     min_team_size: 1,
     max_team_size: 1,
     capacity: 80,
+    show_capacity: true,
     registered_count: 0,
     fee_per_participant: 50,
     banner_image: '/images/competitions/zerocode.jpg',
+    cover_image: '/images/competitions/zerocode.jpg',
     prizes: {
       first_place: '₹2,000 Cash Prize',
       special_rewards: 'Top 7 Participants — Exclusive Surprise Gifts'
@@ -61,9 +63,11 @@ export const INITIAL_EVENTS: CompetitionEvent[] = [
     min_team_size: 1,
     max_team_size: 1,
     capacity: 100,
+    show_capacity: true,
     registered_count: 0,
     fee_per_participant: 50,
     banner_image: '/images/competitions/coderush.jpg',
+    cover_image: '/images/competitions/coderush.jpg',
     prizes: {
       first_place: '₹2,000 Cash Prize',
       special_rewards: 'Top 7 Participants — Exclusive Surprise Gifts'
@@ -106,9 +110,11 @@ export const INITIAL_EVENTS: CompetitionEvent[] = [
     min_team_size: 1,
     max_team_size: 2,
     capacity: 60,
+    show_capacity: true,
     registered_count: 0,
     fee_per_participant: 50,
     banner_image: '/images/competitions/pathfinder.jpg',
+    cover_image: '/images/competitions/pathfinder.jpg',
     prizes: {
       first_place: '₹2,500 Cash Prize',
       second_place: '₹1,500 Cash Prize',
@@ -147,9 +153,11 @@ export const INITIAL_EVENTS: CompetitionEvent[] = [
     min_team_size: 1,
     max_team_size: 2,
     capacity: 60,
+    show_capacity: true,
     registered_count: 0,
     fee_per_participant: 50,
     banner_image: '/images/competitions/ctf.jpg',
+    cover_image: '/images/competitions/ctf.jpg',
     prizes: {
       first_place: '₹2,000 Cash Prize',
       special_rewards: 'Top 7 Participants — Exclusive Surprise Gifts'
@@ -195,9 +203,11 @@ export const INITIAL_EVENTS: CompetitionEvent[] = [
     min_team_size: 1,
     max_team_size: 4,
     capacity: 50,
+    show_capacity: true,
     registered_count: 0,
     fee_per_participant: 50,
     banner_image: '/images/competitions/roborace.jpg',
+    cover_image: '/images/competitions/roborace.jpg',
     prizes: {
       first_place: '₹3,000 Cash Prize',
       second_place: '₹1,500 Cash Prize',
@@ -236,9 +246,11 @@ export const INITIAL_EVENTS: CompetitionEvent[] = [
     min_team_size: 5,
     max_team_size: 5,
     capacity: 40,
+    show_capacity: true,
     registered_count: 0,
     fee_per_participant: 50,
     banner_image: '/images/competitions/brainbattle.jpg',
+    cover_image: '/images/competitions/brainbattle.jpg',
     prizes: {
       first_place: '₹3,500 Cash Prize',
       second_place: '₹2,000 Cash Prize',

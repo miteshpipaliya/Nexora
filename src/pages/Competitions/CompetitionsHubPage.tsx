@@ -4,6 +4,7 @@ import { ArrowRight, Code2, ShieldAlert, Cpu, Terminal, Users, Trophy } from 'lu
 import { dataService } from '../../services/dataService';
 import { EventRegistrationModal } from '../../components/forms/EventRegistrationModal';
 import { CompetitionCardImage } from '../../components/ui/CompetitionCardImage';
+import { RegistrationCounter } from '../../components/common/RegistrationCounter';
 import { CompetitionEvent } from '../../types';
 
 export const CompetitionsHubPage: React.FC = () => {
@@ -12,7 +13,6 @@ export const CompetitionsHubPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedEventForModal, setSelectedEventForModal] = useState<CompetitionEvent | null>(null);
   const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
-  const [displayModes, setDisplayModes] = useState<Record<string, 'capacity' | 'count'>>({});
 
   useEffect(() => {
     // Real-time Firestore subscription
@@ -145,26 +145,12 @@ export const CompetitionsHubPage: React.FC = () => {
 
                     <div className="pt-6 border-t border-violet-500/15 flex items-center justify-between gap-4">
                       <div className="text-xs font-mono text-slate-400 user-select-none">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDisplayModes(prev => {
-                              const currentMode = prev[event.id] || event.registration_display_mode || 'capacity';
-                              return { ...prev, [event.id]: currentMode === 'capacity' ? 'count' : 'capacity' };
-                            });
-                          }}
-                          title="Click to toggle between capacity ratio and simple registration count"
-                          className="hover:text-violet-300 transition-colors text-left font-mono cursor-pointer flex items-center gap-1 group/btn"
-                        >
-                          <Users className="w-3.5 h-3.5 text-violet-400 group-hover/btn:scale-110 transition-transform" />
-                          <span>
-                            {(displayModes[event.id] || event.registration_display_mode || 'capacity') === 'capacity'
-                              ? `${event.registered_count || 0} / ${event.capacity} registered`
-                              : `${event.registered_count || 0} registered`}
-                          </span>
-                        </button>
-                        <div className={isComingSoon ? 'text-amber-400' : event.registration_open ? 'text-emerald-400' : 'text-slate-400'}>
+                        <RegistrationCounter
+                          registeredCount={event.registered_count || 0}
+                          capacity={event.capacity}
+                          showCapacity={event.show_capacity}
+                        />
+                        <div className={`mt-1 ${isComingSoon ? 'text-amber-400' : event.registration_open ? 'text-emerald-400' : 'text-slate-400'}`}>
                           {isComingSoon ? 'Coming Soon' : event.registration_open ? 'Registration Open' : 'Registration Closed'}
                         </div>
                       </div>

@@ -28,6 +28,8 @@ import { NotFoundPage } from './pages/NotFoundPage';
 import { DynamicCompetitionPage } from './pages/Competitions/DynamicCompetitionPage';
 import { useBroadcastPopups } from './features/notifications/useBroadcastPopups';
 import { BroadcastPopup } from './features/notifications/BroadcastPopup';
+import { BroadcastToast } from './components/common/BroadcastToast';
+import { CopyGuard } from './components/common/CopyGuard';
 
 // Scroll to top helper on navigation
 const ScrollToTop: React.FC = () => {
@@ -53,7 +55,9 @@ export function App() {
       <AuthProvider>
         <BrowserRouter>
           <ScrollToTop />
+          <CopyGuard />
           <BroadcastPopupContainer />
+          <BroadcastToast />
           {/* Layer 1: Full-website animated galaxy background covering entire viewport */}
           <GlobalGalaxyBackground />
 

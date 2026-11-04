@@ -23,6 +23,7 @@ import { dataService } from '../../services/dataService';
 import { CompetitionEvent } from '../../types';
 import { EventRegistrationModal } from '../../components/forms/EventRegistrationModal';
 import { CompetitionCardImage } from '../../components/ui/CompetitionCardImage';
+import { RegistrationCounter } from '../../components/common/RegistrationCounter';
 import { useAuth } from '../../context/AuthContext';
 
 export const DynamicCompetitionPage: React.FC = () => {
@@ -208,19 +209,14 @@ export const DynamicCompetitionPage: React.FC = () => {
               isComingSoon={event.isComingSoon} 
             />
 
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-                <span>Registration Quota</span>
-                <span className="text-white font-semibold">
-                  {event.registered_count || 0} / {event.capacity} seats filled
-                </span>
-              </div>
-              <div className="w-full h-1.5 bg-[#11101B] rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-violet-500 transition-all duration-500"
-                  style={{ width: `${Math.min(100, ((event.registered_count || 0) / (event.capacity || 1)) * 100)}%` }}
-                />
-              </div>
+            <div className="p-3 bg-[#11101B] rounded-xl border border-violet-500/15">
+              <RegistrationCounter
+                registeredCount={event.registered_count || 0}
+                capacity={event.capacity}
+                showCapacity={event.show_capacity}
+                showProgressBar={event.show_capacity !== false}
+                label="seats filled"
+              />
             </div>
 
             <div className="p-4 bg-[#11101B] rounded-xl border border-violet-500/15 space-y-2">

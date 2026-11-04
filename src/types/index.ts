@@ -63,6 +63,7 @@ export interface CompetitionEvent {
   eligibility?: string;
   capacity: number;
   registered_count: number;
+  show_capacity?: boolean;
   registration_display_mode?: 'capacity' | 'count';
   fee_per_participant: number;
   banner_image?: string;
