@@ -1,7 +1,7 @@
-# NEXORA — Security Architecture & Hardening Audit
+# NEXORA — Security Architecture & Hardening Record
 
 **Application:** NEXORA (Student Technology & Innovation Community, BVM)  
-**Security Standard:** Zero-Trust Administrative Elevation, Cryptographic Keyed Hashing, OWASP Top 10 Compliance  
+**Review basis:** OWASP ASVS and Web Security Testing Guide principles; this document is not a compliance certification.  
 
 ---
 
@@ -63,3 +63,34 @@
 - **Events Collection (`/events/{slug}`):** Read open to all; create, update, delete strictly restricted to admins.
 - **Registrations (`/registrations/{regId}`):** Read restricted to owner or admin; writes routed via authoritative backend server endpoint `/api/registrations/create` to prevent student seat tampering.
 - **Audit Logs (`/adminAuditLogs/{logId}`):** Write-only by server; read-only by verified admins.
+
+---
+
+## 5. Release Readiness Review — 2026-11-04
+
+### 5.1 Preview startup and isolation
+
+- Vercel's `codex/nexora-production-audit` Preview environment has no configured variables. The Preview API import fails closed with `ConfigError: OTP_HMAC_SECRET must be configured with at least 32 characters in serverless environments.` This is missing Preview configuration, not evidence that a Production credential or database was used.
+- The Preview deployment serves its HTML, but `/api/health` returned `500 FUNCTION_INVOCATION_FAILED`. Firebase Auth, Firestore, Brevo, and the browser experience cannot be integration-tested until isolated Preview settings are added.
+- Do not remove the serverless HMAC requirement or Preview Firebase isolation check to make the Preview appear healthy.
+
+### 5.2 Production Firebase configuration verification limit
+
+- The committed frontend Firebase project/database settings match the backend's Production fallback project/database identifiers.
+- Vercel shows Production-targeted `FIREBASE_SERVICE_ACCOUNT`, but its secret value is not available through the connected account's metadata response. The service account's `project_id` therefore could not be independently compared with the frontend project. Production `FIREBASE_PROJECT_ID` is not separately configured.
+- Before a Production release, the owner must confirm in Vercel/Firebase that the service account belongs to the same Firebase project and has the required Auth and Firestore permissions. No credential value should be copied into Git or shared in chat.
+
+### 5.3 Dependency advisory review
+
+- `body-parser` was updated to `1.20.9`, fixing the reported High compressed-body denial-of-service advisory.
+- `bun audit` still reports `@grpc/grpc-js` advisories because Firebase's Firestore web package pins a Node-targeted `1.9.x` dependency. The Firebase Admin Firestore runtime resolves `@grpc/grpc-js` `1.14.6`, and the Vite browser bundle contains no gRPC package code. Do not force an override that violates Firebase's declared dependency range without compatibility testing.
+- `glob` and `minimatch` remain Moderate transitive advisories through `rimraf`; no direct application imports were found. They remain visible in the dependency audit and require follow-up when upstream ranges permit safe updates.
+
+### 5.4 Checks not completed
+
+- `npm run rules:test` currently fails because `tests/rules.test.ts` does not exist. Firestore rules were inspected statically (including default deny and internal collection denials), but their behavior was not verified against the Firebase emulator.
+- Student/Admin Firebase workflows, Firestore authorization, registration, responsive UI, and real Brevo delivery were not integration-tested. Staging credentials and authorized test accounts are required. No actual OTP email was sent or inbox receipt confirmed.
+
+### 5.5 Release gate
+
+Do not merge or deploy to Production until isolated Preview configuration is present, the Preview API returns 200, Firebase service-account project alignment is confirmed, Firestore rules are tested, and the required staging integration checks pass. The existing Production deployment and data remain unchanged.
