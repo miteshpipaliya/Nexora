@@ -239,10 +239,6 @@ export const AdminPage: React.FC = () => {
   // Status check for Password B
   const [adminStatus, setAdminStatus] = useState<{
     initialized: boolean;
-    founderEmail: string;
-    maskedEmail: string;
-    founderPhone: string;
-    maskedPhone: string;
   } | null>(null);
 
   // Flow states: 'check' | 'setup' | 'password' | 'otp' | 'forgot_otp' | 'forgot_reset'

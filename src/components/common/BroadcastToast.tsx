@@ -38,14 +38,23 @@ export function markBroadcastSeenLocally(id: string) {
 }
 
 export function formatRelativeTime(dateString?: string): string {
-  if (!dateString) return 'now';
+  if (!dateString) return 'just now';
   const timestamp = new Date(dateString).getTime();
-  if (isNaN(timestamp)) return 'now';
+  if (isNaN(timestamp)) return 'just now';
   const diffSec = Math.floor((Date.now() - timestamp) / 1000);
-  if (diffSec < 45) return 'now';
+  if (diffSec < 45) return 'just now';
   if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
   if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
   return `${Math.floor(diffSec / 86400)}d ago`;
+}
+
+export function playNotificationChime(notificationId?: string, forceTest: boolean = false): boolean {
+  try {
+    playNotificationSound(notificationId, forceTest);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 interface ToastItem {

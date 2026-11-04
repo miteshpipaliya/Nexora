@@ -28,12 +28,18 @@ export const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '100kb' }));
 
-// Path recovery middleware for Vercel Serverless Function rewrites
+// Process-level crash prevention and structured logging (B-01)
+process.on('unhandledRejection', (reason: any) => {
+  console.error('[PROCESS UNHANDLED REJECTION]', reason?.stack || reason?.message || reason);
+});
+
+process.on('uncaughtException', (error: any) => {
+  console.error('[PROCESS UNCAUGHT EXCEPTION]', error?.stack || error?.message || error);
+});
+
+// Path recovery middleware for Vercel Serverless Function rewrites (header rewrites deleted per C-08)
 app.use((req, res, next) => {
-  const xMatched = (req.headers['x-matched-path'] as string) || (req.headers['x-forwarded-uri'] as string);
-  if (xMatched) {
-    req.url = xMatched;
-  } else if (req.url.startsWith('/api/index')) {
+  if (req.url.startsWith('/api/index')) {
     req.url = req.url.replace(/^\/api\/index(\.ts|\.js)?/, '') || '/';
   }
   next();
@@ -504,59 +510,11 @@ const activeAdminChallenges = new Map<string, AdminDualChallenge>();
 const activeAdminSessions = new Map<string, AdminSession>();
 
 // ==========================================
-// SYSTEM HEALTH & READINESS ENDPOINT
+// SYSTEM HEALTH & READINESS ENDPOINT (C-08)
+// Returns only status: 'ok' without disclosing internal configuration or PII
 // ==========================================
-apiRouter.get('/health', async (req, res) => {
-  const brevoKey = process.env.BREVO_API_KEY?.trim();
-  const firebaseKey = process.env.FIREBASE_API_KEY?.trim();
-  const hmacSecret = process.env.OTP_HMAC_SECRET?.trim();
-  const hasSa = Boolean(
-    process.env.FIREBASE_SERVICE_ACCOUNT || 
-    (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY)
-  );
-
-  let firestoreConnected = false;
-  try {
-    const db = await getAdminFirestore();
-    firestoreConnected = Boolean(db);
-  } catch {
-    firestoreConnected = false;
-  }
-
-  res.json({
-    status: 'ok',
-    service: 'NEXORA Production Backend API',
-    timestamp: new Date().toISOString(),
-    uptime: Math.floor(process.uptime()),
-    serverless: isServerless,
-    environment: process.env.NODE_ENV || 'production',
-    checks: {
-      brevoEmail: {
-        configured: Boolean(brevoKey && brevoKey.length > 8),
-        senderEmail: (process.env.BREVO_SENDER_EMAIL || '').trim().replace(/^["']|["']$/g, ''),
-        senderName: (process.env.BREVO_SENDER_NAME || 'NEXORA').trim().replace(/^["']|["']$/g, '')
-      },
-      otpSecurity: {
-        hmacConfigured: Boolean(hmacSecret && hmacSecret.length >= 16),
-        algorithm: 'HMAC-SHA256',
-        expirySeconds: 180,
-        resendCooldownSeconds: 30,
-        maxAttempts: 5,
-        storageMode: firestoreConnected ? 'Cloud Firestore (Authoritative)' : 'Durable Fallback Store'
-      },
-      firebase: {
-        apiKeyConfigured: Boolean(firebaseKey && firebaseKey.length > 5),
-        adminSdkConfigured: hasSa,
-        projectId: 'gen-lang-client-0089073748',
-        firestoreActive: firestoreConnected
-      },
-      adminSecurity: {
-        founderConfigured: true,
-        maskedFounderEmail: maskEmail(FOUNDER_EMAIL),
-        sessionDurationMinutes: 15
-      }
-    }
-  });
+apiRouter.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
 });
 
 // ==========================================
@@ -1058,9 +1016,7 @@ apiRouter.all(['/admin/auth/status', '/admin/status'], async (req, res) => {
 
   res.json({
     success: true,
-    initialized: isInitialized,
-    maskedEmail: maskEmail(FOUNDER_EMAIL),
-    maskedPhone: maskPhone(FOUNDER_PHONE)
+    initialized: isInitialized
   });
 });
 

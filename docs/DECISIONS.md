@@ -54,3 +54,19 @@
 ## DEC-020: Canonical Trust Signals & Google Logo Structured Markup
 - **Context**: Search engines lacked explicit Organization identity and square app icons.
 - **Decision**: Added square icon suite (16x16, 32x32, 48x48, 192x192, 512x512) and `<link rel="canonical" href="https://www.nexora-bvm.online/" />`. Configured Schema.org Organization JSON-LD linking official logo, BVM parent organization, contact endpoints, and GitHub repository. Created `robots.txt` and `sitemap.xml`.
+
+## DEC-021: Admin Password Storage Precedence & Lockout Architecture (Package B)
+- **Context**: Ephemeral memory caching caused password updates or resets to be ignored by surviving serverless instances. Stale environment variables could override newly updated passwords.
+- **Decision**: The stored scrypt hash in Firestore document `_admin_security/founder` is the definitive source of truth once initialized. `ADMIN_SECURITY_PASSWORD` is ignored with a warning when a database record exists. Implemented a 30-second TTL cache for security credentials. Implemented failed attempt tracking that locks out the IP for 15 minutes (HTTP 423) after 5 consecutive failures. Storage failures yield HTTP 503 and are never masked as incorrect passwords. Added `/admin/auth/change-password` endpoint to allow password rotation from within an active session.
+
+## DEC-022: Brevo Sender Domain Hardening & Typed Safe Client Codes (Package A)
+- **Context**: Unverified `@gmail.com` sender addresses caused Brevo API rejections that leaked internal error details to users.
+- **Decision**: Removed all default `@gmail.com` sender fallbacks in the mailer. At call time, credentials and sender addresses are trimmed with quotes stripped. Free-mail domains (gmail, yahoo, outlook, proton, etc.) fail closed immediately with `EMAIL_SENDER_INVALID` (HTTP 503) without making Brevo calls. Authenticated domains are cached for 5 minutes (`GET /v3/senders/domains`), with Brevo API lookup failures treated as non-blocking warnings. Returns typed safe error codes (`EMAIL_NOT_CONFIGURED`, `EMAIL_SENDER_INVALID`, `EMAIL_PROVIDER_REJECTED`, `EMAIL_TIMEOUT`, `EMAIL_RATE_LIMITED`).
+
+## DEC-023: Zero-PII Health & Minimal Admin Status Projection (Package C)
+- **Context**: `/health` previously returned detailed internal infrastructure configuration, and `/admin/status` leaked masked email and phone strings to unauthenticated visitors. Header rewrites (`x-matched-path`) created SSRF/route forgery risks.
+- **Decision**: `/health` returns only `{ status: "ok" }`. `/admin/status` returns only `{ success: true, initialized: boolean }`. Deleted `x-matched-path` and `x-forwarded-uri` header rewrites. Added process-level `unhandledRejection` and `uncaughtException` logging to prevent server termination. Removed `bun.lock` and regenerated clean `package-lock.json` tested with `npm ci`.
+
+## DEC-024: Synthesized Two-Tone Web Audio Chime & Multi-Tab Sound Deduplication (Package D)
+- **Context**: Visitor popups needed sound alerts without using copyrighted assets or triggering browser autoplay blocks. Multiple open tabs could cause echo or overlapping audio playback.
+- **Decision**: Synthesized an original two-tone sine chime (A5 880 Hz -> E6 1320 Hz, ~120ms each, soft exponential envelope, volume 0.35) using native Web Audio API. AudioContext is initialized lazily and unlocked on the first user interaction (pointerdown, keydown, touchstart). Implemented multi-tab sound playback lock via `BroadcastChannel` and `localStorage` so only one tab sounds the chime while other open tabs display the visual toast silently. Added mute switch and sound test in `NotificationBell.tsx`.

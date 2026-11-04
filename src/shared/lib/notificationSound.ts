@@ -33,6 +33,7 @@ try {
 
 export function isNotificationSoundEnabled(): boolean {
   try {
+    if (localStorage.getItem('nexora_toast_muted') === 'true') return false;
     const val = localStorage.getItem(SOUND_PREF_KEY);
     return val === null ? true : val === 'true';
   } catch {

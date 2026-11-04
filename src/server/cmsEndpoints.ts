@@ -1,5 +1,6 @@
 import type { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
+import { toFiniteNumber } from '../shared/lib/numberUtils';
 
 export interface CmsEndpointsDependencies {
   apiRouter: Router;
@@ -339,9 +340,9 @@ export function registerCmsEndpoints({
         is_published: data.status === 'Published',
         isComingSoon: Boolean(data.isComingSoon),
         show_capacity: data.show_capacity !== false,
-        capacity: Number(data.capacity) || 60,
-        registered_count: Number(data.registered_count) || 0,
-        fee_per_participant: Number(data.fee_per_participant) ?? 50,
+        capacity: toFiniteNumber(data.capacity, 60),
+        registered_count: toFiniteNumber(data.registered_count, 0),
+        fee_per_participant: toFiniteNumber(data.fee_per_participant, 50),
         banner_image: data.banner_image || data.cover_image || '/images/competitions/zerocode.jpg',
         cover_image: data.cover_image || data.banner_image || '/images/competitions/zerocode.jpg',
         event_date: data.event_date || 'TBA',
@@ -349,8 +350,8 @@ export function registerCmsEndpoints({
         venue: data.venue || 'BVM Engineering College, Vallabh Vidyanagar',
         duration: data.duration || '6 Hours',
         team_size: data.team_size || '1–4 Participants',
-        min_team_size: Number(data.min_team_size) || 1,
-        max_team_size: Number(data.max_team_size) || 4,
+        min_team_size: toFiniteNumber(data.min_team_size, 1),
+        max_team_size: toFiniteNumber(data.max_team_size, 4),
         eligibility: data.eligibility || 'Open to all engineering students.',
         prizes: data.prizes || {
           first_place: '₹2,000 Cash Prize',
@@ -776,7 +777,7 @@ export function registerCmsEndpoints({
         enrollment_number: data.enrollment_number?.trim() || '',
         institution: data.institution?.trim() || 'Birla Vishvakarma Mahavidyalaya',
         social_links: data.social_links || {},
-        display_order: Number(data.display_order) || 99,
+        display_order: toFiniteNumber(data.display_order, 99),
         is_featured: Boolean(data.is_featured),
         is_founder: Boolean(data.is_founder),
         enabled: data.enabled !== false,
@@ -846,6 +847,8 @@ export function registerCmsEndpoints({
   apiRouter.get('/team/public', async (req: Request, res: Response) => {
     try {
       const db = await getAdminFirestore();
+      res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+
       if (!db) {
         res.json({ success: true, members: DEFAULT_TEAM_MEMBERS, meta: DEFAULT_TEAM_META });
         return;
@@ -860,14 +863,32 @@ export function registerCmsEndpoints({
       const roleOrderMap = new Map<string, number>();
       if (meta && Array.isArray(meta.roles)) {
         meta.roles.forEach((r: any) => {
-          if (r.name) roleOrderMap.set(r.name.toLowerCase().trim(), Number(r.display_order) || 99);
+          if (r.name) roleOrderMap.set(r.name.toLowerCase().trim(), toFiniteNumber(r.display_order, 99));
         });
       }
 
       let members: any[] = [];
       if (!membersSnap.empty) {
         members = membersSnap.docs
-          .map((d: any) => ({ id: d.id, ...d.data() }))
+          .map((d: any) => {
+            const data = d.data();
+            // Whitelist safe public fields only (B-05) - omit sensitive details like enrollment_number
+            return {
+              id: d.id,
+              name: data.name || '',
+              role_name: data.role_name || '',
+              academic_branch_name: data.academic_branch_name || '',
+              division: data.division || '',
+              department_name: data.department_name || '',
+              bio: data.bio || '',
+              avatar_url: data.avatar_url || '/images/team/mitesh_founder.jpg',
+              social_links: data.social_links || {},
+              display_order: toFiniteNumber(data.display_order, 99),
+              is_featured: Boolean(data.is_featured),
+              is_founder: Boolean(data.is_founder),
+              enabled: data.enabled !== false
+            };
+          })
           .filter((m: any) => m.enabled !== false);
       } else {
         members = DEFAULT_TEAM_MEMBERS;
@@ -879,11 +900,12 @@ export function registerCmsEndpoints({
         const roleA = roleOrderMap.get((a.role_name || '').toLowerCase().trim()) ?? 99;
         const roleB = roleOrderMap.get((b.role_name || '').toLowerCase().trim()) ?? 99;
         if (roleA !== roleB) return roleA - roleB;
-        return (Number(a.display_order) || 999) - (Number(b.display_order) || 999);
+        return toFiniteNumber(a.display_order, 999) - toFiniteNumber(b.display_order, 999);
       });
 
       res.json({ success: true, members, meta });
     } catch (err: any) {
+      console.warn('[TEAM PUBLIC] Error serving public team data:', err?.message || err);
       res.json({ success: true, members: DEFAULT_TEAM_MEMBERS, meta: DEFAULT_TEAM_META });
     }
   });

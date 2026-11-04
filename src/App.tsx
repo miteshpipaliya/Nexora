@@ -66,32 +66,32 @@ export function App() {
             <Navbar />
             <main className="flex-grow">
               <Routes>
-                <Route path="/" element={<HomePage />} />
-                <Route path="/about" element={<AboutPage />} />
+                <Route path="/" element={<ErrorBoundary><HomePage /></ErrorBoundary>} />
+                <Route path="/about" element={<ErrorBoundary><AboutPage /></ErrorBoundary>} />
                 
                 {/* Competitions: Dynamic Firestore-backed routes */}
-                <Route path="/competitions" element={<CompetitionsHubPage />} />
-                <Route path="/competitions/:slug" element={<DynamicCompetitionPage />} />
+                <Route path="/competitions" element={<ErrorBoundary><CompetitionsHubPage /></ErrorBoundary>} />
+                <Route path="/competitions/:slug" element={<ErrorBoundary><DynamicCompetitionPage /></ErrorBoundary>} />
                 
                 {/* Team & Store */}
-                <Route path="/team" element={<TeamPage />} />
-                <Route path="/store" element={<StorePage />} />
+                <Route path="/team" element={<ErrorBoundary><TeamPage /></ErrorBoundary>} />
+                <Route path="/store" element={<ErrorBoundary><StorePage /></ErrorBoundary>} />
                 
                 {/* Student Profile & Auth */}
-                <Route path="/profile" element={<ProfilePage />} />
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/signup" element={<SignupPage />} />
-                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                <Route path="/profile" element={<ErrorBoundary><ProfilePage /></ErrorBoundary>} />
+                <Route path="/login" element={<ErrorBoundary><LoginPage /></ErrorBoundary>} />
+                <Route path="/signup" element={<ErrorBoundary><SignupPage /></ErrorBoundary>} />
+                <Route path="/forgot-password" element={<ErrorBoundary><ForgotPasswordPage /></ErrorBoundary>} />
                 
                 {/* Administration */}
-                <Route path="/admin" element={<AdminPage />} />
+                <Route path="/admin" element={<ErrorBoundary><AdminPage /></ErrorBoundary>} />
                 
                 {/* Legal & Governance */}
-                <Route path="/privacy" element={<PrivacyPage />} />
-                <Route path="/terms" element={<TermsPage />} />
+                <Route path="/privacy" element={<ErrorBoundary><PrivacyPage /></ErrorBoundary>} />
+                <Route path="/terms" element={<ErrorBoundary><TermsPage /></ErrorBoundary>} />
                 
                 {/* 404 Fallback */}
-                <Route path="*" element={<NotFoundPage />} />
+                <Route path="*" element={<ErrorBoundary><NotFoundPage /></ErrorBoundary>} />
               </Routes>
             </main>
             <Footer />

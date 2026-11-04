@@ -270,7 +270,7 @@ export const DynamicCompetitionPage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {event.prizes?.ranked_prizes && event.prizes.ranked_prizes.filter(p => p.enabled).length > 0 ? (
+          {Array.isArray(event.prizes?.ranked_prizes) && event.prizes.ranked_prizes.filter(p => p.enabled).length > 0 ? (
             <>
               {event.prizes.ranked_prizes
                 .filter(p => p.enabled)
@@ -346,7 +346,7 @@ export const DynamicCompetitionPage: React.FC = () => {
         </h2>
 
         <div className="bg-[#171426] border border-violet-500/20 rounded-2xl p-6 sm:p-8 space-y-3">
-          {event.rules && event.rules.length > 0 ? (
+          {Array.isArray(event.rules) && event.rules.length > 0 ? (
             event.rules.map((rule, idx) => (
               <div key={idx} className="flex items-start gap-3 text-xs sm:text-sm text-slate-300 leading-relaxed select-text">
                 <span className="w-5 h-5 rounded-full bg-violet-950/80 border border-violet-500/30 text-violet-300 text-xs font-mono flex items-center justify-center shrink-0 mt-0.5">
@@ -362,7 +362,7 @@ export const DynamicCompetitionPage: React.FC = () => {
       </div>
 
       {/* Judging Criteria */}
-      {event.judging_criteria && event.judging_criteria.length > 0 && (
+      {Array.isArray(event.judging_criteria) && event.judging_criteria.length > 0 && (
         <div className="space-y-6">
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-violet-400" />
@@ -389,7 +389,7 @@ export const DynamicCompetitionPage: React.FC = () => {
       )}
 
       {/* Frequently Asked Questions */}
-      {event.faq && event.faq.length > 0 && (
+      {Array.isArray(event.faq) && event.faq.length > 0 && (
         <div className="space-y-6">
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
             <HelpCircle className="w-5 h-5 text-violet-400" />
