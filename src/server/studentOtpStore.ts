@@ -57,7 +57,7 @@ export class StudentOtpStore {
   constructor(
     private readonly getDb: () => Promise<any>,
     private readonly requirePersistence: boolean,
-    private readonly rateLimitKey: string
+    private readonly rateLimitKey: string | (() => string)
   ) {}
 
   private async database() {
@@ -72,7 +72,8 @@ export class StudentOtpStore {
   }
 
   async checkIpRateLimit(ip: string, now = Date.now()): Promise<boolean> {
-    const rateId = crypto.createHmac('sha256', this.rateLimitKey).update(ip).digest('hex');
+    const rateLimitKey = typeof this.rateLimitKey === 'function' ? this.rateLimitKey() : this.rateLimitKey;
+    const rateId = crypto.createHmac('sha256', rateLimitKey).update(ip).digest('hex');
     const db = await this.database();
     if (!db) {
       const previous = this.rateLimits.get(rateId);

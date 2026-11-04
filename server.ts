@@ -128,7 +128,11 @@ function getOrCreateHmacSecret(): string {
   }
 }
 
-const HMAC_SECRET = getOrCreateHmacSecret();
+let cachedHmacSecret: string | undefined;
+function getHmacSecret(): string {
+  if (!cachedHmacSecret) cachedHmacSecret = getOrCreateHmacSecret();
+  return cachedHmacSecret;
+}
 
 export { type BrevoConfig, getBrevoConfig, sendBrevoOtpEmail, BrevoServiceError };
 
@@ -139,7 +143,7 @@ export function getBrevoApiKey(): string {
 // Helper to compute keyed HMAC-SHA256 of OTP (never store raw OTP)
 function hashOtp(email: string, otp: string, purpose: string): string {
   return crypto
-    .createHmac('sha256', HMAC_SECRET)
+    .createHmac('sha256', getHmacSecret())
     .update(`${email.toLowerCase().trim()}:${otp.trim()}:${purpose}`)
     .digest('hex');
 }
@@ -151,7 +155,7 @@ function createSignedToken(payload: { email: string; purpose: string; exp: numbe
     jti: crypto.randomBytes(16).toString('hex')
   });
   const b64Data = Buffer.from(data, 'utf8').toString('base64url');
-  const signature = crypto.createHmac('sha256', HMAC_SECRET).update(b64Data).digest('base64url');
+  const signature = crypto.createHmac('sha256', getHmacSecret()).update(b64Data).digest('base64url');
   return `${b64Data}.${signature}`;
 }
 
@@ -159,7 +163,7 @@ function verifySignedToken(token: string, expectedPurpose: string, expectedEmail
   try {
     const [b64Data, signature] = token.split('.');
     if (!b64Data || !signature) return null;
-    const expectedSig = crypto.createHmac('sha256', HMAC_SECRET).update(b64Data).digest('base64url');
+    const expectedSig = crypto.createHmac('sha256', getHmacSecret()).update(b64Data).digest('base64url');
     const bufA = Buffer.from(signature);
     const bufB = Buffer.from(expectedSig);
     if (bufA.length !== bufB.length || !crypto.timingSafeEqual(bufA, bufB)) return null;
@@ -250,7 +254,7 @@ function respondToOtpFailure(result: OtpConsumeResult, res: express.Response, la
   }
 }
 
-const challengeStore = new StudentOtpStore(getAdminFirestore, isServerless, HMAC_SECRET);
+const challengeStore = new StudentOtpStore(getAdminFirestore, isServerless, getHmacSecret);
 
 // Admin Dual-Factor Challenge Records
 interface AdminDualChallenge {
@@ -280,6 +284,17 @@ const activeAdminSessions = new Map<string, AdminSession>();
 // ==========================================
 apiRouter.get('/health', (req, res) => {
   res.json({ status: 'ok' });
+});
+
+// Public health checks must not depend on OTP secrets. Sensitive auth/admin
+// endpoints still fail closed until a strong server-side secret is configured.
+apiRouter.use(['/auth', '/admin'], (req, res, next) => {
+  try {
+    getHmacSecret();
+    next();
+  } catch {
+    res.status(503).json({ error: 'Authentication security configuration is unavailable.' });
+  }
 });
 
 // ==========================================
