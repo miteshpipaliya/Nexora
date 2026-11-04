@@ -1,15 +1,37 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Check, ExternalLink, Sparkles, X, Megaphone, Calendar, AlertTriangle, Info } from 'lucide-react';
+import {
+  Bell,
+  Check,
+  ExternalLink,
+  Sparkles,
+  X,
+  Megaphone,
+  Calendar,
+  AlertTriangle,
+  Info,
+  Volume2,
+  VolumeX,
+  Play
+} from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { InAppNotification } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { isValidSafeUrl } from '../../shared/lib/safeUrl';
+import {
+  isNotificationSoundEnabled,
+  setNotificationSoundEnabled,
+  playNotificationSound
+} from '../../shared/lib/notificationSound';
 
 export const NotificationBell: React.FC = () => {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [isOpen, setIsOpen] = useState(false);
+  const [soundEnabled, setSoundEnabledState] = useState<boolean>(() => isNotificationSoundEnabled());
+  const [testingSound, setTestingSound] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const originalTitleRef = useRef<string>(typeof document !== 'undefined' ? document.title : 'NEXORA');
 
   // Load read notification IDs from localStorage and Firestore
   useEffect(() => {
@@ -22,37 +44,57 @@ export const NotificationBell: React.FC = () => {
     } catch {}
 
     if (user?.id) {
-      dataService.getReadNotificationIds(user.id).then((ids: Set<string>) => {
-        if (ids.size > 0) {
-          setReadIds((prev) => {
-            const merged = new Set([...prev, ...ids]);
-            try {
-              localStorage.setItem(storageKey, JSON.stringify([...merged]));
-            } catch {}
-            return merged;
-          });
-        }
-      }).catch(() => {});
+      dataService
+        .getReadNotificationIds(user.id)
+        .then((ids: Set<string>) => {
+          if (ids.size > 0) {
+            setReadIds((prev) => {
+              const merged = new Set([...prev, ...ids]);
+              try {
+                localStorage.setItem(storageKey, JSON.stringify([...merged]));
+              } catch {}
+              return merged;
+            });
+          }
+        })
+        .catch(() => {});
     }
   }, [user?.id]);
 
   // Subscribe to real-time published notifications
   useEffect(() => {
     const unsubscribe = dataService.subscribeNotifications('all', (allNotifs: InAppNotification[]) => {
-      // Filter only Published notifications that haven't expired
       const now = Date.now();
       const active = allNotifs.filter((n: InAppNotification) => {
         if (n.status !== 'Published') return false;
+        if (n.display_at) {
+          const displayMs = new Date(n.display_at).getTime();
+          if (!isNaN(displayMs) && displayMs > now) return false;
+        }
         if (n.expires_at) {
           const exp = new Date(n.expires_at).getTime();
           if (!isNaN(exp) && exp < now) return false;
         }
         return true;
       });
+
+      // Sort newest on top
+      active.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       setNotifications(active);
     });
 
     return () => unsubscribe();
+  }, []);
+
+  // Sync sound preferences across tabs
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'nexora_notif_sound') {
+        setSoundEnabledState(e.newValue !== 'false');
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
   // Close popover when clicking outside
@@ -69,6 +111,36 @@ export const NotificationBell: React.FC = () => {
   }, [isOpen]);
 
   const unreadCount = notifications.filter((n) => !readIds.has(n.id)).length;
+
+  // Dynamic tab title sync when tab is hidden per Package D
+  useEffect(() => {
+    const updateTitle = () => {
+      if (document.hidden && unreadCount > 0) {
+        document.title = `(${unreadCount}) NEXORA`;
+      } else {
+        document.title = originalTitleRef.current || 'NEXORA - Student Technology & Innovation Community';
+      }
+    };
+
+    updateTitle();
+    document.addEventListener('visibilitychange', updateTitle);
+    return () => {
+      document.removeEventListener('visibilitychange', updateTitle);
+      document.title = originalTitleRef.current || 'NEXORA - Student Technology & Innovation Community';
+    };
+  }, [unreadCount]);
+
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabledState(next);
+    setNotificationSoundEnabled(next);
+  };
+
+  const handleTestSound = async () => {
+    setTestingSound(true);
+    await playNotificationSound(undefined, true);
+    setTimeout(() => setTestingSound(false), 500);
+  };
 
   const markAsRead = (id: string) => {
     const next = new Set(readIds);
@@ -99,10 +171,14 @@ export const NotificationBell: React.FC = () => {
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
-      case 'Announcement': return Megaphone;
-      case 'Competition Update': return Calendar;
-      case 'Important': return AlertTriangle;
-      default: return Info;
+      case 'Announcement':
+        return Megaphone;
+      case 'Competition Update':
+        return Calendar;
+      case 'Important':
+        return AlertTriangle;
+      default:
+        return Info;
     }
   };
 
@@ -129,7 +205,7 @@ export const NotificationBell: React.FC = () => {
         aria-label="View Broadcast Notifications"
         className="relative p-2 text-slate-300 hover:text-white bg-[#171426]/70 border border-violet-500/25 rounded-xl hover:border-violet-400 transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
       >
-        <Bell className="w-4 h-4" />
+        <Bell className={`w-4 h-4 ${unreadCount > 0 ? 'animate-bounce text-violet-300' : ''}`} />
         {unreadCount > 0 && (
           <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-violet-600 text-[9px] font-bold text-white shadow-md animate-pulse">
             {unreadCount > 9 ? '9+' : unreadCount}
@@ -140,7 +216,6 @@ export const NotificationBell: React.FC = () => {
       {/* Popover Drawer */}
       {isOpen && (
         <div className="absolute right-0 mt-2 w-80 sm:w-96 max-h-[85vh] flex flex-col bg-[#11101B] border border-violet-500/30 rounded-2xl shadow-2xl z-50 overflow-hidden backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
-          
           {/* Header */}
           <div className="p-4 border-b border-violet-500/20 bg-[#171426]/90 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -166,100 +241,110 @@ export const NotificationBell: React.FC = () => {
                 type="button"
                 onClick={() => setIsOpen(false)}
                 className="text-slate-400 hover:text-white p-1"
+                aria-label="Close notification panel"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* List of Notifications */}
-          <div className="flex-1 overflow-y-auto divide-y divide-violet-500/10 max-h-[60vh]">
+          {/* Sound Controls Bar (Package D) */}
+          <div className="px-4 py-2 border-b border-violet-500/15 bg-[#0d0c15] flex items-center justify-between text-xs font-mono text-slate-400">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleSound}
+                className="inline-flex items-center gap-1.5 text-[11px] text-slate-300 hover:text-white transition-colors cursor-pointer"
+              >
+                {soundEnabled ? (
+                  <>
+                    <Volume2 className="w-3.5 h-3.5 text-violet-400" />
+                    <span>Sound: ON</span>
+                  </>
+                ) : (
+                  <>
+                    <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Sound: OFF</span>
+                  </>
+                )}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={handleTestSound}
+              disabled={testingSound}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-violet-300 bg-violet-950/60 border border-violet-500/30 hover:bg-violet-900/60 transition-colors cursor-pointer"
+            >
+              <Play className="w-2.5 h-2.5" />
+              <span>{testingSound ? 'Playing...' : 'Test sound'}</span>
+            </button>
+          </div>
+
+          {/* Notification List */}
+          <div className="overflow-y-auto divide-y divide-violet-500/10 flex-1 max-h-[60vh]">
             {notifications.length === 0 ? (
-              <div className="p-8 text-center space-y-2">
-                <Bell className="w-8 h-8 text-violet-500/40 mx-auto" />
-                <p className="text-xs font-medium text-slate-300">No Announcements Right Now</p>
-                <p className="text-[11px] text-slate-500 font-light">
-                  When the NEXORA team announces event schedules or competitions, they will appear here.
-                </p>
+              <div className="p-8 text-center text-slate-400 text-xs">
+                No active announcements right now.
               </div>
             ) : (
-              notifications.map((notif) => {
-                const isRead = readIds.has(notif.id);
-                const Icon = getCategoryIcon(notif.category);
+              notifications.map((item) => {
+                const isRead = readIds.has(item.id);
+                const IconComponent = getCategoryIcon(item.category);
+                const isUrgent = item.priority === 'Urgent';
+
                 return (
                   <div
-                    key={notif.id}
-                    onClick={() => !isRead && markAsRead(notif.id)}
-                    className={`p-4 transition-colors relative cursor-pointer group ${
-                      isRead ? 'bg-transparent opacity-75 hover:opacity-100 hover:bg-[#171426]/40' : 'bg-[#171426]/80 hover:bg-[#171426]'
+                    key={item.id}
+                    onClick={() => markAsRead(item.id)}
+                    className={`p-4 transition-colors cursor-pointer ${
+                      isRead ? 'bg-transparent hover:bg-white/[0.02]' : 'bg-violet-950/20 hover:bg-violet-950/30'
                     }`}
                   >
-                    {!isRead && (
-                      <span className="absolute left-1.5 top-4 w-1.5 h-1.5 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)]" />
-                    )}
-
-                    <div className="space-y-2 pl-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5">
-                          <span className="p-1 rounded bg-violet-950/80 text-violet-300 border border-violet-500/20">
-                            <Icon className="w-3 h-3" />
-                          </span>
-                          <span className="text-[10px] font-mono text-violet-300 uppercase tracking-wider">
-                            {notif.category}
-                          </span>
-                          {notif.priority === 'Urgent' && (
-                            <span className="px-1.5 py-0.2 text-[9px] font-mono font-bold uppercase bg-red-950 text-red-300 border border-red-500/30 rounded">
-                              Urgent
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-[10px] font-mono text-slate-500">
-                          {formatTimestamp(notif.created_at)}
-                        </span>
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                          isUrgent
+                            ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                            : 'bg-violet-900/30 text-violet-400 border border-violet-500/20'
+                        }`}
+                      >
+                        <IconComponent className="w-3.5 h-3.5" />
                       </div>
 
-                      <h4 className="text-xs font-bold text-white group-hover:text-violet-200 transition-colors">
-                        {notif.title}
-                      </h4>
-
-                      <p className="text-xs text-slate-300 leading-relaxed font-light select-text">
-                        {notif.message}
-                      </p>
-
-                      {notif.image_url && (
-                        <div className="relative h-28 rounded-lg overflow-hidden border border-violet-500/20 bg-black/40 mt-2">
-                          <img
-                            src={notif.image_url}
-                            alt={notif.title}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      )}
-
-                      {notif.link_url && (
-                        <div className="pt-1">
-                          <a
-                            href={notif.link_url}
-                            target={notif.link_url.startsWith('http') ? '_blank' : '_self'}
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1 text-[11px] font-mono text-violet-400 hover:text-violet-300 transition-colors"
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <span
+                            className={`text-xs font-semibold truncate ${
+                              isRead ? 'text-slate-300' : 'text-white'
+                            }`}
                           >
-                            <span>{notif.link_text || 'Learn More'}</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
+                            {item.title}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-500 shrink-0">
+                            {formatTimestamp(item.created_at)}
+                          </span>
                         </div>
+
+                        <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
+                          {item.message}
+                        </p>
+
+                        {item.link_url && isValidSafeUrl(item.link_url) && (
+                          <div className="pt-1 flex items-center gap-1 text-[11px] text-violet-400 hover:text-violet-300">
+                            <span>{item.link_text || 'Learn more'}</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </div>
+                        )}
+                      </div>
+
+                      {!isRead && (
+                        <div className="w-2 h-2 rounded-full bg-violet-400 shrink-0 mt-2" />
                       )}
                     </div>
                   </div>
                 );
               })
             )}
-          </div>
-
-          {/* Footer note */}
-          <div className="p-2.5 bg-[#0d0c17] border-t border-violet-500/15 text-center text-[10px] font-mono text-slate-500">
-            NEXORA Official Student Broadcasts
           </div>
         </div>
       )}

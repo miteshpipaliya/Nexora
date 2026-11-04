@@ -1,55 +1,277 @@
 /**
  * src/server/brevoMailer.ts
- * Dedicated Brevo Transactional Email module (WP7).
- * Strictly validates credentials at call time, enforces custom domain sender (no gmail.com fallback),
- * applies 10s AbortController timeout, and maps error outcomes to safe client codes.
+ * Dedicated, resilient Brevo Transactional Email subsystem (Package A / WP7).
+ * - Reads BREVO_API_KEY, BREVO_SENDER_EMAIL, BREVO_SENDER_NAME at invocation time (trimmed, quotes stripped)
+ * - Fails closed on missing credentials or free-mail senders (gmail, yahoo, outlook, hotmail, proton, etc.)
+ * - Validates sender domain against Brevo senders/domains cache (5-minute TTL, fails soft on Brevo API lookup)
+ * - Uses 10s AbortController timeout
+ * - Emits tags: ['otp'] and configured reply-to address
+ * - Returns typed BrevoServiceError with safe codes (EMAIL_NOT_CONFIGURED, EMAIL_SENDER_INVALID, EMAIL_PROVIDER_REJECTED, EMAIL_TIMEOUT, EMAIL_RATE_LIMITED)
  */
 
 export interface BrevoConfig {
   apiKey: string;
   senderEmail: string;
   senderName: string;
+  replyToEmail?: string;
+  replyToName?: string;
+}
+
+export interface BrevoDiagnostics {
+  keyAccepted: boolean;
+  httpStatus: number;
+  configuredSender: string;
+  senderVerified: boolean;
+  domainAuthenticated: boolean;
+  transactionalEnabled: boolean;
+  error?: string;
 }
 
 export class BrevoServiceError extends Error {
   public code: string;
   public status: number;
+  public actionableHint?: string;
 
-  constructor(message: string, code: string, status: number = 502) {
+  constructor(message: string, code: string, status: number = 502, actionableHint?: string) {
     super(message);
     this.name = 'BrevoServiceError';
     this.code = code;
     this.status = status;
+    this.actionableHint = actionableHint;
   }
 }
 
+// Banned free-mail domain set
+export const FREE_MAIL_DOMAINS = new Set([
+  'gmail.com',
+  'googlemail.com',
+  'yahoo.com',
+  'ymail.com',
+  'outlook.com',
+  'hotmail.com',
+  'live.com',
+  'msn.com',
+  'proton.me',
+  'protonmail.com',
+  'icloud.com',
+  'me.com',
+  'mac.com',
+  'aol.com',
+  'mail.com',
+  'zoho.com'
+]);
+
+// 5-minute cache for Brevo domain/sender status
+interface BrevoCacheEntry {
+  timestamp: number;
+  domains: Set<string>;
+  senders: Set<string>;
+}
+let brevoAccountCache: BrevoCacheEntry | null = null;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+function stripQuotes(str: string): string {
+  return (str || '').trim().replace(/^["']|["']$/g, '');
+}
+
 /**
- * Accesses and strictly validates Brevo credentials at call time.
+ * Accesses and strictly validates Brevo configuration at call time.
  */
 export function getBrevoConfig(): BrevoConfig {
-  const apiKey = (process.env.BREVO_API_KEY || '').trim().replace(/^["']|["']$/g, '');
+  const apiKey = stripQuotes(process.env.BREVO_API_KEY || '');
   if (!apiKey) {
     console.error('[EMAIL DISPATCH FAILURE] Missing required variable: BREVO_API_KEY');
-    throw new BrevoServiceError('Email service is not configured on the server (BREVO_API_KEY missing).', 'EMAIL_NOT_CONFIGURED', 503);
+    throw new BrevoServiceError(
+      'Email service is not configured on the server (BREVO_API_KEY missing).',
+      'EMAIL_NOT_CONFIGURED',
+      503
+    );
   }
 
-  const senderEmail = (process.env.BREVO_SENDER_EMAIL || '').trim().replace(/^["']|["']$/g, '');
+  const senderEmail = stripQuotes(process.env.BREVO_SENDER_EMAIL || '');
   if (!senderEmail) {
     console.error('[EMAIL DISPATCH FAILURE] Missing required variable: BREVO_SENDER_EMAIL');
-    throw new BrevoServiceError('Email sender address is not configured on the server.', 'EMAIL_NOT_CONFIGURED', 503);
+    throw new BrevoServiceError(
+      'Email sender address is not configured on the server.',
+      'EMAIL_NOT_CONFIGURED',
+      503
+    );
   }
 
-  if (senderEmail.toLowerCase().endsWith('@gmail.com') || senderEmail.toLowerCase().includes('gmail.com')) {
-    console.error('[EMAIL DISPATCH FAILURE] Invalid BREVO_SENDER_EMAIL: Brevo transactional email prohibits unverified @gmail.com addresses. Must use a custom domain like no-reply@nexora-bvm.online.');
-    throw new BrevoServiceError('Email sender domain invalid. Unverified gmail.com sender is not supported by Brevo.', 'EMAIL_NOT_CONFIGURED', 503);
+  const domain = (senderEmail.split('@')[1] || '').toLowerCase().trim();
+  if (!domain || FREE_MAIL_DOMAINS.has(domain)) {
+    console.error(
+      `[EMAIL DISPATCH FAILURE] Invalid BREVO_SENDER_EMAIL domain: ${domain || 'none'}. Free-mail senders are rejected by Brevo.`
+    );
+    throw new BrevoServiceError(
+      `Email sender domain invalid. Unverified ${domain || 'free-mail'} sender is not supported by Brevo.`,
+      'EMAIL_SENDER_INVALID',
+      503,
+      'Set BREVO_SENDER_EMAIL to an address on your authenticated domain (e.g., no-reply@nexora-bvm.online).'
+    );
   }
 
-  const senderName = (process.env.BREVO_SENDER_NAME || 'NEXORA').trim().replace(/^["']|["']$/g, '');
-  return { apiKey, senderEmail, senderName };
+  const senderName = stripQuotes(process.env.BREVO_SENDER_NAME || 'NEXORA');
+  const replyToEmail = stripQuotes(process.env.BREVO_REPLY_TO_EMAIL || 'miteshpipaliya2202@gmail.com');
+  const replyToName = stripQuotes(process.env.BREVO_REPLY_TO_NAME || 'NEXORA Support');
+
+  return { apiKey, senderEmail, senderName, replyToEmail, replyToName };
 }
 
 /**
- * Dispatches an OTP transactional email via Brevo with 10-second timeout.
+ * Verifies domain and sender status with Brevo API, caching for 5 minutes.
+ * Non-blocking: warning logged on error, does not abort sending.
+ */
+export async function checkBrevoSenderAuth(apiKey: string, senderEmail: string): Promise<{ senderVerified: boolean; domainAuthenticated: boolean }> {
+  const now = Date.now();
+  const domain = (senderEmail.split('@')[1] || '').toLowerCase().trim();
+
+  if (brevoAccountCache && (now - brevoAccountCache.timestamp < CACHE_TTL_MS)) {
+    return {
+      senderVerified: brevoAccountCache.senders.has(senderEmail.toLowerCase().trim()),
+      domainAuthenticated: brevoAccountCache.domains.has(domain)
+    };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+
+    const [sendersRes, domainsRes] = await Promise.allSettled([
+      fetch('https://api.brevo.com/v3/senders', {
+        headers: { 'api-key': apiKey, 'accept': 'application/json' },
+        signal: controller.signal
+      }),
+      fetch('https://api.brevo.com/v3/senders/domains', {
+        headers: { 'api-key': apiKey, 'accept': 'application/json' },
+        signal: controller.signal
+      })
+    ]);
+
+    clearTimeout(timeout);
+
+    const verifiedSenders = new Set<string>();
+    const authenticatedDomains = new Set<string>();
+
+    if (sendersRes.status === 'fulfilled' && sendersRes.value.ok) {
+      const data: any = await sendersRes.value.json().catch(() => ({}));
+      if (Array.isArray(data.senders)) {
+        for (const s of data.senders) {
+          if (s.email && (s.active !== false)) {
+            verifiedSenders.add(String(s.email).toLowerCase().trim());
+          }
+        }
+      }
+    }
+
+    if (domainsRes.status === 'fulfilled' && domainsRes.value.ok) {
+      const data: any = await domainsRes.value.json().catch(() => ({}));
+      if (Array.isArray(data.domains)) {
+        for (const d of data.domains) {
+          if (d.domain_name && (d.authenticated === true || d.verified === true)) {
+            authenticatedDomains.add(String(d.domain_name).toLowerCase().trim());
+          }
+        }
+      }
+    }
+
+    brevoAccountCache = {
+      timestamp: now,
+      senders: verifiedSenders,
+      domains: authenticatedDomains
+    };
+
+    return {
+      senderVerified: verifiedSenders.has(senderEmail.toLowerCase().trim()),
+      domainAuthenticated: authenticatedDomains.has(domain)
+    };
+  } catch (err: any) {
+    console.warn('[BREVO DOMAIN CHECK WARNING] Could not verify sender against Brevo API:', err?.message || err);
+    return { senderVerified: true, domainAuthenticated: true }; // Treat as warning, let send attempt proceed
+  }
+}
+
+/**
+ * Diagnostics endpoint reporting configuration and authentication state without returning secrets.
+ */
+export async function getBrevoDiagnostics(): Promise<BrevoDiagnostics> {
+  const apiKey = stripQuotes(process.env.BREVO_API_KEY || '');
+  const senderEmail = stripQuotes(process.env.BREVO_SENDER_EMAIL || '');
+
+  if (!apiKey || !senderEmail) {
+    return {
+      keyAccepted: false,
+      httpStatus: 503,
+      configuredSender: senderEmail || 'NOT_CONFIGURED',
+      senderVerified: false,
+      domainAuthenticated: false,
+      transactionalEnabled: false,
+      error: !apiKey ? 'BREVO_API_KEY missing' : 'BREVO_SENDER_EMAIL missing'
+    };
+  }
+
+  const domain = (senderEmail.split('@')[1] || '').toLowerCase().trim();
+  if (FREE_MAIL_DOMAINS.has(domain)) {
+    return {
+      keyAccepted: true,
+      httpStatus: 503,
+      configuredSender: senderEmail,
+      senderVerified: false,
+      domainAuthenticated: false,
+      transactionalEnabled: false,
+      error: `Sender address uses prohibited free-mail domain: ${domain}`
+    };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+
+    const res = await fetch('https://api.brevo.com/v3/account', {
+      headers: { 'api-key': apiKey, 'accept': 'application/json' },
+      signal: controller.signal
+    });
+
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      return {
+        keyAccepted: false,
+        httpStatus: res.status,
+        configuredSender: senderEmail,
+        senderVerified: false,
+        domainAuthenticated: false,
+        transactionalEnabled: false,
+        error: `Brevo API rejected key with HTTP status ${res.status}`
+      };
+    }
+
+    const authCheck = await checkBrevoSenderAuth(apiKey, senderEmail);
+
+    return {
+      keyAccepted: true,
+      httpStatus: 200,
+      configuredSender: senderEmail,
+      senderVerified: authCheck.senderVerified,
+      domainAuthenticated: authCheck.domainAuthenticated,
+      transactionalEnabled: true
+    };
+  } catch (err: any) {
+    return {
+      keyAccepted: false,
+      httpStatus: 500,
+      configuredSender: senderEmail,
+      senderVerified: false,
+      domainAuthenticated: false,
+      transactionalEnabled: false,
+      error: `Connection error during diagnostics: ${err?.message || 'Network failure'}`
+    };
+  }
+}
+
+/**
+ * Dispatches an OTP verification email via Brevo with 10-second timeout, tags: ['otp'],
+ * and HTML + plain text fallback.
  */
 export async function sendBrevoOtpEmail(
   toEmail: string,
@@ -57,10 +279,18 @@ export async function sendBrevoOtpEmail(
   purpose: 'signup' | 'reset-password' = 'signup'
 ): Promise<void> {
   const config = getBrevoConfig();
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+  // Optional domain authentication sanity check
+  checkBrevoSenderAuth(config.apiKey, config.senderEmail).then(({ senderVerified, domainAuthenticated }) => {
+    if (!senderVerified || !domainAuthenticated) {
+      console.warn(`[BREVO DOMAIN WARNING] ${requestId}: Sender ${config.senderEmail} may not be fully authenticated in Brevo DNS.`);
+    }
+  }).catch(() => {});
 
   const isReset = purpose === 'reset-password';
-  const subject = isReset 
-    ? 'NEXORA — Password Recovery Verification Code' 
+  const subject = isReset
+    ? 'NEXORA — Password Recovery Verification Code'
     : 'NEXORA — Your Email Verification Code';
 
   const heading = isReset ? 'Password Recovery' : 'Email Verification';
@@ -132,6 +362,8 @@ export async function sendBrevoOtpEmail(
       body: JSON.stringify({
         sender: { name: config.senderName, email: config.senderEmail },
         to: [{ email: toEmail }],
+        replyTo: config.replyToEmail ? { email: config.replyToEmail, name: config.replyToName || config.senderName } : undefined,
+        tags: ['otp'],
         subject,
         htmlContent,
         textContent
@@ -140,9 +372,16 @@ export async function sendBrevoOtpEmail(
 
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
-      console.error('[BREVO DISPATCH FAILED] Status:', response.status, 'Message:', errData.message);
+      console.error(`[BREVO DISPATCH FAILED] ${requestId} Status: ${response.status} Message: ${errData.message || 'unknown'}`);
       if (response.status === 401 || response.status === 403) {
         throw new BrevoServiceError('Email service provider rejected authentication. Please notify administrator.', 'EMAIL_PROVIDER_REJECTED', 502);
+      }
+      if (response.status === 400) {
+        const msg = String(errData.message || '').toLowerCase();
+        if (msg.includes('sender') || msg.includes('domain') || msg.includes('unverified')) {
+          throw new BrevoServiceError('Email sender domain invalid or unverified in Brevo.', 'EMAIL_SENDER_INVALID', 503, 'Set BREVO_SENDER_EMAIL to an address on your authenticated domain.');
+        }
+        throw new BrevoServiceError('Email service provider rejected payload.', 'EMAIL_PROVIDER_REJECTED', 502);
       }
       if (response.status === 402 || response.status === 429) {
         throw new BrevoServiceError('Email dispatch rate limit reached. Please try again later.', 'EMAIL_RATE_LIMITED', 429);
@@ -151,7 +390,7 @@ export async function sendBrevoOtpEmail(
     }
   } catch (fetchErr: any) {
     if (fetchErr.name === 'AbortError' || fetchErr.code === 'ABORT_ERR') {
-      console.error('[BREVO DISPATCH TIMEOUT] Brevo API took longer than 10s to respond');
+      console.error(`[BREVO DISPATCH TIMEOUT] ${requestId}: Brevo API took longer than 10s to respond`);
       throw new BrevoServiceError('Email service timed out while dispatching verification code.', 'EMAIL_TIMEOUT', 504);
     }
     throw fetchErr;

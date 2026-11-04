@@ -60,6 +60,7 @@ import {
   INITIAL_REGISTRATIONS 
 } from './mockData';
 import { safeApiFetch } from './apiClient';
+import { toFiniteNumber } from '../shared/lib/numberUtils';
 
 /**
  * Safely strips any undefined properties from Firestore payloads.
@@ -79,13 +80,7 @@ export function cleanFirestoreData<T extends Record<string, any>>(data: T): Part
   return result;
 }
 
-// Administrator emails
-export const ADMIN_EMAILS = [
-  'miteshpipaliya2202@gmail.com',
-  'mitesh.aiml@gmail.com',
-  'editwithvision@gmail.com'
-];
-export const ADMIN_PHONE = '+91 8200243606';
+// Administrator authorization is determined exclusively via Firebase Custom Claims (admin == true) per C-01.
 
 // Cryptographically secure competition ID generator (Format: ZC-XXXX, CTF-XXXX, HN-XXXX, CR-XXXX, or custom)
 export function generateCompetitionId(eventSlug: string): string {
@@ -145,17 +140,7 @@ interface LocalChallenge {
 const localAdminChallenges = new Map<string, LocalChallenge>();
 
 export async function sendPresenceHeartbeat(): Promise<void> {
-  try {
-    const user = auth.currentUser;
-    if (!user || !user.uid) return;
-    await safeApiFetch('/api/presence/heartbeat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.uid, email: user.email || '' })
-    }).catch(() => {});
-  } catch {
-    // Failures in presence heartbeat must never crash the UI
-  }
+  // Presence heartbeat tracking removed per security audit C-08
 }
 
 class NexoraDataService {
@@ -190,15 +175,27 @@ class NexoraDataService {
     this.listeners.forEach((listener) => listener());
   }
 
+  public async checkAdminClaim(fbUser: any): Promise<boolean> {
+    if (!fbUser) return false;
+    try {
+      const tokenResult = await fbUser.getIdTokenResult(false);
+      return Boolean(tokenResult?.claims?.admin === true && tokenResult?.claims?.email_verified === true);
+    } catch {
+      return false;
+    }
+  }
+
   public isUserAdmin(emailOrUser?: string | UserProfile | null): boolean {
     if (!emailOrUser) {
-      if (!this.currentUserCache) return false;
-      return ADMIN_EMAILS.includes(this.currentUserCache.email.toLowerCase().trim());
+      return Boolean(this.currentUserCache?.is_admin);
     }
     if (typeof emailOrUser === 'string') {
-      return ADMIN_EMAILS.includes(emailOrUser.toLowerCase().trim());
+      if (this.currentUserCache && this.currentUserCache.email.toLowerCase().trim() === emailOrUser.toLowerCase().trim()) {
+        return Boolean(this.currentUserCache.is_admin);
+      }
+      return false;
     }
-    return Boolean(emailOrUser.is_admin || ADMIN_EMAILS.includes(emailOrUser.email.toLowerCase().trim()));
+    return Boolean(emailOrUser.is_admin);
   }
 
   // --- AUTHENTICATION METHODS ---
@@ -224,7 +221,7 @@ class NexoraDataService {
       const snap = await getDoc(userDocRef);
       if (snap.exists()) {
         const data = snap.data();
-        const isAdmin = ADMIN_EMAILS.includes((fbUser.email || '').toLowerCase().trim());
+        const isAdmin = await this.checkAdminClaim(fbUser);
         return {
           id: uid,
           full_name: data.full_name || fbUser.displayName || 'NEXORA Member',
@@ -250,7 +247,6 @@ class NexoraDataService {
   }
 
   private buildFallbackProfile(fbUser: any): UserProfile {
-    const isAdmin = ADMIN_EMAILS.includes((fbUser.email || '').toLowerCase().trim());
     return {
       id: fbUser.uid,
       full_name: fbUser.displayName || (fbUser.email ? fbUser.email.split('@')[0] : 'NEXORA Member'),
@@ -264,7 +260,7 @@ class NexoraDataService {
       avatar_url: fbUser.photoURL || '',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      is_admin: isAdmin,
+      is_admin: false,
       email_verified: fbUser.emailVerified,
       is_profile_complete: false
     };
@@ -280,7 +276,7 @@ class NexoraDataService {
       const userDocRef = doc(db, 'users', user.uid);
       const snap = await getDoc(userDocRef);
 
-      const isAdmin = ADMIN_EMAILS.includes((user.email || '').toLowerCase().trim());
+      const isAdmin = await this.checkAdminClaim(user);
 
       let profile: UserProfile;
 
@@ -438,7 +434,7 @@ class NexoraDataService {
         }
       }
 
-      const isAdmin = ADMIN_EMAILS.includes(data.email.trim().toLowerCase());
+      const isAdmin = false;
 
       const profilePayload: UserProfile = {
         id: user.uid,
@@ -779,42 +775,37 @@ class NexoraDataService {
     subject?: string;
     message: string;
   }): Promise<ContactMessage> {
-    const msgId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const newMsg: ContactMessage = {
-      id: msgId,
+    const payload = {
       sender_name: data.sender_name.trim(),
       sender_email: data.sender_email.trim().toLowerCase(),
       subject: data.subject?.trim() || 'General Inquiry',
-      message: data.message.trim(),
+      message: data.message.trim()
+    };
+
+    const res = await safeApiFetch<{ success: boolean; messageId?: string; contact?: ContactMessage }>('/api/contact/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    return res.contact || {
+      id: res.messageId || `msg_${Date.now()}`,
+      sender_name: payload.sender_name,
+      sender_email: payload.sender_email,
+      subject: payload.subject,
+      message: payload.message,
       status: 'unread',
       created_at: new Date().toISOString()
     };
-
-    try {
-      const msgRef = doc(db, 'contactMessages', msgId);
-      await setDoc(msgRef, newMsg);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `contactMessages/${msgId}`);
-    }
-
-    return newMsg;
   }
 
   // --- FOUNDER ADMIN SECURITY & CONSOLE METHODS ---
   public async getAdminStatus(): Promise<{
     initialized: boolean;
-    founderEmail: string;
-    maskedEmail: string;
-    founderPhone: string;
-    maskedPhone: string;
   }> {
     try {
       const res = await safeApiFetch<{
         initialized: boolean;
-        founderEmail: string;
-        maskedEmail: string;
-        founderPhone: string;
-        maskedPhone: string;
       }>('/api/admin/auth/status', { method: 'POST' });
 
       // If server returned false, check authoritative Firestore directly
@@ -827,32 +818,20 @@ class NexoraDataService {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ clientConfirmedInitialized: true })
             }).catch(() => {});
-            return { ...res, initialized: true };
+            return { initialized: true };
           }
         } catch (clientFsErr) {
           console.warn('[ADMIN STATUS] Firestore client check fallback:', clientFsErr);
         }
       }
-      return res;
+      return { initialized: Boolean(res.initialized) };
     } catch (apiErr) {
       try {
         const confSnap = await getDoc(doc(db, 'systemConfig', 'status'));
         const initialized = confSnap.exists() && confSnap.data()?.initialized === true;
-        return {
-          initialized,
-          founderEmail: 'miteshpipaliya2202@gmail.com',
-          maskedEmail: 'm***2@gmail.com',
-          founderPhone: '+91 8200243606',
-          maskedPhone: '+91 ••••• •3606'
-        };
+        return { initialized };
       } catch {
-        return {
-          initialized: true,
-          founderEmail: 'miteshpipaliya2202@gmail.com',
-          maskedEmail: 'm***2@gmail.com',
-          founderPhone: '+91 8200243606',
-          maskedPhone: '+91 ••••• •3606'
-        };
+        return { initialized: true };
       }
     }
   }
@@ -1374,9 +1353,9 @@ class NexoraDataService {
       registration_open: eventData.registration_open !== false,
       is_published: eventData.status === 'Published',
       isComingSoon: Boolean(eventData.isComingSoon),
-      capacity: Number(eventData.capacity) || 60,
+      capacity: toFiniteNumber(eventData.capacity, 60),
       registered_count: 0,
-      fee_per_participant: Number(eventData.fee_per_participant) ?? 50,
+      fee_per_participant: toFiniteNumber(eventData.fee_per_participant, 50),
       banner_image: eventData.banner_image || eventData.cover_image || '/images/competitions/zerocode.jpg',
       cover_image: eventData.cover_image || eventData.banner_image || '/images/competitions/zerocode.jpg',
       event_date: eventData.event_date || 'TBA',
@@ -1384,8 +1363,8 @@ class NexoraDataService {
       venue: eventData.venue || 'BVM Engineering College, Vallabh Vidyanagar',
       duration: eventData.duration || '6 Hours',
       team_size: eventData.team_size || '1–4 Participants',
-      min_team_size: Number(eventData.min_team_size) || 1,
-      max_team_size: Number(eventData.max_team_size) || 4,
+      min_team_size: toFiniteNumber(eventData.min_team_size, 1),
+      max_team_size: toFiniteNumber(eventData.max_team_size, 4),
       eligibility: eventData.eligibility || 'Open to all engineering students.',
       prizes: eventData.prizes || {
         first_place: '₹2,000 Cash Prize',

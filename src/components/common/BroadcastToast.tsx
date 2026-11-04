@@ -5,9 +5,13 @@ import { InAppNotification } from '../../types';
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
 import { isValidSafeUrl } from '../../shared/lib/safeUrl';
+import {
+  playNotificationSound,
+  isNotificationSoundEnabled,
+  setNotificationSoundEnabled
+} from '../../shared/lib/notificationSound';
 
 const SEEN_BROADCASTS_KEY = 'nexora_seen_broadcasts';
-const MUTED_STORAGE_KEY = 'nexora_toast_muted';
 const MAX_SEEN_CACHE = 200;
 const MAX_STACK = 3;
 const AUTO_DISMISS_MS = 10000;
@@ -34,56 +38,14 @@ export function markBroadcastSeenLocally(id: string) {
 }
 
 export function formatRelativeTime(dateString?: string): string {
-  if (!dateString) return 'just now';
+  if (!dateString) return 'now';
   const timestamp = new Date(dateString).getTime();
-  if (isNaN(timestamp)) return 'just now';
+  if (isNaN(timestamp)) return 'now';
   const diffSec = Math.floor((Date.now() - timestamp) / 1000);
-  if (diffSec < 45) return 'just now';
+  if (diffSec < 45) return 'now';
   if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
   if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
   return `${Math.floor(diffSec / 86400)}d ago`;
-}
-
-/**
- * Web Audio API gentle two-tone chime for incoming notifications
- */
-export function playNotificationChime() {
-  try {
-    if (localStorage.getItem(MUTED_STORAGE_KEY) === 'true') return;
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-    if (ctx.state === 'suspended') {
-      ctx.resume().catch(() => {});
-    }
-    const now = ctx.currentTime;
-
-    // First tone (D5 - 587.33 Hz)
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(587.33, now);
-    gain1.gain.setValueAtTime(0.08, now);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-    osc1.start(now);
-    osc1.stop(now + 0.18);
-
-    // Second tone (A5 - 880 Hz)
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(880, now + 0.12);
-    gain2.gain.setValueAtTime(0.1, now + 0.12);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.start(now + 0.12);
-    osc2.stop(now + 0.38);
-  } catch {
-    // Autoplay restrictions or audio unsupported - silently ignore
-  }
 }
 
 interface ToastItem {
@@ -91,39 +53,28 @@ interface ToastItem {
   remainingMs: number;
   isPaused: boolean;
   timerStart?: number;
+  isFreshLive?: boolean;
 }
 
 export const BroadcastToast: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [activeToasts, setActiveToasts] = useState<ToastItem[]>([]);
-  const [isMuted, setIsMuted] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(MUTED_STORAGE_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
+  const [soundEnabled, setSoundEnabledState] = useState<boolean>(() => isNotificationSoundEnabled());
+  const mountTimeRef = useRef<number>(Date.now());
+  const touchStartXRef = useRef<number | null>(null);
 
-  const toggleMute = () => {
-    setIsMuted(prev => {
-      const next = !prev;
-      try {
-        localStorage.setItem(MUTED_STORAGE_KEY, String(next));
-      } catch {}
-      return next;
-    });
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabledState(next);
+    setNotificationSoundEnabled(next);
   };
 
   // Dismiss a specific toast and record seen everywhere
   const dismissToast = useCallback((id: string) => {
-    // Remove from local toast stack
     setActiveToasts(prev => prev.filter(t => t.notification.id !== id));
-
-    // Record in seen broadcasts (for toast suppression)
     markBroadcastSeenLocally(id);
 
-    // Sync with read receipts for the notification bell
     const storageKey = `nexora_read_notifs_${user?.id || 'guest'}`;
     try {
       const raw = localStorage.getItem(storageKey);
@@ -143,10 +94,15 @@ export const BroadcastToast: React.FC = () => {
       const seen = getSeenBroadcastIds();
       const now = Date.now();
 
-      // Filter: Published, not expired, not seen, and not older than 5 minutes
       const freshNotifs = allNotifs.filter((n: InAppNotification) => {
         if (n.status !== 'Published') return false;
         if (seen.has(n.id)) return false;
+
+        // Check scheduled display_at
+        if (n.display_at) {
+          const displayMs = new Date(n.display_at).getTime();
+          if (!isNaN(displayMs) && displayMs > now) return false;
+        }
 
         // Check expiration
         if (n.expires_at) {
@@ -154,10 +110,9 @@ export const BroadcastToast: React.FC = () => {
           if (!isNaN(exp) && exp < now) return false;
         }
 
-        // R3: "If live announcement was created > 5 mins ago while user was away, don't toast (bell only)"
         const createdMs = new Date(n.created_at).getTime();
+        // Item created > 5 minutes ago while user was away: skip toast, show in bell only
         if (!isNaN(createdMs) && (now - createdMs) > MAX_TOAST_AGE_MS) {
-          // Mark seen for toast so it doesn't pop up, but bell will still show unread
           markBroadcastSeenLocally(n.id);
           return false;
         }
@@ -167,25 +122,34 @@ export const BroadcastToast: React.FC = () => {
 
       if (freshNotifs.length === 0) return;
 
-      // Add to toasts if not already in activeToasts, up to MAX_STACK
       setActiveToasts(prev => {
         const existingIds = new Set(prev.map(t => t.notification.id));
         const toAdd = freshNotifs.filter(n => !existingIds.has(n.id));
 
         if (toAdd.length === 0) return prev;
 
-        // Play chime once if new toasts arrived
-        playNotificationChime();
+        // Determine if notification went live while page is open
+        for (const item of toAdd) {
+          const itemTime = new Date(item.created_at).getTime();
+          const isFreshLive = !isNaN(itemTime) && itemTime >= (mountTimeRef.current - 10000);
+          if (isFreshLive) {
+            playNotificationSound(item.id).catch(() => {});
+          }
+        }
 
-        const newItems: ToastItem[] = toAdd.map(n => ({
-          notification: n,
-          remainingMs: AUTO_DISMISS_MS,
-          isPaused: false,
-          timerStart: Date.now()
-        }));
+        const newItems: ToastItem[] = toAdd.map(n => {
+          const itemTime = new Date(n.created_at).getTime();
+          const isFreshLive = !isNaN(itemTime) && itemTime >= (mountTimeRef.current - 10000);
+          return {
+            notification: n,
+            remainingMs: AUTO_DISMISS_MS,
+            isPaused: false,
+            timerStart: Date.now(),
+            isFreshLive
+          };
+        });
 
         const merged = [...prev, ...newItems];
-        // Keep max 3 toasts
         return merged.slice(-MAX_STACK);
       });
     });
@@ -200,8 +164,8 @@ export const BroadcastToast: React.FC = () => {
         const seen = getSeenBroadcastIds();
         setActiveToasts(prev => prev.filter(t => !seen.has(t.notification.id)));
       }
-      if (e.key === MUTED_STORAGE_KEY) {
-        setIsMuted(e.newValue === 'true');
+      if (e.key === 'nexora_notif_sound') {
+        setSoundEnabledState(e.newValue !== 'false');
       }
     };
 
@@ -209,7 +173,7 @@ export const BroadcastToast: React.FC = () => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Tick timers for active toasts (pause on hover)
+  // Tick timers for active toasts (pause on hover, Urgent is sticky)
   useEffect(() => {
     if (activeToasts.length === 0) return;
 
@@ -218,14 +182,20 @@ export const BroadcastToast: React.FC = () => {
       setActiveToasts(prev => {
         const updated: ToastItem[] = [];
         for (const item of prev) {
+          // Urgent is sticky until closed
+          if (item.notification.priority === 'Urgent') {
+            updated.push(item);
+            continue;
+          }
+
           if (item.isPaused) {
             updated.push(item);
             continue;
           }
+
           const elapsed = item.timerStart ? now - item.timerStart : 100;
           const remaining = item.remainingMs - elapsed;
           if (remaining <= 0) {
-            // Auto-dismiss
             markBroadcastSeenLocally(item.notification.id);
           } else {
             updated.push({
@@ -244,24 +214,31 @@ export const BroadcastToast: React.FC = () => {
 
   const handleMouseEnter = (id: string) => {
     setActiveToasts(prev =>
-      prev.map(t => {
-        if (t.notification.id === id) {
-          return { ...t, isPaused: true };
-        }
-        return t;
-      })
+      prev.map(t => (t.notification.id === id ? { ...t, isPaused: true } : t))
     );
   };
 
   const handleMouseLeave = (id: string) => {
     setActiveToasts(prev =>
-      prev.map(t => {
-        if (t.notification.id === id) {
-          return { ...t, isPaused: false, timerStart: Date.now() };
-        }
-        return t;
-      })
+      prev.map(t =>
+        t.notification.id === id ? { ...t, isPaused: false, timerStart: Date.now() } : t
+      )
     );
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartXRef.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = (id: string, e: React.TouchEvent) => {
+    if (touchStartXRef.current !== null) {
+      const deltaX = e.changedTouches[0].clientX - touchStartXRef.current;
+      if (deltaX > 75) {
+        // Swipe right to dismiss
+        dismissToast(id);
+      }
+      touchStartXRef.current = null;
+    }
   };
 
   const handleAction = (item: InAppNotification) => {
@@ -278,25 +255,29 @@ export const BroadcastToast: React.FC = () => {
   if (activeToasts.length === 0) return null;
 
   return (
-    <div
+    <aside
+      role="status"
       aria-live="polite"
       aria-label="Broadcast notifications"
-      className="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-50 flex flex-col gap-3 pointer-events-none max-w-sm sm:max-w-md w-full px-4 sm:px-0"
+      className="fixed top-20 right-4 sm:top-auto sm:right-6 sm:bottom-6 z-50 flex flex-col gap-3 pointer-events-none max-w-sm sm:max-w-md w-full px-2 sm:px-0"
     >
       {activeToasts.map(({ notification, remainingMs, isPaused }) => {
         const isUrgent = notification.priority === 'Urgent';
         const isHigh = notification.priority === 'High';
-        const progressPct = Math.max(0, Math.min(100, (remainingMs / AUTO_DISMISS_MS) * 100));
+        const progressPct = isUrgent ? 100 : Math.max(0, Math.min(100, (remainingMs / AUTO_DISMISS_MS) * 100));
 
         return (
           <div
             key={notification.id}
             onMouseEnter={() => handleMouseEnter(notification.id)}
             onMouseLeave={() => handleMouseLeave(notification.id)}
-            role="alert"
-            className="pointer-events-auto relative overflow-hidden bg-[#131122]/95 border border-violet-500/35 backdrop-blur-md shadow-[0_15px_35px_rgba(0,0,0,0.8)] rounded-2xl p-4 transition-all duration-300 transform translate-x-0 animate-in slide-in-from-right-8"
+            onTouchStart={handleTouchStart}
+            onTouchEnd={(e) => handleTouchEnd(notification.id, e)}
+            role={isUrgent ? 'alert' : 'status'}
+            aria-live={isUrgent ? 'assertive' : 'polite'}
+            className="pointer-events-auto relative overflow-hidden bg-[#131122]/95 border border-violet-500/35 backdrop-blur-md shadow-[0_15px_35px_rgba(0,0,0,0.85)] rounded-2xl p-4 transition-all duration-250 motion-reduce:transition-none transform translate-x-0 animate-in slide-in-from-right-8 motion-reduce:animate-none"
           >
-            {/* Top row: Avatar + Sender + Time + Actions */}
+            {/* Top row: Circular Logo Avatar + Sender + Time + Actions */}
             <div className="flex items-start gap-3">
               {/* Circular Avatar */}
               <div className="relative shrink-0">
@@ -320,11 +301,11 @@ export const BroadcastToast: React.FC = () => {
                 )}
               </div>
 
-              {/* Title and metadata */}
+              {/* Title and metadata (plain text only) */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-1">
                   <span className="font-semibold text-xs sm:text-sm text-white truncate">
-                    {notification.title}
+                    {String(notification.title || '')}
                   </span>
                   <span className="text-[10px] font-mono text-slate-400 shrink-0">
                     {formatRelativeTime(notification.created_at)}
@@ -334,7 +315,7 @@ export const BroadcastToast: React.FC = () => {
                 {/* Priority / Category badge */}
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className="text-[10px] font-mono uppercase tracking-wider text-violet-300">
-                    {notification.category || 'Announcement'}
+                    {String(notification.category || 'Announcement')}
                   </span>
                   {isUrgent && (
                     <span className="inline-flex items-center gap-0.5 text-[9px] font-mono px-1.5 py-0.2 rounded bg-red-950/80 text-red-400 border border-red-500/30 font-bold">
@@ -349,33 +330,37 @@ export const BroadcastToast: React.FC = () => {
                 </div>
               </div>
 
-              {/* Top-Right Mute & Close buttons */}
+              {/* Sound Mute & Close buttons */}
               <div className="flex items-center gap-1 shrink-0 -mr-1">
                 <button
                   type="button"
-                  onClick={toggleMute}
-                  title={isMuted ? 'Unmute notification chime' : 'Mute notification chime'}
+                  onClick={toggleSound}
+                  title={soundEnabled ? 'Mute notification sound' : 'Unmute notification sound'}
                   className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-white/5 transition-colors cursor-pointer"
-                  aria-label={isMuted ? 'Unmute chime' : 'Mute chime'}
+                  aria-label={soundEnabled ? 'Mute sound' : 'Unmute sound'}
                 >
-                  {isMuted ? <VolumeX className="w-3.5 h-3.5 text-slate-500" /> : <Volume2 className="w-3.5 h-3.5 text-violet-400" />}
+                  {soundEnabled ? (
+                    <Volume2 className="w-3.5 h-3.5 text-violet-400" />
+                  ) : (
+                    <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={() => dismissToast(notification.id)}
-                  title="Dismiss notification"
+                  title="Dismiss announcement"
                   className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-white/5 transition-colors cursor-pointer"
-                  aria-label="Dismiss notification"
+                  aria-label="Dismiss announcement"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
 
-            {/* Message Clamp */}
-            <div className="mt-2 text-xs text-slate-300 font-light leading-relaxed line-clamp-3">
-              {notification.message}
-            </div>
+            {/* Plain text message with 3-line clamp */}
+            <p className="mt-2 text-xs text-slate-300 font-light leading-relaxed line-clamp-3 select-none">
+              {String(notification.message || '')}
+            </p>
 
             {/* Action Button if link_url is provided */}
             {notification.link_url && isValidSafeUrl(notification.link_url) && (
@@ -385,24 +370,26 @@ export const BroadcastToast: React.FC = () => {
                   onClick={() => handleAction(notification)}
                   className="inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-white bg-violet-600 hover:bg-violet-500 rounded-lg transition-colors shadow-sm cursor-pointer"
                 >
-                  <span>{notification.link_text || 'View Details'}</span>
+                  <span>{String(notification.link_text || 'View Details')}</span>
                   <ExternalLink className="w-3 h-3" />
                 </button>
               </div>
             )}
 
-            {/* Auto-dismiss progress bar (pauses on hover) */}
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-violet-950">
-              <div
-                className={`h-full transition-all duration-200 ${
-                  isUrgent ? 'bg-red-500' : isHigh ? 'bg-amber-400' : 'bg-violet-500'
-                } ${isPaused ? 'opacity-50' : 'opacity-100'}`}
-                style={{ width: `${progressPct}%` }}
-              />
-            </div>
+            {/* Progress bar along bottom (hidden if Urgent) */}
+            {!isUrgent && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-violet-950">
+                <div
+                  className={`h-full transition-all duration-200 ${
+                    isHigh ? 'bg-amber-400' : 'bg-violet-500'
+                  } ${isPaused ? 'opacity-50' : 'opacity-100'}`}
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            )}
           </div>
         );
       })}
-    </div>
+    </aside>
   );
 };
