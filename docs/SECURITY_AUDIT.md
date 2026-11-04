@@ -91,6 +91,12 @@
 - `npm run rules:test` currently fails because `tests/rules.test.ts` does not exist. Firestore rules were inspected statically (including default deny and internal collection denials), but their behavior was not verified against the Firebase emulator.
 - Student/Admin Firebase workflows, Firestore authorization, registration, responsive UI, and real Brevo delivery were not integration-tested. Staging credentials and authorized test accounts are required. No actual OTP email was sent or inbox receipt confirmed.
 
-### 5.5 Release gate
+### 5.5 Medium and Low findings
+
+- The Vercel security header is `Content-Security-Policy-Report-Only`; it reports policy violations but does not enforce the policy. No exploitable XSS was confirmed in this review, but CSP is not an active blocking control.
+- Firestore permits clients with a verified `admin` claim to create `/adminAuditLogs` documents, and the frontend writes those documents directly. Ordinary users are denied, but an administrator client can add fabricated entries; treat the collection as operational history rather than tamper-proof evidence.
+- Moderate `glob`/`minimatch` and Low `@grpc/grpc-js` advisories remain in the transitive lockfile graph as described above. No direct imports or gRPC code were found in the browser bundle, and Admin Firestore resolves the patched gRPC version, but `bun audit` still reports them.
+
+### 5.6 Release gate
 
 Do not merge or deploy to Production until isolated Preview configuration is present, the Preview API returns 200, Firebase service-account project alignment is confirmed, Firestore rules are tested, and the required staging integration checks pass. The existing Production deployment and data remain unchanged.
