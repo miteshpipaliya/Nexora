@@ -1,0 +1,973 @@
+# NEXORA — COMPLETE ADMIN PANEL, IMAGE LIBRARY, TEAM CMS, STORE & COMPETITION SYSTEM REPAIR
+
+You are working as a senior full-stack developer, software architect, Firebase engineer, UI/UX designer, and application security engineer.
+
+You have access to my existing NEXORA GitHub repository.
+
+**Repository:** https://github.com/miteshpipaliya/Nexora  
+**Branch:** main  
+**Production URL:** https://www.nexora-bvm.online
+
+Your job is to inspect, repair, and improve the existing application. Do NOT rebuild the application from scratch.
+
+The existing NEXORA application uses a black-and-purple futuristic design. Preserve its branding, animations, layout language, existing working functionality, and current technology stack.
+
+The previous development phase already introduced:
+- Firestore notification undefined-value handling.
+- Competition Coming Soon functionality.
+- Competition image fallback component.
+- Admin password and OTP recovery.
+- Firestore security restrictions.
+- Environment-file security improvements.
+
+Do not accidentally undo these implementations. Audit the current repository before making changes.
+
+## PRIORITY ORDER
+
+Fix issues in this order:
+
+1. Coming Soon card blur and visual behaviour.
+2. Competition creation and saving failure.
+3. Centralized image library and image upload.
+4. Competition image loading performance.
+5. Team management full CRUD.
+6. Remove FAQ section.
+7. Store navigation and Coming Soon page.
+8. Public broadcast announcement publishing.
+9. Complete application regression, security, and performance audit.
+
+---
+
+# PHASE 1 — FIX COMING SOON CARD BLUR PERFECTLY
+
+Currently, when a competition is marked Coming Soon, the competition image is blurred, but the competition name, description, prize, fee, and other details remain partially visible.
+
+I want the ENTIRE original competition card content to be blurred.
+
+### Required appearance
+
+When Coming Soon is ON:
+
+- Competition image: blurred.
+- Competition category label: blurred.
+- Competition name/title: blurred.
+- Difficulty: blurred.
+- Registration fee: blurred.
+- Short description: blurred.
+- Competition slogan: blurred.
+- First prize: blurred.
+- Capacity: blurred.
+- Registration status: blurred.
+- Details & Rules button: blurred and disabled.
+- Register button: blurred and disabled.
+- Any other information inside the original card: blurred.
+
+The only elements that should remain sharp are:
+
+1. A centered, clearly visible COMING SOON badge.
+2. The message: "Details & Registration Opening Soon".
+
+### Correct implementation
+
+Do not individually blur only the image or selected text elements.
+
+Use a proper layered structure:
+
+- Original competition card content inside one wrapper.
+- Apply blur and reduced opacity to the complete content wrapper.
+- Place the Coming Soon overlay as a separate sibling above that wrapper.
+- Keep the overlay sharp, centered, and readable.
+- Add a subtle dark translucent overlay to improve readability.
+- Maintain the original card dimensions and layout.
+- Avoid visual distortion or excessive blur.
+
+The effect should look premium and match the NEXORA purple/black theme.
+
+### Behaviour
+
+When Coming Soon is ON:
+
+- No card navigation.
+- No Details & Rules action.
+- No registration action.
+- No clickable elements underneath the overlay.
+- No keyboard-accessible activation of blocked actions.
+- No registration through direct URL or API bypass.
+
+When Coming Soon is OFF, restore the original normal card exactly.
+
+Do not confuse Coming Soon with unpublished, registration closed, or deleted.
+
+Preserve backend enforcement and independently verify the final registration-creation endpoint.
+
+---
+
+# PHASE 2 — FIX CREATE NEW COMPETITION AND SAVE BUTTON
+
+Currently, I cannot successfully add a new competition through the Admin Panel.
+
+The Create New Competition modal opens, but saving the competition is not working correctly.
+
+This is a CRITICAL issue.
+
+### Investigate the complete flow
+
+Trace the entire process:
+
+Admin form
+→ Form validation
+→ Image selection
+→ Image upload
+→ Competition data preparation
+→ API/service request
+→ Firestore write
+→ Response handling
+→ Admin UI refresh
+→ Public competitions page.
+
+Inspect:
+
+- Create Competition modal.
+- Edit Competition modal.
+- Form state.
+- Required-field validation.
+- Image state.
+- Firestore document structure.
+- Competition slug generation.
+- API endpoints.
+- dataService functions.
+- Firebase permissions.
+- Firestore rules.
+- Duplicate slug handling.
+- Loading state.
+- Save button state.
+- Error handling.
+
+Find the exact reason why the Save Competition to Firestore button does not complete successfully.
+
+### Required behaviour
+
+When I click Save Competition:
+
+1. Validate all required fields.
+2. Validate the competition image selection.
+3. Upload the image if required.
+4. Wait for the image upload to complete.
+5. Save the complete competition document to Firestore.
+6. Confirm the database operation succeeded.
+7. Close the modal only after successful saving.
+8. Refresh the Admin competitions list from the database.
+9. Make the new competition visible on the public page according to its publication status.
+
+### Error handling
+
+- Never display a fake success message.
+- Never close the modal when saving fails.
+- Never lose the entered form data after an upload or database failure.
+- Show a clear error message.
+- Prevent accidental duplicate submissions.
+- Display a proper loading indicator.
+- Keep the Save button disabled only while an operation is actually in progress or required validation is failing.
+
+### Edit functionality
+
+The same persistence reliability must apply to editing existing competitions.
+
+Verify that changing the title, image, description, prize, capacity, fee, Coming Soon status, publication status, and other existing fields actually updates Firestore.
+
+Do not create a separate incompatible competition data model.
+
+### Required testing
+
+Test:
+- Create a competition without an image if the existing data model allows it.
+- Create a competition with an image.
+- Edit an existing competition.
+- Change Coming Soon status.
+- Change publication status.
+- Attempt duplicate slugs.
+- Simulate failed image upload.
+- Simulate failed Firestore write.
+
+---
+
+# PHASE 3 — CREATE A CENTRALIZED NEXORA IMAGE LIBRARY
+
+This is one of the most important new features.
+
+Currently, local image upload from the Create Competition modal is not working reliably.
+
+I want a centralized image library built directly into the NEXORA website.
+
+The library should store uploaded images persistently and allow me to reuse the same image across different competitions and other supported content.
+
+Do not depend on temporary local browser storage or Vercel filesystem storage.
+
+Use the existing Firebase Storage architecture if it is already configured and suitable.
+
+## 3.1 Image library opening behaviour
+
+I do NOT want a permanent image library taking up space in the Admin Panel.
+
+Instead:
+
+When I open the image upload/select option in any supported admin form, open a dedicated image library modal.
+
+For example:
+
+Admin Panel
+→ Create Competition
+→ Competition Cover Image
+→ Click "Choose from Image Library"
+→ Image Library Modal opens.
+
+The library should also support an Upload New Image action.
+
+### Image library modal layout
+
+Create a premium, responsive modal with:
+
+- Search bar.
+- Category filters.
+- Image gallery grid.
+- Upload New Image button.
+- Image preview.
+- Select Image button.
+- Cancel button.
+- Upload progress.
+- Loading state.
+- Empty state.
+- Error state.
+
+Show existing uploaded images as visual thumbnails.
+
+Clicking an image should select it.
+
+Clicking Select Image should return the selected image URL/reference to the original form.
+
+Do not make the administrator upload the same image repeatedly.
+
+## 3.2 Image library categories
+
+Create these initial categories:
+
+### Category 1 — Vibe Coding / AI Hackathon
+
+Store images related to:
+- AI hackathons.
+- Vibe coding.
+- AI-assisted development.
+- Developers building applications.
+- Laptop-based coding events.
+- Innovation and startup competitions.
+
+### Category 2 — CodeRush
+
+Store images related to:
+- Competitive programming.
+- Algorithmic challenges.
+- Coding contests.
+- Programming leaderboards.
+- Computer science competitions.
+
+### Category 3 — Mechanical / RoboRace
+
+Store images related to:
+- Robotics competitions.
+- Robot racing.
+- Mechanical engineering.
+- RC robots.
+- Autonomous vehicles.
+- Engineering workshops.
+
+### Category 4 — Cybersecurity / CTF
+
+Store images related to:
+- Capture The Flag competitions.
+- Ethical hacking.
+- Cybersecurity.
+- Digital forensics.
+- Network security.
+- Security laboratories.
+
+### Category 5 — Civil / Engineering
+
+Store images related to:
+- Civil engineering.
+- Structural engineering.
+- Bridge building.
+- Architecture.
+- Construction challenges.
+- Engineering models.
+
+### Category 6 — General Student Groups
+
+Store images related to:
+- Students working together.
+- University technology clubs.
+- Team collaboration.
+- Student communities.
+- Technical events.
+- Group activities.
+
+## 3.3 Three initial image options per category
+
+I want at least THREE usable image options for each of the six categories.
+
+That means an initial gallery of at least 18 images.
+
+Structure:
+
+| Category | Initial image options |
+|---|---:|
+| Vibe Coding / AI Hackathon | 3 |
+| CodeRush | 3 |
+| Mechanical / RoboRace | 3 |
+| Cybersecurity / CTF | 3 |
+| Civil / Engineering | 3 |
+| General Student Groups | 3 |
+| TOTAL | 18 |
+
+Use appropriate, high-quality, visually consistent images.
+
+Important:
+
+- Do not generate fake image URLs.
+- Do not store broken external URLs.
+- Use legally usable images with suitable usage rights.
+- Prefer images that can be downloaded and stored in Firebase Storage.
+- Verify that every initial gallery image actually loads.
+- If the environment cannot retrieve or upload the initial images, clearly report which images still need to be supplied. Do not pretend the library is populated.
+
+The three options should be visibly different from one another.
+
+## 3.4 Image library upload functionality
+
+When I click Upload New Image:
+
+- Open the device file picker.
+- Allow JPEG, PNG, and WebP.
+- Validate MIME type and file size.
+- Show a preview.
+- Allow selecting a category.
+- Allow adding an optional image title.
+- Upload to persistent Firebase Storage.
+- Show actual upload progress.
+- Save image metadata to Firestore.
+- Show the image in the library immediately after successful upload.
+
+Suggested metadata:
+
+- imageId
+- imageName
+- category
+- storagePath
+- downloadURL
+- uploadedBy
+- createdAt
+- contentType
+- fileSize
+
+Use the existing conventions if the project already has an image metadata schema.
+
+## 3.5 Image library management
+
+In the library, allow authorized administrators to:
+
+- Upload an image.
+- Search images.
+- Filter by category.
+- Preview an image.
+- Select an image.
+- Rename an image.
+- Change its category.
+- Delete an image.
+
+### Safe deletion
+
+Before deleting an image:
+
+- Check whether it is referenced by a competition, team member, page, or other content.
+- If it is in use, warn the administrator.
+- Do not break existing content by deleting a referenced image.
+- Allow safe replacement or deletion only after appropriate confirmation.
+
+Use server-side authorization for all management operations.
+
+## 3.6 Reuse images everywhere
+
+The image library should be reusable from:
+
+- Competition cover image upload.
+- Team member profile image upload.
+- Team section imagery if applicable.
+- Future Store product images.
+- Other existing admin-managed image fields where appropriate.
+
+Do not duplicate the image upload implementation in every component.
+
+Create a reusable image-library selector component.
+
+---
+
+# PHASE 4 — FIX COMPETITION IMAGE LOADING PERFORMANCE
+
+Competition images are still not appearing quickly enough.
+
+I want the first visible competition images to load within approximately three seconds under normal network conditions.
+
+Do not guarantee impossible loading times on slow networks. Optimize the application to achieve this target on a reasonable connection.
+
+### Required improvements
+
+1. Inspect the current CompetitionCardImage component.
+2. Inspect Firebase Storage download URLs.
+3. Inspect image dimensions and file sizes.
+4. Identify unnecessarily large source images.
+5. Avoid repeatedly fetching the same image.
+6. Use appropriate image compression.
+7. Generate or store optimized thumbnails if the existing architecture supports it.
+8. Use responsive image sizes where practical.
+9. Set explicit image width, height, or aspect ratio.
+10. Prevent layout shifts.
+11. Use loading priority for images visible above the fold.
+12. Use lazy loading for images further down the page.
+13. Preload only the most important above-the-fold images.
+14. Avoid unnecessary duplicate image requests.
+15. Keep the existing skeleton loader.
+16. Keep a reliable fallback image.
+
+### Important
+
+Do not use lazy loading on the first visible competition images if it unnecessarily delays their appearance.
+
+Use eager loading or appropriate high priority for the first visible cards.
+
+Images below the fold can use lazy loading.
+
+Measure actual image loading behaviour rather than assuming it works.
+
+### Final result
+
+The competition section should display:
+
+- Correct image.
+- Correct crop.
+- Consistent 16:9 dimensions.
+- No broken-image icon.
+- No unnecessary delay.
+- No visible layout shift.
+
+---
+
+# PHASE 5 — COMPLETE TEAM SECTION ADMIN CRUD
+
+Currently, I want complete administrative control over the Team section.
+
+I should be able to manage the team without editing source code manually.
+
+Build a complete Team Management section inside the existing Admin Panel.
+
+## 5.1 Team roles CRUD
+
+Create full CRUD for team roles.
+
+Admin should be able to:
+
+- Create a new role.
+- View all roles.
+- Edit a role.
+- Delete a role.
+- Reorder roles.
+- Change role display name.
+- Change role description if supported.
+- Enable or disable a role.
+
+Examples of possible roles:
+
+- Founder
+- Co-Founder
+- President
+- Vice President
+- General Secretary
+- Technical Head
+- Event Head
+- Web Development Lead
+- Design Lead
+- Marketing Lead
+- Operations Lead
+- Volunteer
+
+These are examples, not a fixed list. Admin must be able to create any additional role.
+
+## 5.2 Branch CRUD
+
+Admin should be able to manage academic branches.
+
+Examples:
+
+- Electronics Engineering
+- Computer Engineering
+- Information Technology
+- Mechanical Engineering
+- Civil Engineering
+- Electrical Engineering
+
+Allow:
+- Add branch.
+- Edit branch.
+- Delete branch.
+- Reorder branches.
+- Enable or disable branch.
+
+Do not hardcode the branch list into the frontend.
+
+## 5.3 Division CRUD
+
+Allow the administrator to:
+
+- Create divisions.
+- Edit division names.
+- Delete divisions.
+- Reorder divisions.
+- Enable or disable divisions.
+
+Examples can include Division 1, Division 2, Division 11, etc.
+
+## 5.4 Department CRUD
+
+Create a separate department management system.
+
+Examples:
+
+- Technical
+- Development
+- Robotics
+- Design
+- Marketing
+- Media
+- Operations
+- Event Management
+- Cybersecurity
+- Research and Innovation
+
+Admin should be able to add, edit, remove, and reorder departments.
+
+Do not confuse academic branches with organizational departments.
+
+These must be separate fields and separate management entities.
+
+## 5.5 Team member CRUD
+
+Create complete team member management.
+
+Admin must be able to:
+
+- Add a new team member.
+- Edit existing members.
+- Delete members.
+- Upload or select profile image from the Image Library.
+- Change member name.
+- Assign a team role.
+- Assign an academic branch.
+- Assign a division.
+- Assign a department.
+- Update enrollment or other existing profile fields if the current model supports them.
+- Add a short biography.
+- Add social/profile links if supported.
+- Set member display order.
+- Enable or disable a member.
+- Mark a member as featured if appropriate.
+
+All changes must persist in Firestore.
+
+The public Team page must read the updated records from the database.
+
+### Team UI
+
+Preserve the existing premium Team page design.
+
+Organize the team members in a clean hierarchy.
+
+Allow roles and departments to have appropriate sections.
+
+Do not display disabled members publicly.
+
+Do not create dummy or fabricated team members.
+
+### Data integrity
+
+- Do not break existing team member profiles.
+- Migrate existing records carefully if schema changes are required.
+- Preserve existing user authentication and founder identity.
+- Do not let ordinary students modify official Team records.
+- Secure all Team CRUD operations on the backend.
+
+---
+
+# PHASE 6 — REMOVE THE FAQ SECTION COMPLETELY
+
+The existing FAQ section contains four questions.
+
+I want all four FAQ questions removed completely.
+
+Requirements:
+
+- Remove the FAQ section from the public website.
+- Remove its heading.
+- Remove all four questions.
+- Remove associated answers.
+- Remove unnecessary empty containers and spacing.
+- Remove related navigation links if they exist.
+- Remove unused FAQ-specific components or data only after confirming they are not used elsewhere.
+
+Do not remove other sections accidentally.
+
+Ensure the page layout remains visually balanced after removing the FAQ section.
+
+Do not leave an empty blank space where the FAQ section used to be.
+
+---
+
+# PHASE 7 — ADD STORE TO TOP NAVIGATION
+
+Add a new Store navigation item.
+
+The top navigation should become:
+
+Home | About | Competitions | Team | Store | Profile | Admin
+
+Preserve the current navbar spacing, active-tab styling, responsiveness, and mobile navigation behaviour.
+
+## Store page — Coming Soon
+
+For now, the Store page must be a blank Coming Soon experience.
+
+Do not build product purchasing, shopping cart, checkout, payment, or order management yet.
+
+### Public Store page
+
+Display a premium NEXORA-themed page with:
+
+- NEXORA STORE heading.
+- COMING SOON badge.
+- A short message such as "Something exciting is being built."
+- A subtle purple futuristic visual.
+- No products.
+- No prices.
+- No dummy product cards.
+- No fake shopping functionality.
+
+Keep the page intentionally empty apart from the Coming Soon presentation.
+
+The Store navigation item must open this page correctly.
+
+Ensure direct URL access works and the page is responsive.
+
+The Store section must not break existing navbar routes or mobile navigation.
+
+Prepare the architecture for future store management without implementing unnecessary features now.
+
+---
+
+# PHASE 8 — FIX PUBLIC BROADCAST ANNOUNCEMENT PUBLISHING
+
+Currently, I cannot successfully publish a Public Announcement from the Admin Panel.
+
+This is another critical functional bug.
+
+Do not merely change the button label or display a success notification.
+
+Investigate the complete announcement publishing flow.
+
+### Trace the full flow
+
+Admin Broadcast modal
+→ Form state
+→ Validation
+→ API/service function
+→ Firestore write
+→ Publication status
+→ Public announcement retrieval
+→ Navbar/announcement display.
+
+Inspect:
+
+- Broadcast Announcement component.
+- createNotification.
+- publish_at.
+- expires_at.
+- created_by.
+- notification types/interfaces.
+- Firestore collection structure.
+- Admin authorization.
+- Firestore security rules.
+- Public announcement subscriptions.
+- Date/time handling.
+- Error response handling.
+
+### Required behaviour
+
+When the admin creates a public broadcast:
+
+1. Enter announcement title.
+2. Enter announcement message.
+3. Select the announcement type if supported.
+4. Optionally set publication date/time if scheduling exists.
+5. Optionally set expiry date/time.
+6. Leave expiry blank for permanent announcements.
+7. Click Publish Announcement.
+8. Validate required fields.
+9. Save the announcement to Firestore.
+10. Confirm the database operation succeeded.
+11. Show an accurate success message.
+12. Update the public website without requiring a manual code deployment.
+
+### Important
+
+The previous Firestore `undefined` issue involving `expires_at` must remain fixed.
+
+Never pass undefined values into Firestore.
+
+### Public behaviour
+
+- Published announcements must appear to students.
+- Scheduled announcements must not appear before their publication time.
+- Expired announcements must not appear as active announcements.
+- Permanent announcements must remain active until manually removed or disabled.
+- Admin should be able to edit, unpublish, and delete announcements.
+- Do not display unpublished announcements publicly.
+
+### Security
+
+Only authorized administrators can publish, edit, or delete announcements.
+
+Students must not be able to create or modify public announcements.
+
+### Test cases
+
+Test:
+- Publish announcement with no expiry.
+- Publish announcement with expiry.
+- Publish scheduled announcement if scheduling is supported.
+- Edit announcement.
+- Unpublish announcement.
+- Delete announcement.
+- Attempt publishing as an ordinary student.
+- Simulate Firestore failure.
+
+If publishing fails, show the actual reason in a safe and understandable error message.
+
+---
+
+# PHASE 9 — COMPLETE ADMIN PANEL AUDIT
+
+Audit every admin section again.
+
+Verify that every operation really persists in the database.
+
+Check:
+
+- Competition CRUD.
+- Coming Soon status.
+- Publication status.
+- Competition image selection.
+- Image library.
+- Image replacement.
+- Image deletion.
+- Team member CRUD.
+- Team roles CRUD.
+- Branch CRUD.
+- Division CRUD.
+- Department CRUD.
+- Broadcast announcement publishing.
+- Notification management.
+- Registration management.
+- User management.
+- Existing dashboard statistics.
+- Admin authentication.
+- Password recovery.
+
+Do not leave any button that looks functional but does nothing.
+
+For each CRUD action, ensure:
+
+- Correct backend request.
+- Proper authorization.
+- Server-side validation.
+- Database persistence.
+- Accurate success/error messages.
+- Refresh-safe results.
+- Loading state.
+- Protection against duplicate requests.
+
+---
+
+# PHASE 10 — SECURITY AND DATABASE ARCHITECTURE
+
+Preserve and strengthen the existing security architecture.
+
+Important requirements:
+
+1. Every privileged operation must verify admin authorization on the server.
+2. Do not trust frontend admin flags.
+3. Do not expose Firebase service-account keys.
+4. Keep private secrets out of frontend bundles.
+5. Keep Firestore rules restrictive.
+6. Do not make Firestore publicly writable to fix permission errors.
+7. Validate uploaded images on the server where possible.
+8. Protect image deletion and metadata modification.
+9. Protect Team CRUD.
+10. Protect announcement publishing.
+11. Protect competition CRUD.
+12. Protect Coming Soon registration restrictions.
+13. Prevent unauthorized direct API requests.
+14. Apply reasonable rate limits to sensitive endpoints.
+15. Preserve the existing password and OTP recovery system.
+
+Use persistent storage for production data.
+
+Do not store important production state in temporary Vercel filesystem storage or serverless in-memory variables.
+
+Do not break the previously implemented HMAC session validation, password reset, or Firestore restrictions.
+
+If changes to security rules are required, explain them and test them carefully.
+
+---
+
+# PHASE 11 — TESTING AND VERIFICATION
+
+After implementation, run the actual project checks.
+
+At minimum:
+
+- npm test
+- npx tsc --noEmit
+- npm run build
+- ESLint if configured.
+- Existing integration tests.
+
+Add tests for:
+
+### Competition
+- Full-card Coming Soon blur state.
+- Blocked card interaction.
+- Direct URL restriction.
+- Backend registration rejection.
+- Successful competition creation.
+- Successful competition edit.
+- Failed competition creation.
+- Image upload failure.
+
+### Image library
+- Image upload.
+- Image selection.
+- Category filtering.
+- Search.
+- Image replacement.
+- Safe deletion of referenced images.
+- Unauthorized image management.
+
+### Team
+- Create role.
+- Edit role.
+- Delete role.
+- Create branch.
+- Edit branch.
+- Delete branch.
+- Create division.
+- Edit division.
+- Delete division.
+- Create department.
+- Edit department.
+- Delete department.
+- Create team member.
+- Edit team member.
+- Delete team member.
+- Public Team page updates.
+
+### Store
+- Navbar link.
+- Direct route.
+- Responsive page.
+- Coming Soon display.
+
+### Broadcast
+- Successful publication.
+- Permanent announcement.
+- Expiring announcement.
+- Scheduled announcement if supported.
+- Edit.
+- Unpublish.
+- Delete.
+- Unauthorized request.
+
+### Performance
+- Above-the-fold competition image loading.
+- Below-the-fold lazy loading.
+- No unnecessary repeated image requests.
+- No layout shifts.
+
+Do not claim tests passed unless they were actually executed.
+
+---
+
+# PHASE 12 — GITHUB DELIVERY AND FINAL REPORT
+
+Work on a separate feature branch.
+
+Do not immediately overwrite production or force-push main.
+
+Before committing:
+
+- Review all changed files.
+- Verify no `.env` or `.env.example` is tracked.
+- Verify no private credentials are included.
+- Verify Firebase rules.
+- Verify dependencies.
+- Verify build.
+- Verify tests.
+
+Push the changes to the feature branch and create a pull request if supported.
+
+After implementation, provide a detailed report containing:
+
+1. Root cause of the failed competition creation.
+2. Root cause of broken local image uploads.
+3. How the centralized Image Library works.
+4. Names and paths of new components.
+5. Initial image library category and image counts.
+6. Competition image performance improvements.
+7. Exact Coming Soon blur implementation.
+8. Team CRUD features completed.
+9. FAQ components removed.
+10. Store route and navigation changes.
+11. Broadcast publishing root cause and fix.
+12. Firestore collections created or changed.
+13. Firebase Storage structure.
+14. Firestore Rules changes.
+15. API endpoints added or changed.
+16. Tests actually executed.
+17. Production build result.
+18. Remaining issues.
+19. Required Vercel environment variables, if any.
+20. Exact steps to merge and deploy.
+
+## FINAL NON-NEGOTIABLE INSTRUCTIONS
+
+- Do not rebuild the application from scratch.
+- Do not remove existing working features.
+- Do not introduce dummy database functionality.
+- Do not create fake image URLs.
+- Do not use temporary filesystem storage for permanent images.
+- Do not make all images publicly writable.
+- Do not weaken Firebase security.
+- Do not silently ignore failed database operations.
+- Do not make the Store functional beyond its Coming Soon page.
+- Do not leave any admin CRUD button non-functional.
+- Do not remove the existing admin password/OTP protection.
+- Do not claim success without actual verification.
+
+**Begin with a complete repository audit. Identify the root causes of all reported issues. Implement the changes in small, reviewable stages, run tests, inspect the final diff, and provide the detailed report.**
+
+The final application must feel like a professionally maintained technology platform, not an unfinished AI-generated prototype.

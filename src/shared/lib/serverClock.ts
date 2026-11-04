@@ -55,6 +55,14 @@ export function getServerDate(): Date {
   return new Date(getServerNow());
 }
 
+export const serverNow = getServerNow;
+export function getServerSkewMs(): number {
+  return serverOffsetMs;
+}
+export function getSafeServerQueryTimeMs(bufferMs: number = 30000): number {
+  return getServerNow() - bufferMs;
+}
+
 export function formatScheduledTime(isoString: string): string {
   try {
     const date = new Date(isoString);

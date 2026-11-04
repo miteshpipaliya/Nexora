@@ -46,7 +46,7 @@ const ScrollToTop: React.FC = () => {
 const BroadcastPopupContainer: React.FC = () => {
   const { activePopup, dismissPopup } = useBroadcastPopups();
   if (!activePopup) return null;
-  return <BroadcastPopup notification={activePopup} onDismiss={dismissPopup} />;
+  return <BroadcastPopup notification={activePopup} onDismiss={() => { dismissPopup(); }} />;
 };
 
 export function App() {

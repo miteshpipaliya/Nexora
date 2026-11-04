@@ -192,6 +192,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await dataService.resetPasswordWithOtp(email, token, newPass);
   };
 
+  const refreshAdminClaim = async (force: boolean = false): Promise<boolean> => {
+    try {
+      const fbUser = auth.currentUser;
+      if (!fbUser) return false;
+      const res = await fbUser.getIdTokenResult(force);
+      const hasClaim = Boolean(res?.claims?.admin === true);
+      setIsAdminClaim(hasClaim);
+      return hasClaim;
+    } catch {
+      return false;
+    }
+  };
+
   const isAdmin = Boolean(isAdminClaim || user?.is_admin || dataService.isUserAdmin(user));
 
   const refreshAdminClaim = async (force: boolean = true): Promise<boolean> => {
@@ -226,6 +239,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         updateProfile,
         refreshUser,
+        refreshAdminClaim,
         sendEmailOtp,
         verifyEmailOtp,
         resetPasswordWithOtp,
