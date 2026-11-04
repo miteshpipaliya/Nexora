@@ -84,8 +84,8 @@
 ### 5.3 Dependency advisory review
 
 - `body-parser` was updated to `1.20.9`, fixing the reported High compressed-body denial-of-service advisory.
-- `bun audit` still reports `@grpc/grpc-js` advisories because Firebase's Firestore web package pins a Node-targeted `1.9.x` dependency. The Firebase Admin Firestore runtime resolves `@grpc/grpc-js` `1.14.6`, and the Vite browser bundle contains no gRPC package code. Do not force an override that violates Firebase's declared dependency range without compatibility testing.
-- `glob` and `minimatch` remain Moderate transitive advisories through `rimraf`; no direct application imports were found. They remain visible in the dependency audit and require follow-up when upstream ranges permit safe updates.
+- Bun 1.4.4 audit reports `GHSA-m9gg-hp2v-232j` (High) and `GHSA-f596-whhp-79r4` (Low) for `@grpc/grpc-js` versions `1.9.16` and `1.14.6`. Paths are `firebase > @firebase/firestore-compat > @firebase/firestore > @grpc/grpc-js` and `firebase-admin > @google-cloud/firestore > google-gax > @grpc/grpc-js`. The Firebase Admin Firestore runtime resolves `1.14.6`, and the Vite browser bundle contains no gRPC package code. These reachability mitigations do not clear the High advisory; do not force an override that violates Firebase's declared dependency range without compatibility testing.
+- Bun 1.4.4 audit reports `GHSA-3g3m-2fjr-6pw4` (Moderate) for `glob@10.5.0` and `GHSA-g3hv-75wg-m249` (Moderate) for `minimatch@9.0.9`, transitively through `firebase-admin > @google-cloud/firestore > google-gax > rimraf`. No direct application imports were found. They remain visible in the dependency audit and require follow-up when upstream ranges permit safe updates.
 
 ### 5.4 Checks not completed
 
@@ -97,7 +97,7 @@
 
 - The Vercel security header is `Content-Security-Policy-Report-Only`; it reports policy violations but does not enforce the policy. No exploitable XSS was confirmed in this review, but CSP is not an active blocking control.
 - Firestore permits clients with a verified `admin` claim to create `/adminAuditLogs` documents, and the frontend writes those documents directly. Ordinary users are denied, but an administrator client can add fabricated entries; treat the collection as operational history rather than tamper-proof evidence.
-- Moderate `glob`/`minimatch` and Low `@grpc/grpc-js` advisories remain in the transitive lockfile graph as described above. No direct imports or gRPC code were found in the browser bundle, and Admin Firestore resolves the patched gRPC version, but `bun audit` still reports them.
+- The two Moderate `glob`/`minimatch` advisories and Low `@grpc/grpc-js` advisory remain in the transitive lockfile graph as described above. No direct imports or gRPC code were found in the browser bundle, and Admin Firestore resolves `@grpc/grpc-js@1.14.6`, but the audit still reports them. The separate High gRPC advisory requires owner acceptance or a compatible fix before Production release.
 
 ### 5.6 Release gate
 
