@@ -1,7 +1,7 @@
 # NEXORA — Security Architecture & Hardening Record
 
-**Application:** NEXORA (Student Technology & Innovation Community, BVM)  
-**Review basis:** OWASP ASVS and Web Security Testing Guide principles; this document is not a compliance certification.  
+**Application:** NEXORA (Student Technology & Innovation Community, BVM)
+**Review basis:** OWASP ASVS and Web Security Testing Guide principles; this document is not a compliance certification.
 
 ---
 
