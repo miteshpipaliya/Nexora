@@ -103,8 +103,12 @@ try {
 
 // Persistent Backend HMAC Secret for Keyed Hashing (resilient on serverless)
 function getOrCreateHmacSecret(): string {
-  if (process.env.OTP_HMAC_SECRET && process.env.OTP_HMAC_SECRET.trim().length >= 16) {
-    return process.env.OTP_HMAC_SECRET.trim();
+  const configuredSecret = process.env.OTP_HMAC_SECRET?.trim();
+  if (configuredSecret && configuredSecret.length >= 32) {
+    return configuredSecret;
+  }
+  if (isServerless) {
+    throw new ConfigError('OTP_HMAC_SECRET must be configured with at least 32 characters in serverless environments.');
   }
   const keyFile = path.join(STORAGE_DIR, 'hmac.key');
   try {
@@ -113,12 +117,11 @@ function getOrCreateHmacSecret(): string {
       if (stored.length >= 32) return stored;
     }
     const generated = crypto.randomBytes(32).toString('hex');
-    try {
-      fs.writeFileSync(keyFile, generated, { encoding: 'utf8', mode: 0o600 });
-    } catch {}
+    fs.writeFileSync(keyFile, generated, { encoding: 'utf8', mode: 0o600 });
     return generated;
-  } catch {
-    return process.env.OTP_HMAC_SECRET || 'nexora_secure_otp_signing_hmac_secret_2026';
+  } catch (err) {
+    if (err instanceof ConfigError) throw err;
+    return crypto.randomBytes(32).toString('hex');
   }
 }
 
@@ -805,13 +808,15 @@ let memoryAdminSecurity: AdminSecurityStore | null = null;
 let sessionRevokedBeforeTimestamp: number = 0;
 
 async function getStoredAdminSecurityAsync(): Promise<AdminSecurityStore | null> {
-  if (memoryAdminSecurity) return memoryAdminSecurity;
+  if (memoryAdminSecurity && !isServerless) return memoryAdminSecurity;
 
   // 1. Authoritative Firestore persistence (survives Vercel serverless cold starts)
+  let firestoreReadSucceeded = false;
   try {
     const db = await getAdminFirestore();
     if (db) {
       const snap = await db.collection('_admin_security').doc('founder').get();
+      firestoreReadSucceeded = true;
       if (snap.exists) {
         const data = snap.data() as AdminSecurityStore;
         if (data && data.passwordHash && data.salt) {
@@ -822,8 +827,17 @@ async function getStoredAdminSecurityAsync(): Promise<AdminSecurityStore | null>
       }
     }
   } catch (fsErr) {
+    if (isServerless) {
+      throw new ConfigError('Persistent administrator storage is unavailable. Configure Firebase Admin credentials.');
+    }
     console.warn('[ADMIN SECURITY] Firestore read notice:', (fsErr as any)?.message || fsErr);
   }
+
+  if (isServerless && !firestoreReadSucceeded) {
+    throw new ConfigError('Persistent administrator storage is unavailable. Configure Firebase Admin credentials.');
+  }
+
+  if (isServerless) return null;
 
   // 2. Secondary local disk cache
   try {
@@ -842,21 +856,7 @@ async function getStoredAdminSecurityAsync(): Promise<AdminSecurityStore | null>
   return null;
 }
 
-function getStoredAdminSecurity(): AdminSecurityStore | null {
-  if (memoryAdminSecurity) return memoryAdminSecurity;
-  try {
-    if (fs.existsSync(ADMIN_SECURITY_FILE)) {
-      const data = JSON.parse(fs.readFileSync(ADMIN_SECURITY_FILE, 'utf8'));
-      if (data && data.passwordHash && data.salt) {
-        memoryAdminSecurity = data;
-        return data;
-      }
-    }
-  } catch {}
-  return null;
-}
-
-async function saveAdminSecurityAsync(password: string): Promise<AdminSecurityStore> {
+async function saveAdminSecurityAsync(password: string, allowReplace = false, resetTokenId?: string): Promise<AdminSecurityStore> {
   const norm = normalizePassword(password);
   const derived = hashPassword(norm, { version: 1 });
   const record: AdminSecurityStore = {
@@ -864,30 +864,52 @@ async function saveAdminSecurityAsync(password: string): Promise<AdminSecuritySt
     salt: derived.salt,
     updatedAt: derived.updatedAt
   };
-  memoryAdminSecurity = record;
-  sessionRevokedBeforeTimestamp = record.updatedAt;
-
   // 1. Authoritative write to Cloud Firestore document with read-back verification
   let firestoreConfirmed = false;
   try {
     const db = await getAdminFirestore();
     if (db) {
-      await db.collection('_admin_security').doc('founder').set({
-        ...derived,
-        passwordHash: derived.hash,
-        updatedAt: derived.updatedAt
+      const securityRef = db.collection('_admin_security').doc('founder');
+      const statusRef = db.collection('systemConfig').doc('status');
+      await db.runTransaction(async (transaction: any) => {
+        const current = await transaction.get(securityRef);
+        if (current.exists && !allowReplace) {
+          throw new ConfigError('Admin Security Password is already initialized. Use the verified recovery flow.');
+        }
+        if (resetTokenId) {
+          const usedRef = db.collection('_admin_reset_tokens').doc(resetTokenId);
+          const used = await transaction.get(usedRef);
+          if (used.exists) throw new ConfigError('This administrator recovery authorization has already been used.');
+          transaction.create(usedRef, { usedAt: Date.now() });
+        }
+        transaction.set(securityRef, {
+          ...derived,
+          passwordHash: derived.hash,
+          updatedAt: derived.updatedAt
+        });
+        transaction.set(statusRef, {
+          initialized: true,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
       });
-      const snap = await db.collection('_admin_security').doc('founder').get();
-      if (snap.exists && snap.data()?.hash === derived.hash) {
-        firestoreConfirmed = true;
-      }
-      await db.collection('systemConfig').doc('status').set({
-        initialized: true,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+      const snap = await securityRef.get();
+      firestoreConfirmed = Boolean(snap.exists && snap.data()?.hash === derived.hash);
+      if (!firestoreConfirmed) throw new ConfigError('Could not verify administrator credentials in persistent storage.');
     }
   } catch (fsErr) {
+    if (isServerless || fsErr instanceof ConfigError) throw fsErr;
     console.warn('[ADMIN SECURITY] Cloud Firestore persist notice:', fsErr);
+  }
+
+  if (!firestoreConfirmed && isServerless) {
+    throw new ConfigError('Persistent administrator storage is unavailable. Configure Firebase Admin credentials.');
+  }
+
+  if (!firestoreConfirmed && resetTokenId) {
+    if (consumedAdminResetTokenIds.has(resetTokenId)) {
+      throw new ConfigError('This administrator recovery authorization has already been used.');
+    }
+    consumedAdminResetTokenIds.add(resetTokenId);
   }
 
   // 2. Secondary local disk cache
@@ -897,47 +919,10 @@ async function saveAdminSecurityAsync(password: string): Promise<AdminSecuritySt
     console.warn('[ADMIN SECURITY] Disk write error:', err);
   }
 
+  memoryAdminSecurity = record;
+  sessionRevokedBeforeTimestamp = record.updatedAt;
+
   return record;
-}
-
-export async function wipeAdminCredentialsAsync(): Promise<void> {
-  memoryAdminSecurity = null;
-  sessionRevokedBeforeTimestamp = Date.now();
-  elevatedAdminSessions.clear();
-  verifiedPasswordTokens.clear();
-  setupOtpChallenges.clear();
-  adminResetChallenges.clear();
-
-  // 1. Wipe local disk cache
-  try {
-    if (fs.existsSync(ADMIN_SECURITY_FILE)) {
-      fs.unlinkSync(ADMIN_SECURITY_FILE);
-      console.log('[ADMIN RESET] Deleted local admin security file.');
-    }
-  } catch (err) {
-    console.warn('[ADMIN RESET] Local disk wipe note:', err);
-  }
-
-  // 2. Wipe Firestore security document and set status to uninitialized
-  try {
-    const db = await getAdminFirestore();
-    if (db) {
-      await db.collection('_admin_security').doc('founder').delete();
-      await db.collection('systemConfig').doc('status').set({
-        initialized: false,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-      console.log('[ADMIN RESET] Successfully cleared _admin_security/founder and reset systemConfig.status.initialized to false.');
-    }
-  } catch (fsErr) {
-    console.warn('[ADMIN RESET] Firestore wipe note:', fsErr);
-  }
-}
-
-function saveAdminSecurity(password: string): void {
-  saveAdminSecurityAsync(password).catch((err) => {
-    console.warn('[ADMIN SECURITY] Background save warning:', err);
-  });
 }
 
 async function verifyAdminSecurityPasswordAsync(password: string): Promise<boolean> {
@@ -952,16 +937,8 @@ async function verifyAdminSecurityPasswordAsync(password: string): Promise<boole
   return false;
 }
 
-function verifyAdminSecurityPassword(password: string): boolean {
-  const security = getStoredAdminSecurity();
-  if (security && security.passwordHash && security.salt) {
-    return verifyPasswordScrypt(password, security);
-  }
-  return false;
-}
-
 // In-memory security tokens and sessions
-const setupOtpChallenges = new Map<string, { hash: string; expiresAt: number; attempts: number }>();
+const setupOtpChallenges = new Map<string, { hash: string; expiresAt: number; attempts: number; lastSentAt: number }>();
 const verifiedPasswordTokens = new Map<string, { expiresAt: number; createdAt: number }>();
 const adminEmailOtpChallenges = new Map<string, { hash: string; expiresAt: number; attempts: number; lastSentAt: number }>();
 const elevatedAdminSessions = new Map<string, { sessionId: string; founderEmail: string; expiresAt: number; createdAt: number }>();
@@ -974,6 +951,7 @@ interface AdminResetChallenge {
   lastSentAt: number;
 }
 const adminResetChallenges = new Map<string, AdminResetChallenge>();
+const consumedAdminResetTokenIds = new Set<string>();
 
 // Online Presence tracking (heartbeats)
 const onlinePresenceMap = new Map<string, { userId: string; email: string; lastSeen: number; ip: string }>();
@@ -1009,7 +987,14 @@ function recordAudit(action: string, details: any, actor: string = FOUNDER_EMAIL
 }
 
 // Middleware: Require 15-minute Elevated Admin Session
-function requireElevatedAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+async function requireElevatedAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  try {
+    await getStoredAdminSecurityAsync();
+  } catch {
+    res.status(503).json({ error: 'Administrator storage is unavailable.' });
+    return;
+  }
+
   const token = (req.headers['x-admin-session'] as string) || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
   if (!token) {
     res.status(401).json({ error: 'Elevated administrator session required. Please authenticate in the Admin Panel.' });
@@ -1037,14 +1022,14 @@ function requireElevatedAdmin(req: express.Request, res: express.Response, next:
   next();
 }
 
-// 1. Admin Status check (supports both /admin/status and /admin/auth/status via GET and POST)
-apiRouter.all(['/admin/auth/status', '/admin/status'], async (req, res) => {
-  let security = await getStoredAdminSecurityAsync();
-  let isInitialized = Boolean(security && security.passwordHash && security.salt);
+// 1. Admin Status check
+apiRouter.get(['/admin/auth/status', '/admin/status'], async (req, res) => {
+  try {
+    const security = await getStoredAdminSecurityAsync();
+    let isInitialized = Boolean(security && security.passwordHash && security.salt);
 
-  // If server memory/disk was cold-started, check Firestore systemConfig directly
-  if (!isInitialized) {
-    try {
+    // If the credential record is absent, honor an initialized marker to avoid reopening setup.
+    if (!isInitialized) {
       const db = await getAdminFirestore();
       if (db) {
         const confSnap = await db.collection('systemConfig').doc('status').get();
@@ -1052,13 +1037,12 @@ apiRouter.all(['/admin/auth/status', '/admin/status'], async (req, res) => {
           isInitialized = true;
         }
       }
-    } catch {}
-  }
+    }
 
-  res.json({
-    success: true,
-    initialized: isInitialized
-  });
+    res.json({ success: true, initialized: isInitialized });
+  } catch {
+    res.status(503).json({ error: 'Administrator storage is unavailable.' });
+  }
 });
 
 // 1.1 Generate strong, policy-compliant admin password
@@ -1068,21 +1052,6 @@ apiRouter.all(['/admin/auth/generate-password', '/admin/generate-password'], (re
     success: true,
     password
   });
-});
-
-// 1.2 Permanently wipe/reset admin credentials and session keys
-apiRouter.post(['/admin/auth/reset-credentials', '/admin/reset-credentials'], async (req, res) => {
-  try {
-    await wipeAdminCredentialsAsync();
-    recordAudit('ADMIN_CREDENTIALS_RESET', 'Administrator credentials and security keys were permanently wiped. Setup routine activated.');
-    res.json({
-      success: true,
-      message: 'Admin credentials and session keys have been permanently cleared. Brand new password setup is now required.'
-    });
-  } catch (err: any) {
-    console.error('Error resetting admin credentials:', err);
-    res.status(500).json({ error: 'Failed to reset admin credentials.' });
-  }
 });
 
 // 1b. Elevate Admin Custom Claims for Authorized Administrators
@@ -1095,36 +1064,24 @@ apiRouter.post('/admin/auth/sync-claim', async (req, res) => {
     }
 
     const idToken = authHeader.replace(/^Bearer\s+/i, '').trim();
-    let email = '';
-    let uid = '';
-
     const adminAuth = await getAdminAuth();
-    if (adminAuth) {
-      try {
-        const decoded = await adminAuth.verifyIdToken(idToken);
-        email = (decoded.email || '').toLowerCase().trim();
-        uid = decoded.uid;
-      } catch (tokenErr: any) {
-        console.warn('[SYNC-CLAIM] verifyIdToken note:', tokenErr?.message);
-      }
+    if (!adminAuth) {
+      res.status(503).json({ error: 'Administrator identity verification is unavailable.' });
+      return;
     }
 
-    // Fallback token payload decode if verifyIdToken failed or adminAuth offline
-    if (!email) {
-      try {
-        const parts = idToken.split('.');
-        if (parts.length === 3) {
-          const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-          if (payload && payload.email) {
-            email = (payload.email || '').toLowerCase().trim();
-            uid = payload.uid || payload.user_id || payload.sub || '';
-          }
-        }
-      } catch {}
-    }
-
-    if (!email) {
+    let decoded: any;
+    try {
+      decoded = await adminAuth.verifyIdToken(idToken);
+    } catch {
       res.status(401).json({ error: 'Invalid authentication token.' });
+      return;
+    }
+
+    const email = String(decoded.email || '').toLowerCase().trim();
+    const uid = String(decoded.uid || '');
+    if (!email || !uid || decoded.email_verified !== true) {
+      res.status(401).json({ error: 'A verified administrator account is required.' });
       return;
     }
 
@@ -1133,14 +1090,13 @@ apiRouter.post('/admin/auth/sync-claim', async (req, res) => {
       return;
     }
 
-    // Set custom claim in Firebase Auth if Admin SDK is available
-    if (adminAuth && uid) {
-      try {
-        await adminAuth.setCustomUserClaims(uid, { admin: true });
-        console.log(`[SYNC-CLAIM] Successfully set admin custom claim for ${email} (${uid})`);
-      } catch (claimErr: any) {
-        console.warn('[SYNC-CLAIM] Could not set custom claims via Admin SDK:', claimErr?.message);
-      }
+    try {
+      const user = await adminAuth.getUser(uid);
+      await adminAuth.setCustomUserClaims(uid, { ...user.customClaims, admin: true });
+    } catch (claimErr: any) {
+      console.error('[SYNC-CLAIM] Could not set custom claims via Admin SDK:', claimErr?.message || claimErr);
+      res.status(503).json({ error: 'Administrator permissions could not be persisted.' });
+      return;
     }
 
     res.json({
@@ -1164,11 +1120,19 @@ apiRouter.post(['/admin/auth/request-setup-otp', '/admin/request-setup-otp'], as
       return;
     }
 
+    const currentChallenge = setupOtpChallenges.get('setup');
+    const requestedAt = Date.now();
+    if (currentChallenge && requestedAt - currentChallenge.lastSentAt < 30_000) {
+      const waitSeconds = Math.ceil((30_000 - (requestedAt - currentChallenge.lastSentAt)) / 1000);
+      res.status(429).json({ error: `Please wait ${waitSeconds}s before requesting another setup code.`, waitSeconds });
+      return;
+    }
+
     const otp = crypto.randomInt(100000, 1000000).toString();
-    const expiresAt = Date.now() + 180 * 1000; // 3-minute expiry
+    const expiresAt = requestedAt + 180 * 1000; // 3-minute expiry
     const hash = hashOtp(FOUNDER_EMAIL, otp, 'admin-setup');
 
-    setupOtpChallenges.set('setup', { hash, expiresAt, attempts: 0 });
+    setupOtpChallenges.set('setup', { hash, expiresAt, attempts: 0, lastSentAt: requestedAt });
 
     try {
       await sendBrevoOtpEmail(FOUNDER_EMAIL, otp, 'signup');
@@ -1191,7 +1155,9 @@ apiRouter.post(['/admin/auth/request-setup-otp', '/admin/request-setup-otp'], as
     });
   } catch (err: any) {
     console.error('Error requesting setup OTP:', err);
-    res.status(500).json({ error: err.message || 'Failed to dispatch setup OTP via email.' });
+    res.status(err instanceof ConfigError ? 503 : 500).json({
+      error: err instanceof ConfigError ? err.message : 'Failed to dispatch setup OTP via email.'
+    });
   }
 });
 
@@ -1220,35 +1186,36 @@ apiRouter.post(['/admin/auth/setup-password', '/admin/setup-password'], async (r
       return;
     }
 
-    const existing = await getStoredAdminSecurityAsync();
-    if (existing && !setupOtp) {
-      res.status(400).json({ error: 'Admin Security Password has already been set up. Use Forgot Password to reset it.' });
+    const challenge = setupOtpChallenges.get('setup');
+    if (!challenge || !/^\d{6}$/.test(String(setupOtp || ''))) {
+      res.status(400).json({ error: 'A valid setup code must be requested before setting the password.' });
       return;
     }
 
-    // If an OTP challenge is registered, verify it
-    const challenge = setupOtpChallenges.get('setup');
-    if (challenge) {
-      if (Date.now() > challenge.expiresAt) {
-        setupOtpChallenges.delete('setup');
-        res.status(400).json({ error: 'Setup code has expired. Please request a new code.' });
-        return;
-      }
-      challenge.attempts += 1;
-      if (challenge.attempts > 5) {
-        setupOtpChallenges.delete('setup');
-        res.status(429).json({ error: 'Too many incorrect attempts. Please request a new setup code.' });
-        return;
-      }
-
-      const testHash = hashOtp(FOUNDER_EMAIL, String(setupOtp).trim(), 'admin-setup');
-      const isOtpValid = crypto.timingSafeEqual(Buffer.from(testHash, 'hex'), Buffer.from(challenge.hash, 'hex'));
-      if (!isOtpValid) {
-        res.status(401).json({ error: 'Incorrect verification code. Please check your email.' });
-        return;
-      }
-      setupOtpChallenges.delete('setup');
+    const existing = await getStoredAdminSecurityAsync();
+    if (existing || process.env.ADMIN_SECURITY_PASSWORD) {
+      res.status(400).json({ error: 'Admin Security Password has already been set up. Use Forgot Password to reset it.' });
+      return;
     }
+    if (Date.now() > challenge.expiresAt) {
+      setupOtpChallenges.delete('setup');
+      res.status(400).json({ error: 'Setup code has expired. Please request a new code.' });
+      return;
+    }
+    challenge.attempts += 1;
+    if (challenge.attempts > 5) {
+      setupOtpChallenges.delete('setup');
+      res.status(429).json({ error: 'Too many incorrect attempts. Please request a new setup code.' });
+      return;
+    }
+
+    const testHash = hashOtp(FOUNDER_EMAIL, String(setupOtp).trim(), 'admin-setup');
+    const isOtpValid = crypto.timingSafeEqual(Buffer.from(testHash, 'hex'), Buffer.from(challenge.hash, 'hex'));
+    if (!isOtpValid) {
+      res.status(401).json({ error: 'Incorrect verification code. Please check your email.' });
+      return;
+    }
+    setupOtpChallenges.delete('setup');
 
     await saveAdminSecurityAsync(newPassword);
     recordAudit('ADMIN_PASSWORD_INITIALIZED', 'Founder Admin Security Password created and persisted permanently in Firestore.');
@@ -1277,7 +1244,9 @@ apiRouter.post(['/admin/auth/setup-password', '/admin/setup-password'], async (r
     });
   } catch (err: any) {
     console.error('Error in setup-password:', err);
-    res.status(500).json({ error: 'Failed to set up Admin Security Password.' });
+    res.status(err instanceof ConfigError ? 503 : 500).json({
+      error: err instanceof ConfigError ? err.message : 'Failed to set up Admin Security Password.'
+    });
   }
 });
 
@@ -1320,7 +1289,13 @@ apiRouter.post(['/admin/auth/verify-password', '/admin/verify-password'], async 
     try {
       await sendBrevoOtpEmail(FOUNDER_EMAIL, otp, 'signup');
     } catch (brevoErr: any) {
-      console.warn('[ADMIN 2FA] Brevo email dispatch warning:', brevoErr?.message || brevoErr);
+      verifiedPasswordTokens.delete(passwordToken);
+      adminEmailOtpChallenges.delete(passwordToken);
+      res.status(502).json({
+        error: 'Could not send the administrator verification code. Please try again later.',
+        code: brevoErr?.code || 'BREVO_DISPATCH_FAILED'
+      });
+      return;
     }
 
     recordAudit('ADMIN_PASSWORD_VERIFIED', 'Admin Security Password verified. Factor 2 OTP dispatched to founder email.');
@@ -1336,7 +1311,9 @@ apiRouter.post(['/admin/auth/verify-password', '/admin/verify-password'], async 
     });
   } catch (err: any) {
     console.error('Error in verify-password:', err);
-    res.status(500).json({ error: 'Internal server error verifying password.' });
+    res.status(err instanceof ConfigError ? 503 : 500).json({
+      error: err instanceof ConfigError ? err.message : 'Internal server error verifying password.'
+    });
   }
 });
 
@@ -1628,13 +1605,13 @@ apiRouter.post(['/admin/auth/forgot-password/reset-password', '/admin/forgot-pas
     }
 
     const verified = verifySignedToken(resetToken, 'admin-password-reset', FOUNDER_EMAIL);
-    if (!verified) {
+    if (!verified?.jti) {
       res.status(403).json({ error: 'Password reset authorization is invalid or has expired. Please restart recovery.' });
       return;
     }
 
-    // Persist new password permanently to Firestore and disk
-    await saveAdminSecurityAsync(newPassword);
+    // Persist the password and consume this recovery authorization atomically.
+    await saveAdminSecurityAsync(newPassword, true, verified.jti);
 
     // Revoke all existing admin sessions immediately
     elevatedAdminSessions.clear();
@@ -1647,7 +1624,9 @@ apiRouter.post(['/admin/auth/forgot-password/reset-password', '/admin/forgot-pas
     });
   } catch (err: any) {
     console.error('Error resetting admin password:', err);
-    res.status(500).json({ error: 'Failed to reset Admin Security Password.' });
+    res.status(err instanceof ConfigError ? 503 : 500).json({
+      error: err instanceof ConfigError ? err.message : 'Failed to reset Admin Security Password.'
+    });
   }
 });
 

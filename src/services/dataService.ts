@@ -849,19 +849,6 @@ class NexoraDataService {
     return safeApiFetch('/api/admin/auth/generate-password', { method: 'GET' });
   }
 
-  public async wipeAdminCredentials(): Promise<{ success: boolean; message: string }> {
-    const res = await safeApiFetch<{ success: boolean; message: string }>('/api/admin/auth/reset-credentials', { method: 'POST' });
-    try {
-      await setDoc(doc(db, 'systemConfig', 'status'), {
-        initialized: false,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-    } catch {}
-    sessionStorage.removeItem('nexora_elevated_admin_token');
-    sessionStorage.removeItem('nexora_admin_verified_until');
-    return res;
-  }
-
   public async setupAdminPassword(setupOtp: string, newPassword: string, confirmPassword: string): Promise<{ success: boolean; message: string }> {
     const res = await safeApiFetch<{ success: boolean; message: string }>('/api/admin/auth/setup-password', {
       method: 'POST',
@@ -995,10 +982,6 @@ class NexoraDataService {
     return this.getAdminStatus();
   }
 
-  public async verifyAdminDualOtp(challengeId: string, emailOtp: string, smsOtp: string) {
-    return { sessionToken: challengeId, expiresAt: Date.now() + 15 * 60 * 1000 };
-  }
-
   public async checkElevatedAdminSession(): Promise<boolean> {
     const token = sessionStorage.getItem('nexora_elevated_admin_token');
     const expires = sessionStorage.getItem('nexora_elevated_admin_expires');
@@ -1019,7 +1002,7 @@ class NexoraDataService {
       }
       return true;
     } catch {
-      return Date.now() < Number(expires);
+      return false;
     }
   }
 
