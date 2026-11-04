@@ -5,6 +5,7 @@ import {
   signInWithPopup, 
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  deleteUser,
   sendEmailVerification,
   sendPasswordResetEmail,
   signOut,
@@ -14,7 +15,14 @@ import {
 } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import firebaseConfig from '../../firebase-applet-config.json';
+import productionFirebaseConfig from '../../firebase-applet-config.json';
+import { resolveFirebaseConfig } from './firebaseConfig';
+
+const firebaseConfig = resolveFirebaseConfig(
+  productionFirebaseConfig,
+  import.meta.env,
+  import.meta.env.VERCEL_ENV || ''
+);
 
 // Initialize Firebase App
 export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
@@ -97,6 +105,7 @@ export {
   signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  deleteUser,
   sendEmailVerification,
   sendPasswordResetEmail,
   signOut,

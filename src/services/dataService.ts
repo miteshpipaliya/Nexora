@@ -26,6 +26,7 @@ import {
   signInWithPopup, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
+  deleteUser,
   sendEmailVerification, 
   sendPasswordResetEmail, 
   signOut,
@@ -410,28 +411,33 @@ class NexoraDataService {
     verificationToken?: string;
   }): Promise<UserProfile> {
     try {
+      if (!data.verificationToken) {
+        throw new Error('Email verification is mandatory. Please verify your email before creating the account.');
+      }
       const result = await createUserWithEmailAndPassword(auth, data.email.trim().toLowerCase(), data.password);
       const user = result.user;
 
       let emailVerified = false;
-      if (data.verificationToken) {
-        try {
-          const idToken = await user.getIdToken();
-          const confirmRes = await fetch('/api/auth/confirm-verified-signup', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: data.email.trim().toLowerCase(),
-              verificationToken: data.verificationToken,
-              idToken
-            })
-          });
-          if (confirmRes.ok) {
-            emailVerified = true;
-          }
-        } catch {
-          // Non-fatal confirmation fallback
+      try {
+        const idToken = await user.getIdToken();
+        const confirmRes = await fetch('/api/auth/confirm-verified-signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: data.email.trim().toLowerCase(),
+            verificationToken: data.verificationToken,
+            idToken
+          })
+        });
+        const confirmation = await confirmRes.json().catch(() => ({}));
+        if (!confirmRes.ok || confirmation.emailVerifiedInAuth !== true) {
+          await deleteUser(user).catch(() => {});
+          throw new Error(confirmation.error || 'Email verification could not be confirmed. Please request a new code and try again.');
         }
+        emailVerified = true;
+      } catch (error) {
+        await deleteUser(user).catch(() => {});
+        throw error;
       }
 
       const isAdmin = false;
@@ -568,12 +574,6 @@ class NexoraDataService {
       body: JSON.stringify({ email: cleanEmail, verificationToken, newPassword })
     });
 
-    // Also trigger Firebase client password reset if possible
-    try {
-      await sendPasswordResetEmail(auth, cleanEmail);
-    } catch {
-      // ignore
-    }
   }
 
 

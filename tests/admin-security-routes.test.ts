@@ -7,7 +7,7 @@ describe('administrator security routes', () => {
   let baseUrl: string;
 
   beforeAll(async () => {
-    const { app } = await import('../server');
+    const { app } = await import('../server.ts');
     await new Promise<void>((resolve) => {
       server = app.listen(0, '127.0.0.1', resolve);
     });
@@ -19,14 +19,13 @@ describe('administrator security routes', () => {
     if (server) await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   });
 
-  it('rejects first-time password setup unless an OTP challenge exists', async () => {
+  it('rejects first-time password setup when no one-time code is supplied', async () => {
     const response = await fetch(`${baseUrl}/api/admin/auth/setup-password`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         newPassword: 'Nexora!SecureAdminPass2026',
-        confirmPassword: 'Nexora!SecureAdminPass2026',
-        setupOtp: '123456'
+        confirmPassword: 'Nexora!SecureAdminPass2026'
       })
     });
 

@@ -75,6 +75,19 @@ describe('Brevo Transactional Email Subsystem (Package A)', () => {
       expect(config.senderEmail).toBe('no-reply@nexora-bvm.online');
       expect(config.senderName).toBe('NEXORA BVM');
     });
+
+    it('uses BREVO_REPLY_TO and does not fall back to an unrelated personal address', () => {
+      process.env.BREVO_API_KEY = 'test_key_1234567890';
+      process.env.BREVO_SENDER_EMAIL = 'no-reply@nexora-bvm.online';
+      process.env.BREVO_REPLY_TO = 'nexora.bvm@gmail.com';
+      delete process.env.BREVO_REPLY_TO_EMAIL;
+
+      expect(getBrevoConfig().replyToEmail).toBe('nexora.bvm@gmail.com');
+
+      delete process.env.BREVO_REPLY_TO;
+      delete process.env.BREVO_REPLY_TO_EMAIL;
+      expect(getBrevoConfig().replyToEmail).toBeUndefined();
+    });
   });
 
   describe('Mocked Dispatch Responses', () => {
@@ -91,6 +104,41 @@ describe('Brevo Transactional Email Subsystem (Package A)', () => {
       });
 
       await expect(sendBrevoOtpEmail('student@bvm.edu', '123456', 'signup')).resolves.toBeUndefined();
+    });
+
+    it('sends administrator-specific branded copy with the configured reply-to and three-minute expiry', async () => {
+      process.env.BREVO_REPLY_TO = 'nexora.bvm@gmail.com';
+      const calls: Array<{ url: string; init?: RequestInit }> = [];
+      global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, init });
+        return {
+          ok: true,
+          status: url.endsWith('/smtp/email') ? 201 : 200,
+          json: async () => ({ senders: [], domains: [] })
+        } as Response;
+      });
+
+      await sendBrevoOtpEmail('founder@example.com', '123456', 'admin-setup');
+      const send = calls.find((call) => call.url.endsWith('/smtp/email'));
+      const body = JSON.parse(String(send?.init?.body));
+      expect(body.replyTo.email).toBe('nexora.bvm@gmail.com');
+      expect(body.subject).toContain('Administrator Setup');
+      expect(body.htmlContent).toContain('expires in 3 minutes');
+      expect(body.textContent).toContain('expires in 3 minutes');
+      expect(body.htmlContent).toContain('123456');
+      expect(body.textContent).toContain('123456');
+    });
+
+    it('rejects malformed recipients and non-six-digit codes before provider calls', async () => {
+      const fetchSpy = vi.fn();
+      global.fetch = fetchSpy;
+
+      await expect(sendBrevoOtpEmail('not-an-email', '123456', 'signup'))
+        .rejects.toMatchObject({ code: 'EMAIL_INVALID_RECIPIENT', status: 400 });
+      await expect(sendBrevoOtpEmail('student@bvm.edu', '<script', 'signup'))
+        .rejects.toMatchObject({ code: 'OTP_INVALID', status: 400 });
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
 
     it('maps 401/403 to EMAIL_PROVIDER_REJECTED with status 502', async () => {
@@ -141,7 +189,7 @@ describe('Brevo Transactional Email Subsystem (Package A)', () => {
       global.fetch = vi.fn().mockRejectedValue(new Error('DNS lookup failed'));
 
       await expect(sendBrevoOtpEmail('student@bvm.edu', '123456', 'signup'))
-        .rejects.toThrow('DNS lookup failed');
+        .rejects.toMatchObject({ code: 'EMAIL_PROVIDER_UNAVAILABLE', status: 502 });
     });
   });
 

@@ -16,6 +16,9 @@ import {
   verifyPassword 
 } from './src/server/adminPassword';
 import { getBrevoConfig, sendBrevoOtpEmail, BrevoServiceError, type BrevoConfig } from './src/server/brevoMailer';
+import { AdminOtpChallengeStore, AdminOtpRateLimitError, AdminOtpStorageError, type OtpConsumeResult } from './src/server/adminOtpChallengeStore';
+import { resolveFirebaseAdminConfig } from './src/server/firebaseAdminConfig';
+import { StudentOtpStore, StudentOtpRateLimitError, StudentOtpStorageError } from './src/server/studentOtpStore';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -189,24 +192,6 @@ function maskPhone(phone: string): string {
 // ========================================================
 // PERSISTENT DURABLE STORAGE FOR OTP CHALLENGES (FIRESTORE + CACHE)
 // ========================================================
-interface HashedStudentChallenge {
-  email: string;
-  hash: string;
-  expiresAt: number;
-  attempts: number;
-  purpose: 'signup' | 'reset-password';
-  lastSentAt: number;
-  ip: string;
-}
-
-interface StoredAuthorization {
-  email: string;
-  token: string;
-  purpose: 'signup' | 'reset-password';
-  expiresAt: number;
-}
-
-// Lazy Firestore Admin Client
 let adminFirestoreDb: any = null;
 let adminAuthInstance: any = null;
 let adminSdkAttempted = false;
@@ -216,46 +201,33 @@ async function getAdminFirestore(): Promise<any> {
   if (adminSdkAttempted) return null;
   adminSdkAttempted = true;
   try {
+    const config = resolveFirebaseAdminConfig(process.env, process.env.VERCEL_ENV || 'development');
     const adminApp = await import('firebase-admin/app');
     const adminFs = await import('firebase-admin/firestore');
     const adminAuthMod = await import('firebase-admin/auth');
-
-    let appInstance;
-    if (adminApp.getApps().length > 0) {
-      appInstance = adminApp.getApps()[0];
-    } else {
-      const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
-      if (saRaw) {
-        try {
-          const sa = typeof saRaw === 'string' ? JSON.parse(saRaw) : saRaw;
-          appInstance = adminApp.initializeApp({
-            credential: adminApp.cert(sa),
-            projectId: sa.project_id || 'gen-lang-client-0089073748'
-          });
-        } catch {
-          appInstance = adminApp.initializeApp({ projectId: 'gen-lang-client-0089073748' });
-        }
-      } else if (process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
-        appInstance = adminApp.initializeApp({
-          credential: adminApp.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID || 'gen-lang-client-0089073748',
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-          })
-        });
-      } else {
-        appInstance = adminApp.initializeApp({
-          projectId: process.env.FIREBASE_PROJECT_ID || 'gen-lang-client-0089073748'
-        });
-      }
+    const apps = adminApp.getApps();
+    const existingApp = apps.find((candidate: any) => candidate.options?.projectId === config.projectId);
+    if (process.env.VERCEL_ENV === 'preview' && apps.length && !existingApp) {
+      throw new ConfigError('Existing Firebase Admin app does not match the configured Preview project.');
     }
-
+    let appInstance = existingApp;
+    if (!appInstance) {
+      const credential = config.serviceAccount
+        ? adminApp.cert({ projectId: config.serviceAccount.project_id, clientEmail: config.serviceAccount.client_email, privateKey: config.serviceAccount.private_key })
+        : config.clientEmail && config.privateKey
+          ? adminApp.cert({ projectId: config.projectId, clientEmail: config.clientEmail, privateKey: config.privateKey })
+          : undefined;
+      appInstance = adminApp.initializeApp({ projectId: config.projectId, ...(credential ? { credential } : {}) }, `nexora-${process.env.VERCEL_ENV || 'local'}`);
+    }
     adminAuthInstance = adminAuthMod.getAuth(appInstance);
-    const dbId = 'ai-studio-nexorastudenttec-75ba3757-5549-44e3-a3ae-2ae34026863b';
-    adminFirestoreDb = adminFs.getFirestore(appInstance, dbId);
+    adminFirestoreDb = adminFs.getFirestore(appInstance, config.databaseId);
     return adminFirestoreDb;
-  } catch (err: any) {
-    console.warn('[FIRESTORE ADMIN] Operating with durable local fallback:', err?.message || err);
+  } catch (error: any) {
+    if (process.env.VERCEL_ENV === 'preview' || isServerless) {
+      console.error('[FIREBASE ADMIN] Secure initialization failed:', error?.message || error);
+      throw error instanceof ConfigError ? error : new ConfigError('Firebase Admin is not configured for this environment.');
+    }
+    console.warn('[FIREBASE ADMIN] Local persistent storage unavailable:', error?.message || error);
     return null;
   }
 }
@@ -266,237 +238,19 @@ async function getAdminAuth(): Promise<any> {
   return adminAuthInstance;
 }
 
-class ServerChallengeStore {
-  private challenges = new Map<string, HashedStudentChallenge>();
-  private authorizations = new Map<string, StoredAuthorization>();
-  private ipRateLimits = new Map<string, { count: number; windowStart: number }>();
-  private storeFile = path.join(STORAGE_DIR, 'otp_challenges.json');
-
-  constructor() {
-    this.loadFromDisk();
-  }
-
-  private loadFromDisk() {
-    try {
-      if (fs.existsSync(this.storeFile)) {
-        const raw = fs.readFileSync(this.storeFile, 'utf8');
-        const parsed = JSON.parse(raw);
-        const now = Date.now();
-        if (Array.isArray(parsed.challenges)) {
-          for (const c of parsed.challenges) {
-            if (c.expiresAt > now) {
-              this.challenges.set(`${c.purpose}:${c.email}`, c);
-            }
-          }
-        }
-        if (Array.isArray(parsed.authorizations)) {
-          for (const a of parsed.authorizations) {
-            if (a.expiresAt > now) {
-              this.authorizations.set(`${a.purpose}:${a.email}`, a);
-            }
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('[STORAGE] Could not load persisted challenges from disk:', err);
-    }
-  }
-
-  private persistToDisk() {
-    try {
-      const now = Date.now();
-      const activeChallenges = Array.from(this.challenges.values()).filter(c => c.expiresAt > now);
-      const activeAuthorizations = Array.from(this.authorizations.values()).filter(a => a.expiresAt > now);
-      const tmpFile = `${this.storeFile}.tmp`;
-      fs.writeFileSync(tmpFile, JSON.stringify({
-        challenges: activeChallenges,
-        authorizations: activeAuthorizations
-      }), 'utf8');
-      fs.renameSync(tmpFile, this.storeFile);
-    } catch {
-      // Non-fatal disk sync error
-    }
-  }
-
-  // Rate Limiting per IP (Max 15 requests per 10 minutes)
-  public checkIpRateLimit(ip: string): boolean {
-    const now = Date.now();
-    const windowMs = 10 * 60 * 1000;
-    const limit = this.ipRateLimits.get(ip);
-    if (!limit || now - limit.windowStart > windowMs) {
-      this.ipRateLimits.set(ip, { count: 1, windowStart: now });
-      return true;
-    }
-    if (limit.count >= 15) {
-      return false;
-    }
-    limit.count += 1;
-    return true;
-  }
-
-  // Store new OTP challenge with keyed hash
-  public async setChallenge(email: string, purpose: 'signup' | 'reset-password', hash: string, expiresAt: number, ip: string) {
-    const key = `${purpose}:${email.toLowerCase().trim()}`;
-    const record: HashedStudentChallenge = {
-      email: email.toLowerCase().trim(),
-      hash,
-      expiresAt,
-      attempts: 0,
-      purpose,
-      lastSentAt: Date.now(),
-      ip
-    };
-    this.challenges.set(key, record);
-    this.persistToDisk();
-
-    try {
-      const db = await getAdminFirestore();
-      if (db) {
-        const docId = key.replace(/[:\/]/g, '_');
-        await db.collection('_otp_challenges').doc(docId).set(record);
-      }
-    } catch {}
-  }
-
-  public async getChallenge(email: string, purpose: 'signup' | 'reset-password'): Promise<HashedStudentChallenge | undefined> {
-    const key = `${purpose}:${email.toLowerCase().trim()}`;
-    const local = this.challenges.get(key);
-    if (local && local.expiresAt > Date.now()) {
-      return local;
-    }
-
-    try {
-      const db = await getAdminFirestore();
-      if (db) {
-        const docId = key.replace(/[:\/]/g, '_');
-        const snap = await db.collection('_otp_challenges').doc(docId).get();
-        if (snap.exists) {
-          const remote = snap.data() as HashedStudentChallenge;
-          if (remote && remote.expiresAt > Date.now()) {
-            this.challenges.set(key, remote);
-            return remote;
-          }
-        }
-      }
-    } catch {}
-
-    return local && local.expiresAt > Date.now() ? local : undefined;
-  }
-
-  public async deleteChallenge(email: string, purpose: 'signup' | 'reset-password') {
-    const key = `${purpose}:${email.toLowerCase().trim()}`;
-    this.challenges.delete(key);
-    this.persistToDisk();
-
-    try {
-      const db = await getAdminFirestore();
-      if (db) {
-        const docId = key.replace(/[:\/]/g, '_');
-        await db.collection('_otp_challenges').doc(docId).delete();
-      }
-    } catch {}
-  }
-
-  public async incrementAttempts(email: string, purpose: 'signup' | 'reset-password'): Promise<number> {
-    const key = `${purpose}:${email.toLowerCase().trim()}`;
-    let item = this.challenges.get(key);
-    if (!item) {
-      item = await this.getChallenge(email, purpose);
-    }
-    if (!item) return 0;
-    item.attempts += 1;
-    this.persistToDisk();
-
-    try {
-      const db = await getAdminFirestore();
-      if (db) {
-        const docId = key.replace(/[:\/]/g, '_');
-        await db.collection('_otp_challenges').doc(docId).update({ attempts: item.attempts });
-      }
-    } catch {}
-
-    return item.attempts;
-  }
-
-  // Store verified authorization token
-  public async setAuthorization(email: string, purpose: 'signup' | 'reset-password', token: string, expiresAt: number) {
-    const key = `${purpose}:${email.toLowerCase().trim()}`;
-    const record: StoredAuthorization = {
-      email: email.toLowerCase().trim(),
-      purpose,
-      token,
-      expiresAt
-    };
-    this.authorizations.set(key, record);
-    this.persistToDisk();
-
-    try {
-      const db = await getAdminFirestore();
-      if (db) {
-        const docId = key.replace(/[:\/]/g, '_');
-        await db.collection('_reset_authorizations').doc(docId).set(record);
-      }
-    } catch {}
-  }
-
-  public async getAuthorization(email: string, purpose: 'signup' | 'reset-password'): Promise<StoredAuthorization | undefined> {
-    const key = `${purpose}:${email.toLowerCase().trim()}`;
-    const local = this.authorizations.get(key);
-    if (local && local.expiresAt > Date.now()) {
-      return local;
-    }
-
-    try {
-      const db = await getAdminFirestore();
-      if (db) {
-        const docId = key.replace(/[:\/]/g, '_');
-        const snap = await db.collection('_reset_authorizations').doc(docId).get();
-        if (snap.exists) {
-          const remote = snap.data() as StoredAuthorization;
-          if (remote && remote.expiresAt > Date.now()) {
-            this.authorizations.set(key, remote);
-            return remote;
-          }
-        }
-      }
-    } catch {}
-
-    return local && local.expiresAt > Date.now() ? local : undefined;
-  }
-
-  public async consumeAuthorization(email: string, purpose: 'signup' | 'reset-password', token: string): Promise<boolean> {
-    const key = `${purpose}:${email.toLowerCase().trim()}`;
-    let auth = this.authorizations.get(key);
-    if (!auth) {
-      auth = await this.getAuthorization(email, purpose);
-    }
-    if (!auth) return false;
-    if (auth.token !== token || Date.now() > auth.expiresAt) {
-      this.authorizations.delete(key);
-      this.persistToDisk();
-      try {
-        const db = await getAdminFirestore();
-        if (db) {
-          const docId = key.replace(/[:\/]/g, '_');
-          await db.collection('_reset_authorizations').doc(docId).delete();
-        }
-      } catch {}
-      return false;
-    }
-    this.authorizations.delete(key);
-    this.persistToDisk();
-    try {
-      const db = await getAdminFirestore();
-      if (db) {
-        const docId = key.replace(/[:\/]/g, '_');
-        await db.collection('_reset_authorizations').doc(docId).delete();
-      }
-    } catch {}
-    return true;
+const adminOtpChallengesStore = new AdminOtpChallengeStore(getAdminFirestore, isServerless);
+const adminLoginChallengeId = (passwordToken: string) => crypto.createHash('sha256').update(passwordToken).digest('hex');
+function respondToOtpFailure(result: OtpConsumeResult, res: express.Response, label: string) {
+  if (result.status === 'invalid') {
+    res.status(401).json({ error: `Incorrect ${label.toLowerCase()} code. (${result.remainingAttempts} attempts remaining)`, remainingAttempts: result.remainingAttempts });
+  } else if (result.status === 'locked') {
+    res.status(429).json({ error: `Too many incorrect ${label.toLowerCase()} codes. Request a new code.` });
+  } else {
+    res.status(400).json({ error: `${label} code is expired, already used, or was not requested.` });
   }
 }
 
-const challengeStore = new ServerChallengeStore();
+const challengeStore = new StudentOtpStore(getAdminFirestore, isServerless, HMAC_SECRET);
 
 // Admin Dual-Factor Challenge Records
 interface AdminDualChallenge {
@@ -548,34 +302,25 @@ apiRouter.post(['/auth/send-email-otp', '/auth/forgot-password/request-otp', '/a
     }
 
     const clientIp = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown');
-    if (!challengeStore.checkIpRateLimit(clientIp)) {
+    if (!(await challengeStore.checkIpRateLimit(clientIp))) {
       res.status(429).json({ error: 'Too many requests from this network. Please try again later.' });
       return;
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    const existing = await challengeStore.getChallenge(normalizedEmail, purpose);
-
-    // Backend-enforced 30-second resend cooldown rate limit
-    if (existing && Date.now() - existing.lastSentAt < 30000) {
-      const waitSeconds = Math.ceil((30000 - (Date.now() - existing.lastSentAt)) / 1000);
-      res.status(429).json({ 
-        error: `Please wait ${waitSeconds}s before requesting a new verification code.`,
-        waitSeconds 
-      });
-      return;
-    }
-
     // Cryptographically secure 6-digit numeric OTP
     const otp = crypto.randomInt(100000, 1000000).toString();
     const expiresAt = Date.now() + 180 * 1000; // 3-minute expiration
-
-    // Dispatch real email via Brevo Transactional API
-    await sendBrevoOtpEmail(normalizedEmail, otp, purpose);
-
-    // Store only the protected keyed HMAC hash (Raw OTP is never persisted)
     const hash = hashOtp(normalizedEmail, otp, purpose);
-    await challengeStore.setChallenge(normalizedEmail, purpose, hash, expiresAt, clientIp);
+    await challengeStore.setChallenge(normalizedEmail, purpose, hash, expiresAt);
+
+    // Persist before dispatch so a delivered OTP can always be verified.
+    try {
+      await sendBrevoOtpEmail(normalizedEmail, otp, purpose);
+    } catch (error) {
+      await challengeStore.deleteChallenge(normalizedEmail, purpose);
+      throw error;
+    }
 
     res.json({
       success: true,
@@ -585,10 +330,11 @@ apiRouter.post(['/auth/send-email-otp', '/auth/forgot-password/request-otp', '/a
     });
   } catch (err: any) {
     console.error('Error in /auth/send-email-otp:', err.message || err);
-    const status = err.status || (err.code === 'EMAIL_NOT_CONFIGURED' ? 503 : 500);
+    const status = err instanceof StudentOtpRateLimitError ? 429 : err instanceof StudentOtpStorageError ? 503 : err.status || (err.code === 'EMAIL_NOT_CONFIGURED' ? 503 : 500);
     res.status(status).json({ 
-      error: err.message || 'Failed to dispatch verification code via email.',
-      code: err.code || 'EMAIL_DISPATCH_FAILED',
+      error: err instanceof StudentOtpRateLimitError ? err.message : err instanceof StudentOtpStorageError ? 'Verification service is temporarily unavailable.' : err.message || 'Failed to dispatch verification code via email.',
+      ...(err instanceof StudentOtpRateLimitError ? { waitSeconds: err.waitSeconds } : {}),
+      code: err.code || (err instanceof StudentOtpStorageError ? 'OTP_STORAGE_UNAVAILABLE' : 'EMAIL_DISPATCH_FAILED'),
       actionableHint: err.actionableHint
     });
   }
@@ -599,7 +345,7 @@ apiRouter.post(['/auth/verify-email-otp', '/auth/forgot-password/verify-otp'], a
   try {
     const isForgotRoute = req.path.includes('forgot-password');
     const { email, otp, purpose = (isForgotRoute ? 'reset-password' : 'signup') } = req.body;
-    if (!email || !otp) {
+    if (typeof email !== 'string' || typeof otp !== 'string' || !/^\d{6}$/.test(otp)) {
       res.status(400).json({ error: 'Both email and 6-digit verification code are required.' });
       return;
     }
@@ -610,46 +356,23 @@ apiRouter.post(['/auth/verify-email-otp', '/auth/forgot-password/verify-otp'], a
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    const challenge = await challengeStore.getChallenge(normalizedEmail, purpose);
-
-    if (!challenge) {
-      res.status(400).json({ error: 'Verification code not requested or has expired. Please request a new code.' });
-      return;
-    }
-
-    // Backend-enforced 3-minute expiry check
-    if (Date.now() > challenge.expiresAt) {
-      await challengeStore.deleteChallenge(normalizedEmail, purpose);
-      res.status(400).json({ error: 'Verification code has expired (3-minute limit). Please request a fresh code.' });
-      return;
-    }
-
-    // Brute force protection: maximum 5 attempts
-    const attempts = await challengeStore.incrementAttempts(normalizedEmail, purpose);
-    if (attempts > 5) {
-      await challengeStore.deleteChallenge(normalizedEmail, purpose);
-      res.status(429).json({ error: 'Too many incorrect attempts (maximum 5). Verification code invalidated for security.' });
-      return;
-    }
-
-    // Constant-time HMAC comparison
     const inputHash = hashOtp(normalizedEmail, otp.toString().trim(), purpose);
-    const hashA = Buffer.from(inputHash, 'hex');
-    const hashB = Buffer.from(challenge.hash, 'hex');
-
-    const isValid = hashA.length === hashB.length && crypto.timingSafeEqual(hashA, hashB);
-
-    if (!isValid) {
-      const remainingAttempts = Math.max(0, 5 - attempts);
+    const verification = await challengeStore.verifyChallenge(normalizedEmail, purpose, inputHash);
+    if (verification.status !== 'valid') {
+      if (verification.status === 'invalid') {
       res.status(401).json({
-        error: `Incorrect verification code. (${remainingAttempts} attempts remaining)`,
-        remainingAttempts
+          error: `Incorrect verification code. (${verification.remainingAttempts} attempts remaining)`,
+          remainingAttempts: verification.remainingAttempts
       });
+      } else if (verification.status === 'locked') {
+        res.status(429).json({ error: 'Too many incorrect attempts. Request a new verification code.' });
+      } else if (verification.status === 'expired') {
+        res.status(400).json({ error: 'Verification code has expired. Please request a fresh code.' });
+      } else {
+        res.status(400).json({ error: 'Verification code not requested or already used. Please request a new code.' });
+      }
       return;
     }
-
-    // Single-use: burn challenge immediately
-    await challengeStore.deleteChallenge(normalizedEmail, purpose);
 
     // Issue short-lived cryptographic authorization token (15-minute validity)
     const tokenExpiresAt = Date.now() + 15 * 60 * 1000;
@@ -668,7 +391,7 @@ apiRouter.post(['/auth/verify-email-otp', '/auth/forgot-password/verify-otp'], a
     });
   } catch (err: any) {
     console.error('Error in /auth/verify-email-otp:', err.message || err);
-    res.status(500).json({ error: 'Internal server error during verification.' });
+    res.status(err instanceof StudentOtpStorageError ? 503 : 500).json({ error: err instanceof StudentOtpStorageError ? 'Verification service is temporarily unavailable.' : 'Internal server error during verification.' });
   }
 });
 
@@ -676,8 +399,8 @@ apiRouter.post(['/auth/verify-email-otp', '/auth/forgot-password/verify-otp'], a
 apiRouter.post('/auth/confirm-verified-signup', async (req, res) => {
   try {
     const { email, verificationToken, idToken } = req.body;
-    if (!email || !verificationToken) {
-      res.status(400).json({ error: 'Email and verification token are required.' });
+    if (!email || !verificationToken || !idToken) {
+      res.status(400).json({ error: 'Email, verification token, and Firebase sign-in token are required.' });
       return;
     }
 
@@ -689,43 +412,47 @@ apiRouter.post('/auth/confirm-verified-signup', async (req, res) => {
       return;
     }
 
-    // Consume authorization token
+    const adminAuth = await getAdminAuth();
+    if (!adminAuth) {
+      res.status(503).json({ error: 'Firebase identity verification is unavailable.' });
+      return;
+    }
+
+    let decoded: any;
+    try {
+      decoded = await adminAuth.verifyIdToken(idToken);
+    } catch {
+      res.status(401).json({ error: 'Firebase sign-in token is invalid or expired.' });
+      return;
+    }
+
+    if (String(decoded.email || '').toLowerCase().trim() !== normalizedEmail || !decoded.uid) {
+      res.status(403).json({ error: 'The verified email and signed-in account do not match.' });
+      return;
+    }
+
     const consumed = await challengeStore.consumeAuthorization(normalizedEmail, 'signup', verificationToken);
     if (!consumed) {
       res.status(403).json({ error: 'Verification token has already been used or expired.' });
       return;
     }
 
-    // Mark email verified in Firebase via Admin SDK or REST API if available
-    let emailVerifiedInAuth = false;
     try {
-      const { initializeApp, getApps } = await import('firebase-admin/app');
-      const { getAuth } = await import('firebase-admin/auth');
-      const appInstance = getApps().length ? getApps()[0] : initializeApp({ projectId: 'gen-lang-client-0089073748' });
-      const auth = getAuth(appInstance);
-      const userRecord = await auth.getUserByEmail(normalizedEmail);
-      await auth.updateUser(userRecord.uid, { emailVerified: true });
-      emailVerifiedInAuth = true;
-    } catch {
-      // If admin SDK credentials unavailable, use Firebase Identity Toolkit REST API with idToken if provided
-      if (idToken && process.env.FIREBASE_API_KEY) {
-        try {
-          await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:update?key=${process.env.FIREBASE_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              idToken,
-              returnSecureToken: true
-            })
-          });
-        } catch {}
+      const userRecord = await adminAuth.getUser(decoded.uid);
+      if (String(userRecord.email || '').toLowerCase().trim() !== normalizedEmail) {
+        res.status(403).json({ error: 'The verified email and Firebase account do not match.' });
+        return;
       }
+      await adminAuth.updateUser(decoded.uid, { emailVerified: true });
+    } catch {
+      res.status(503).json({ error: 'Firebase could not persist the email verification. Request a new code and try again.' });
+      return;
     }
 
     res.json({
       success: true,
       verifiedEmail: normalizedEmail,
-      emailVerifiedInAuth
+      emailVerifiedInAuth: true
     });
   } catch (err: any) {
     console.error('Error confirming verified signup:', err.message || err);
@@ -737,7 +464,7 @@ apiRouter.post('/auth/confirm-verified-signup', async (req, res) => {
 apiRouter.post(['/auth/reset-password', '/auth/forgot-password/reset-password'], async (req, res) => {
   try {
     const { email, verificationToken, newPassword } = req.body;
-    if (!email || !verificationToken || !newPassword) {
+    if (!email || !verificationToken || typeof newPassword !== 'string') {
       res.status(400).json({ error: 'Email, verification token, and new password are required.' });
       return;
     }
@@ -755,35 +482,35 @@ apiRouter.post(['/auth/reset-password', '/auth/forgot-password/reset-password'],
       return;
     }
 
-    // Single-use: burn authorization token immediately
+    const adminAuth = await getAdminAuth();
+    if (!adminAuth) {
+      res.status(503).json({ error: 'Firebase password update is unavailable.' });
+      return;
+    }
+
+    // Consume the authorization only after Firebase Admin is available.
     const consumed = await challengeStore.consumeAuthorization(normalizedEmail, 'reset-password', verificationToken);
     if (!consumed) {
       res.status(403).json({ error: 'Password reset token has already been consumed. Please request a new code.' });
       return;
     }
 
-    // Attempt Firebase Admin update
-    let updatedViaAdmin = false;
     try {
-      const { initializeApp, getApps } = await import('firebase-admin/app');
-      const { getAuth } = await import('firebase-admin/auth');
-      const appInstance = getApps().length ? getApps()[0] : initializeApp({ projectId: 'gen-lang-client-0089073748' });
-      const auth = getAuth(appInstance);
-      const userRecord = await auth.getUserByEmail(normalizedEmail);
-      await auth.updateUser(userRecord.uid, {
+      const userRecord = await adminAuth.getUserByEmail(normalizedEmail);
+      await adminAuth.updateUser(userRecord.uid, {
         password: newPassword,
         emailVerified: true
       });
-      await auth.revokeRefreshTokens(userRecord.uid);
-      updatedViaAdmin = true;
-    } catch (adminErr: any) {
-      console.warn('[FIREBASE ADMIN NOTICE]', adminErr.message);
+      await adminAuth.revokeRefreshTokens(userRecord.uid);
+    } catch {
+      res.status(503).json({ error: 'Firebase could not persist the password update. Request a new code and try again.' });
+      return;
     }
 
     res.json({
       success: true,
       message: 'Your password has been updated successfully. Please sign in again.',
-      updatedViaAdmin
+      updatedViaAdmin: true
     });
   } catch (err: any) {
     console.error('Error in /auth/reset-password:', err.message || err);
@@ -938,19 +665,8 @@ async function verifyAdminSecurityPasswordAsync(password: string): Promise<boole
 }
 
 // In-memory security tokens and sessions
-const setupOtpChallenges = new Map<string, { hash: string; expiresAt: number; attempts: number; lastSentAt: number }>();
-const verifiedPasswordTokens = new Map<string, { expiresAt: number; createdAt: number }>();
-const adminEmailOtpChallenges = new Map<string, { hash: string; expiresAt: number; attempts: number; lastSentAt: number }>();
 const elevatedAdminSessions = new Map<string, { sessionId: string; founderEmail: string; expiresAt: number; createdAt: number }>();
 
-// Forgot Password challenges
-interface AdminResetChallenge {
-  hash: string;
-  expiresAt: number;
-  attempts: number;
-  lastSentAt: number;
-}
-const adminResetChallenges = new Map<string, AdminResetChallenge>();
 const consumedAdminResetTokenIds = new Set<string>();
 
 // Online Presence tracking (heartbeats)
@@ -1115,37 +831,32 @@ apiRouter.post('/admin/auth/sync-claim', async (req, res) => {
 apiRouter.post(['/admin/auth/request-setup-otp', '/admin/request-setup-otp'], async (req, res) => {
   try {
     const existing = await getStoredAdminSecurityAsync();
-    if (existing || process.env.ADMIN_SECURITY_PASSWORD) {
+    if (existing) {
       res.status(400).json({ error: 'Admin Security Password has already been set up. Please enter your existing password.' });
       return;
     }
 
-    const currentChallenge = setupOtpChallenges.get('setup');
     const requestedAt = Date.now();
-    if (currentChallenge && requestedAt - currentChallenge.lastSentAt < 30_000) {
-      const waitSeconds = Math.ceil((30_000 - (requestedAt - currentChallenge.lastSentAt)) / 1000);
-      res.status(429).json({ error: `Please wait ${waitSeconds}s before requesting another setup code.`, waitSeconds });
-      return;
-    }
-
     const otp = crypto.randomInt(100000, 1000000).toString();
     const expiresAt = requestedAt + 180 * 1000; // 3-minute expiry
     const hash = hashOtp(FOUNDER_EMAIL, otp, 'admin-setup');
 
-    setupOtpChallenges.set('setup', { hash, expiresAt, attempts: 0, lastSentAt: requestedAt });
+    await adminOtpChallengesStore.create('admin-setup', {
+      flow: 'setup', hash, expiresAt, attempts: 0, lastSentAt: requestedAt, status: 'pending'
+    }, 30_000);
 
     try {
-      await sendBrevoOtpEmail(FOUNDER_EMAIL, otp, 'signup');
+      await sendBrevoOtpEmail(FOUNDER_EMAIL, otp, 'admin-setup');
     } catch (brevoErr: any) {
-      setupOtpChallenges.delete('setup');
+      await adminOtpChallengesStore.invalidate('admin-setup').catch(() => {});
       res.status(502).json({
-        error: `Could not dispatch setup verification email via Brevo: ${brevoErr.message}`,
-        code: 'BREVO_DISPATCH_FAILED'
+        error: 'Could not dispatch the administrator setup email. Please try again later.',
+        code: brevoErr?.code || 'BREVO_DISPATCH_FAILED'
       });
       return;
     }
 
-    recordAudit('ADMIN_SETUP_OTP_REQUESTED', 'Setup OTP dispatched to founder Gmail.');
+    recordAudit('ADMIN_SETUP_OTP_REQUESTED', 'Administrator setup OTP dispatched by Brevo.');
 
     res.json({
       success: true,
@@ -1155,8 +866,11 @@ apiRouter.post(['/admin/auth/request-setup-otp', '/admin/request-setup-otp'], as
     });
   } catch (err: any) {
     console.error('Error requesting setup OTP:', err);
-    res.status(err instanceof ConfigError ? 503 : 500).json({
-      error: err instanceof ConfigError ? err.message : 'Failed to dispatch setup OTP via email.'
+    const rateLimited = err instanceof AdminOtpRateLimitError;
+    const unavailable = err instanceof ConfigError || err instanceof AdminOtpStorageError;
+    res.status(rateLimited ? 429 : unavailable ? 503 : 500).json({
+      error: rateLimited ? err.message : unavailable ? 'Administrator OTP storage is unavailable.' : 'Failed to dispatch setup OTP via email.',
+      ...(rateLimited ? { waitSeconds: err.waitSeconds } : {})
     });
   }
 });
@@ -1186,36 +900,27 @@ apiRouter.post(['/admin/auth/setup-password', '/admin/setup-password'], async (r
       return;
     }
 
-    const challenge = setupOtpChallenges.get('setup');
-    if (!challenge || !/^\d{6}$/.test(String(setupOtp || ''))) {
+    if (!/^\d{6}$/.test(String(setupOtp || ''))) {
       res.status(400).json({ error: 'A valid setup code must be requested before setting the password.' });
       return;
     }
 
-    const existing = await getStoredAdminSecurityAsync();
-    if (existing || process.env.ADMIN_SECURITY_PASSWORD) {
-      res.status(400).json({ error: 'Admin Security Password has already been set up. Use Forgot Password to reset it.' });
-      return;
-    }
-    if (Date.now() > challenge.expiresAt) {
-      setupOtpChallenges.delete('setup');
-      res.status(400).json({ error: 'Setup code has expired. Please request a new code.' });
-      return;
-    }
-    challenge.attempts += 1;
-    if (challenge.attempts > 5) {
-      setupOtpChallenges.delete('setup');
-      res.status(429).json({ error: 'Too many incorrect attempts. Please request a new setup code.' });
+    const pendingChallenge = await adminOtpChallengesStore.get('admin-setup');
+    if (!pendingChallenge || pendingChallenge.flow !== 'setup' || pendingChallenge.status !== 'pending') {
+      res.status(400).json({ error: 'Setup code is expired, already used, or was not requested.' });
       return;
     }
 
-    const testHash = hashOtp(FOUNDER_EMAIL, String(setupOtp).trim(), 'admin-setup');
-    const isOtpValid = crypto.timingSafeEqual(Buffer.from(testHash, 'hex'), Buffer.from(challenge.hash, 'hex'));
-    if (!isOtpValid) {
-      res.status(401).json({ error: 'Incorrect verification code. Please check your email.' });
+    const existing = await getStoredAdminSecurityAsync();
+    if (existing) {
+      res.status(400).json({ error: 'Admin Security Password has already been set up. Use Forgot Password to reset it.' });
       return;
     }
-    setupOtpChallenges.delete('setup');
+    const otpResult = await adminOtpChallengesStore.consume('admin-setup', hashOtp(FOUNDER_EMAIL, String(setupOtp).trim(), 'admin-setup'));
+    if (otpResult.status !== 'valid') {
+      respondToOtpFailure(otpResult, res, 'Setup');
+      return;
+    }
 
     await saveAdminSecurityAsync(newPassword);
     recordAudit('ADMIN_PASSWORD_INITIALIZED', 'Founder Admin Security Password created and persisted permanently in Firestore.');
@@ -1244,8 +949,8 @@ apiRouter.post(['/admin/auth/setup-password', '/admin/setup-password'], async (r
     });
   } catch (err: any) {
     console.error('Error in setup-password:', err);
-    res.status(err instanceof ConfigError ? 503 : 500).json({
-      error: err instanceof ConfigError ? err.message : 'Failed to set up Admin Security Password.'
+    res.status(err instanceof ConfigError || err instanceof AdminOtpStorageError ? 503 : 500).json({
+      error: err instanceof ConfigError || err instanceof AdminOtpStorageError ? 'Administrator storage is unavailable.' : 'Failed to set up Admin Security Password.'
     });
   }
 });
@@ -1268,29 +973,25 @@ apiRouter.post(['/admin/auth/verify-password', '/admin/verify-password'], async 
 
     // Step 1 Passed: Issue single-use passwordToken for Factor 2 verification (5-minute validity)
     const passwordToken = `pwd_tok_${crypto.randomBytes(24).toString('hex')}`;
-    verifiedPasswordTokens.set(passwordToken, {
-      expiresAt: Date.now() + 5 * 60 * 1000,
-      createdAt: Date.now()
-    });
+    const passwordTokenExpiresAt = Date.now() + 5 * 60 * 1000;
 
     // Generate Factor 2 6-digit numeric OTP
     const otp = crypto.randomInt(100000, 1000000).toString();
-    const otpExpiresAt = Date.now() + 180 * 1000;
+    const otpCreatedAt = Date.now();
+    const otpExpiresAt = otpCreatedAt + 180 * 1000;
     const otpHash = hashOtp(FOUNDER_EMAIL, otp, 'admin-step4');
+    const challengeId = adminLoginChallengeId(passwordToken);
 
-    adminEmailOtpChallenges.set(passwordToken, {
-      hash: otpHash,
-      expiresAt: otpExpiresAt,
-      attempts: 0,
-      lastSentAt: Date.now()
-    });
+    await adminOtpChallengesStore.create(challengeId, {
+      flow: 'admin-login', hash: otpHash, expiresAt: otpExpiresAt, attempts: 0,
+      lastSentAt: otpCreatedAt, status: 'pending', passwordTokenExpiresAt
+    }, 0);
 
     // Dispatch Factor 2 email via Brevo to pre-approved administrator
     try {
-      await sendBrevoOtpEmail(FOUNDER_EMAIL, otp, 'signup');
+      await sendBrevoOtpEmail(FOUNDER_EMAIL, otp, 'admin-login');
     } catch (brevoErr: any) {
-      verifiedPasswordTokens.delete(passwordToken);
-      adminEmailOtpChallenges.delete(passwordToken);
+      await adminOtpChallengesStore.invalidate(challengeId).catch(() => {});
       res.status(502).json({
         error: 'Could not send the administrator verification code. Please try again later.',
         code: brevoErr?.code || 'BREVO_DISPATCH_FAILED'
@@ -1311,8 +1012,8 @@ apiRouter.post(['/admin/auth/verify-password', '/admin/verify-password'], async 
     });
   } catch (err: any) {
     console.error('Error in verify-password:', err);
-    res.status(err instanceof ConfigError ? 503 : 500).json({
-      error: err instanceof ConfigError ? err.message : 'Internal server error verifying password.'
+    res.status(err instanceof ConfigError || err instanceof AdminOtpStorageError ? 503 : 500).json({
+      error: err instanceof ConfigError || err instanceof AdminOtpStorageError ? 'Administrator OTP storage is unavailable.' : 'Internal server error verifying password.'
     });
   }
 });
@@ -1321,35 +1022,39 @@ apiRouter.post(['/admin/auth/verify-password', '/admin/verify-password'], async 
 apiRouter.post(['/admin/auth/resend-admin-otp', '/admin/auth/resend-otp', '/admin/resend-admin-otp', '/admin/resend-otp'], async (req, res) => {
   try {
     const { passwordToken } = req.body;
-    if (!passwordToken || !verifiedPasswordTokens.has(passwordToken)) {
+    if (typeof passwordToken !== 'string' || !/^pwd_tok_[a-f0-9]{48}$/.test(passwordToken)) {
       res.status(400).json({ error: 'Session expired. Please re-enter your Admin Security Password.' });
       return;
     }
 
-    const existing = adminEmailOtpChallenges.get(passwordToken);
-    if (existing && Date.now() - existing.lastSentAt < 30000) {
-      const waitSeconds = Math.ceil((30000 - (Date.now() - existing.lastSentAt)) / 1000);
-      res.status(429).json({ error: `Please wait ${waitSeconds}s before requesting a new code.`, waitSeconds });
+    const challengeId = adminLoginChallengeId(passwordToken);
+    const existing = await adminOtpChallengesStore.get(challengeId);
+    if (!existing || existing.flow !== 'admin-login' || ['consumed', 'locked'].includes(existing.status) || !existing.passwordTokenExpiresAt || Date.now() > existing.passwordTokenExpiresAt) {
+      res.status(400).json({ error: 'Session expired. Please re-enter your Admin Security Password.' });
       return;
     }
 
+    const requestedAt = Date.now();
     const otp = crypto.randomInt(100000, 1000000).toString();
-    const otpExpiresAt = Date.now() + 180 * 1000;
+    const otpExpiresAt = requestedAt + 180 * 1000;
     const otpHash = hashOtp(FOUNDER_EMAIL, otp, 'admin-step4');
 
-    adminEmailOtpChallenges.set(passwordToken, {
+    await adminOtpChallengesStore.create(challengeId, {
+      ...existing,
       hash: otpHash,
       expiresAt: otpExpiresAt,
       attempts: 0,
-      lastSentAt: Date.now()
-    });
+      lastSentAt: requestedAt,
+      status: 'pending'
+    }, 30_000);
 
     try {
-      await sendBrevoOtpEmail(FOUNDER_EMAIL, otp, 'signup');
+      await sendBrevoOtpEmail(FOUNDER_EMAIL, otp, 'admin-login');
     } catch (brevoErr: any) {
+      await adminOtpChallengesStore.invalidate(challengeId).catch(() => {});
       res.status(502).json({
-        error: `Failed to dispatch fresh verification code: ${brevoErr.message}`,
-        code: 'BREVO_DISPATCH_FAILED'
+        error: 'Could not send the administrator verification code. Please try again later.',
+        code: brevoErr?.code || 'BREVO_DISPATCH_FAILED'
       });
       return;
     }
@@ -1360,12 +1065,17 @@ apiRouter.post(['/admin/auth/resend-admin-otp', '/admin/auth/resend-otp', '/admi
       resendCooldown: 30
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Failed to resend admin OTP.' });
+    const rateLimited = err instanceof AdminOtpRateLimitError;
+    const unavailable = err instanceof ConfigError || err instanceof AdminOtpStorageError;
+    res.status(rateLimited ? 429 : unavailable ? 503 : 500).json({
+      error: rateLimited ? err.message : unavailable ? 'Administrator OTP storage is unavailable.' : 'Failed to resend administrator OTP.',
+      ...(rateLimited ? { waitSeconds: err.waitSeconds } : {})
+    });
   }
 });
 
 // 6. Verify Admin Gmail OTP (Step 4 -> Step 5: Elevated Session)
-apiRouter.post(['/admin/auth/verify-admin-otp', '/admin/auth/verify-otp', '/admin/verify-admin-otp', '/admin/verify-otp'], (req, res) => {
+apiRouter.post(['/admin/auth/verify-admin-otp', '/admin/auth/verify-otp', '/admin/verify-admin-otp', '/admin/verify-otp'], async (req, res) => {
   try {
     const { passwordToken, otp } = req.body;
     if (!passwordToken || !otp) {
@@ -1373,32 +1083,23 @@ apiRouter.post(['/admin/auth/verify-admin-otp', '/admin/auth/verify-otp', '/admi
       return;
     }
 
-    const challenge = adminEmailOtpChallenges.get(passwordToken);
-    if (!challenge || Date.now() > challenge.expiresAt) {
-      adminEmailOtpChallenges.delete(passwordToken);
-      res.status(400).json({ error: 'Verification code has expired. Please request a new code.' });
+    if (typeof passwordToken !== 'string' || !/^pwd_tok_[a-f0-9]{48}$/.test(passwordToken) || !/^\d{6}$/.test(String(otp))) {
+      res.status(400).json({ error: 'Password token and six-digit OTP code are required.' });
       return;
     }
 
-    challenge.attempts += 1;
-    if (challenge.attempts > 5) {
-      adminEmailOtpChallenges.delete(passwordToken);
-      verifiedPasswordTokens.delete(passwordToken);
-      res.status(429).json({ error: 'Too many incorrect attempts. Please re-enter Admin Security Password.' });
+    const challengeId = adminLoginChallengeId(passwordToken);
+    const challenge = await adminOtpChallengesStore.get(challengeId);
+    if (!challenge || challenge.flow !== 'admin-login' || !challenge.passwordTokenExpiresAt || Date.now() > challenge.passwordTokenExpiresAt) {
+      res.status(400).json({ error: 'Verification code has expired. Please re-enter your Admin Security Password.' });
       return;
     }
 
-    const testHash = hashOtp(FOUNDER_EMAIL, String(otp).trim(), 'admin-step4');
-    const isValid = crypto.timingSafeEqual(Buffer.from(testHash, 'hex'), Buffer.from(challenge.hash, 'hex'));
-
-    if (!isValid) {
-      res.status(401).json({ error: 'Incorrect verification code. Please check your email.' });
+    const otpResult = await adminOtpChallengesStore.consume(challengeId, hashOtp(FOUNDER_EMAIL, String(otp).trim(), 'admin-step4'));
+    if (otpResult.status !== 'valid') {
+      respondToOtpFailure(otpResult, res, 'Verification');
       return;
     }
-
-    // Invalidate single-use challenge and password token
-    adminEmailOtpChallenges.delete(passwordToken);
-    verifiedPasswordTokens.delete(passwordToken);
 
     // Create 15-minute elevated session
     const expiresAt = Date.now() + 15 * 60 * 1000;
@@ -1426,7 +1127,9 @@ apiRouter.post(['/admin/auth/verify-admin-otp', '/admin/auth/verify-otp', '/admi
     });
   } catch (err: any) {
     console.error('Error in verify-admin-otp:', err);
-    res.status(500).json({ error: 'Internal server error verifying admin OTP.' });
+    res.status(err instanceof ConfigError || err instanceof AdminOtpStorageError ? 503 : 500).json({
+      error: err instanceof ConfigError || err instanceof AdminOtpStorageError ? 'Administrator OTP storage is unavailable.' : 'Internal server error verifying administrator OTP.'
+    });
   }
 });
 
@@ -1438,56 +1141,34 @@ apiRouter.post(['/admin/auth/verify-admin-otp', '/admin/auth/verify-otp', '/admi
 apiRouter.post(['/admin/auth/forgot-password/request-otp', '/admin/forgot-password/request-otp', '/admin/auth/forgot-password'], async (req, res) => {
   try {
     const { email } = req.body;
-    // Security: Do not disclose whether an arbitrary email address belongs to an admin
-    if (email && typeof email === 'string' && !ADMIN_EMAILS.includes(email.toLowerCase().trim())) {
+    const normalizedEmail = typeof email === 'string' && email.trim() ? email.toLowerCase().trim() : FOUNDER_EMAIL;
+    // Keep responses uniform while only sending codes to the fixed founder mailbox.
+    if (normalizedEmail !== FOUNDER_EMAIL) {
       res.json({
         success: true,
-        maskedEmail: maskEmail(email),
-        expiresInSeconds: 300,
+        maskedEmail: maskEmail(FOUNDER_EMAIL),
+        expiresInSeconds: 180,
         resendCooldown: 60
       });
       return;
     }
 
     const now = Date.now();
-    const existing = adminResetChallenges.get('founder_reset');
-    if (existing && now - existing.lastSentAt < 60000) {
-      const waitSeconds = Math.ceil((60000 - (now - existing.lastSentAt)) / 1000);
-      res.status(429).json({ error: `Please wait ${waitSeconds}s before requesting a new reset code.`, waitSeconds });
-      return;
-    }
-
     const otp = crypto.randomInt(100000, 1000000).toString();
-    const expiresAt = now + 5 * 60 * 1000; // 5-minute expiry
+    const expiresAt = now + 180 * 1000; // 3-minute expiry
     const hash = hashOtp(FOUNDER_EMAIL, otp, 'admin-forgot-password');
 
-    adminResetChallenges.set('founder_reset', {
-      hash,
-      expiresAt,
-      attempts: 0,
-      lastSentAt: now
-    });
-
-    // Mirror to Firestore for multi-instance resilience
-    try {
-      const db = await getAdminFirestore();
-      if (db) {
-        await db.collection('_admin_challenges').doc('founder_reset').set({
-          hash,
-          expiresAt,
-          attempts: 0,
-          lastSentAt: now
-        });
-      }
-    } catch {}
+    await adminOtpChallengesStore.create('admin-password-reset', {
+      flow: 'password-reset', hash, expiresAt, attempts: 0, lastSentAt: now, status: 'pending'
+    }, 60_000);
 
     try {
       await sendBrevoOtpEmail(FOUNDER_EMAIL, otp, 'reset-password');
     } catch (brevoErr: any) {
-      adminResetChallenges.delete('founder_reset');
+      await adminOtpChallengesStore.invalidate('admin-password-reset').catch(() => {});
       res.status(502).json({
-        error: `Could not dispatch recovery code via Brevo: ${brevoErr.message}`,
-        code: 'BREVO_DISPATCH_FAILED'
+        error: 'Could not dispatch the administrator recovery code. Please try again later.',
+        code: brevoErr?.code || 'BREVO_DISPATCH_FAILED'
       });
       return;
     }
@@ -1497,12 +1178,17 @@ apiRouter.post(['/admin/auth/forgot-password/request-otp', '/admin/forgot-passwo
     res.json({
       success: true,
       maskedEmail: maskEmail(FOUNDER_EMAIL),
-      expiresInSeconds: 300,
+      expiresInSeconds: 180,
       resendCooldown: 60
     });
   } catch (err: any) {
     console.error('Error requesting admin reset OTP:', err);
-    res.status(500).json({ error: err.message || 'Failed to dispatch reset code.' });
+    const rateLimited = err instanceof AdminOtpRateLimitError;
+    const unavailable = err instanceof ConfigError || err instanceof AdminOtpStorageError;
+    res.status(rateLimited ? 429 : unavailable ? 503 : 500).json({
+      error: rateLimited ? err.message : unavailable ? 'Administrator OTP storage is unavailable.' : 'Failed to dispatch administrator recovery code.',
+      ...(rateLimited ? { waitSeconds: err.waitSeconds } : {})
+    });
   }
 });
 
@@ -1510,54 +1196,22 @@ apiRouter.post(['/admin/auth/forgot-password/request-otp', '/admin/forgot-passwo
 apiRouter.post(['/admin/auth/forgot-password/verify-otp', '/admin/forgot-password/verify-otp'], async (req, res) => {
   try {
     const { otp } = req.body;
-    if (!otp) {
+    if (!/^\d{6}$/.test(String(otp || ''))) {
       res.status(400).json({ error: '6-digit verification code is required.' });
       return;
     }
 
-    let challenge = adminResetChallenges.get('founder_reset');
-    if (!challenge) {
-      try {
-        const db = await getAdminFirestore();
-        if (db) {
-          const snap = await db.collection('_admin_challenges').doc('founder_reset').get();
-          if (snap.exists) challenge = snap.data() as AdminResetChallenge;
-        }
-      } catch {}
-    }
-
-    if (!challenge || Date.now() > challenge.expiresAt) {
-      adminResetChallenges.delete('founder_reset');
-      res.status(400).json({ error: 'Verification code has expired or was not requested. Please request a new code.' });
+    const challenge = await adminOtpChallengesStore.get('admin-password-reset');
+    if (!challenge || challenge.flow !== 'password-reset') {
+      res.status(400).json({ error: 'Recovery code is expired or was not requested. Please request a new code.' });
       return;
     }
 
-    challenge.attempts += 1;
-    if (challenge.attempts > 5) {
-      adminResetChallenges.delete('founder_reset');
-      try {
-        const db = await getAdminFirestore();
-        if (db) await db.collection('_admin_challenges').doc('founder_reset').delete();
-      } catch {}
-      res.status(429).json({ error: 'Too many incorrect attempts. Please request a new verification code.' });
+    const otpResult = await adminOtpChallengesStore.consume('admin-password-reset', hashOtp(FOUNDER_EMAIL, String(otp).trim(), 'admin-forgot-password'));
+    if (otpResult.status !== 'valid') {
+      respondToOtpFailure(otpResult, res, 'Recovery');
       return;
     }
-
-    const testHash = hashOtp(FOUNDER_EMAIL, String(otp).trim(), 'admin-forgot-password');
-    const isValid = crypto.timingSafeEqual(Buffer.from(testHash, 'hex'), Buffer.from(challenge.hash, 'hex'));
-
-    if (!isValid) {
-      const remaining = Math.max(0, 5 - challenge.attempts);
-      res.status(401).json({ error: `Incorrect verification code (${remaining} attempts remaining).`, remainingAttempts: remaining });
-      return;
-    }
-
-    // Invalidate single-use challenge
-    adminResetChallenges.delete('founder_reset');
-    try {
-      const db = await getAdminFirestore();
-      if (db) await db.collection('_admin_challenges').doc('founder_reset').delete();
-    } catch {}
 
     // Issue single-use signed password reset token (10-minute validity)
     const resetToken = createSignedToken({
@@ -1575,7 +1229,9 @@ apiRouter.post(['/admin/auth/forgot-password/verify-otp', '/admin/forgot-passwor
     });
   } catch (err: any) {
     console.error('Error verifying admin reset OTP:', err);
-    res.status(500).json({ error: 'Failed to verify reset code.' });
+    res.status(err instanceof ConfigError || err instanceof AdminOtpStorageError ? 503 : 500).json({
+      error: err instanceof ConfigError || err instanceof AdminOtpStorageError ? 'Administrator OTP storage is unavailable.' : 'Failed to verify recovery code.'
+    });
   }
 });
 

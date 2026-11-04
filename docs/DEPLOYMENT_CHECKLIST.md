@@ -1,92 +1,52 @@
-# NEXORA — Production Deployment Checklist (Vercel + GitHub)
+# NEXORA — Safe Vercel Deployment Checklist
 
-**Target Production Branch:** `main`  
-**Connected Repository:** `https://github.com/miteshpipaliya/Nexora`  
-**Production Site:** `https://www.nexora-bvm.online`  
+**Repository:** `https://github.com/miteshpipaliya/Nexora`
+**Production branch:** `main`
+**Audit branch:** `codex/nexora-production-audit`
+**Production site:** `https://nexora-bvm.online`
 
----
+## 1. Local verification
 
-## 1. Pre-Commit Verification (Local Machine)
-
-Before pushing any commit to `main`, execute the complete verification sequence:
+Run these from the repository root before pushing an audit branch update:
 
 ```bash
-# 1. Typecheck the entire codebase
-npx tsc --noEmit
-
-# 2. Run automated test suites
+npm run typecheck
 npm test
-
-# 3. Verify production compilation and esbuild server bundling
 npm run build
-
-# 4. Run local Vercel serverless bundle simulation
-bash scripts/verify-vercel-build.sh
 ```
 
-**All 4 commands must exit with status 0.**
+Review `git status` and `git diff --check`. Never stage `.env` files, credentials, OTPs, or generated local state.
 
----
+## 2. Vercel project settings
 
-## 2. Git Hygiene & Ignored Files Check
+Confirm the `nexora` project is connected to `miteshpipaliya/Nexora`, uses Vite, builds with `npm run build`, and outputs `dist`. The repository requires Node.js `24.x` as declared in `package.json`.
 
-Verify that local credentials are never staged or committed:
+Before using a Preview deployment for authentication or email testing, configure **Preview only** with a dedicated staging Firebase project and named Firestore database. Do not reuse Production Firebase credentials or database identifiers.
 
-```bash
-# Check git status for untracked environment files
-git status
+Preview client configuration:
 
-# Ensure .env and .env.example are untracked
-git ls-files | grep -E "^\.env"
-# (Output should be empty)
-```
+- `VITE_FIREBASE_API_KEY`
+- `VITE_FIREBASE_AUTH_DOMAIN`
+- `VITE_FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_STORAGE_BUCKET`
+- `VITE_FIREBASE_APP_ID`
+- `VITE_FIRESTORE_DATABASE_ID`
 
----
+Preview server configuration:
 
-## 3. Vercel Dashboard Project Configuration
+- `FIREBASE_SERVICE_ACCOUNT` for the staging project, or `FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY`
+- `FIREBASE_PROJECT_ID` matching the staging project
+- `FIRESTORE_DATABASE_ID` matching its staging database
+- `OTP_HMAC_SECRET` with at least 32 characters
+- `BREVO_API_KEY`
+- `BREVO_SENDER_NAME` (`NEXORA`)
+- `BREVO_SENDER_EMAIL` (verified sender on `nexora-bvm.online`)
+- `BREVO_REPLY_TO` (`nexora.bvm@gmail.com`)
 
-In the Vercel Dashboard for `nexora`:
+Do not put service-account credentials, Brevo keys, or HMAC secrets in any `VITE_*` variable.
 
-1. **Framework Preset:** Vite
-2. **Build Command:** `npm run build`
-3. **Output Directory:** `dist`
-4. **Install Command:** `npm install`
-5. **Node.js Version:** 20.x or 22.x
-6. **Environment Variables:** Verify all required variables are set:
-   - `VITE_FIREBASE_API_KEY`
-   - `VITE_FIREBASE_AUTH_DOMAIN`
-   - `VITE_FIREBASE_PROJECT_ID`
-   - `VITE_FIREBASE_STORAGE_BUCKET`
-   - `VITE_FIREBASE_MESSAGING_SENDER_ID`
-   - `VITE_FIREBASE_APP_ID`
-   - `BREVO_API_KEY`
-   - `BREVO_SENDER_EMAIL` (`nexora.bvm@gmail.com`)
-   - `BREVO_SENDER_NAME` (`NEXORA`)
-   - `OTP_HMAC_SECRET`
+## 3. Audit Preview and production release
 
----
+Push reviewed work only to `codex/nexora-production-audit`. Confirm Vercel created a **Preview** deployment for that branch and inspect its build and runtime logs. Exercise Firebase Auth, Firestore, and Brevo only against staging resources. A successful build alone does not confirm email delivery or inbox receipt.
 
-## 4. Deployment Trigger & Rollout
-
-1. Commit changes to `main`:
-   ```bash
-   git add .
-   git commit -m "fix(prod): resolve vercel bundling, elevate admin claim sync, and enforce 15 competition ceiling"
-   git push origin main
-   ```
-2. Open Vercel Deployments view.
-3. Monitor the build logs:
-   - Client build (`vite build`) generates static chunks in `dist/`.
-   - Server build (`esbuild server.ts --bundle --platform=node --format=esm --outfile=server.js --packages=external`) produces unified `server.js`.
-   - Vercel Serverless Function `/api/index.ts` loads bundled server.
-4. Verify Deployment state shows **Ready (Production)**.
-
----
-
-## 5. Post-Deployment Verification
-
-1. Navigate to `https://www.nexora-bvm.online`.
-2. Inspect browser console for clean initialization (no errors or uncaught exceptions).
-3. Check `/competitions`: Verify all 10 competitions display high-res local images with 0 broken images.
-4. Check `/auth`: Test student OTP dispatch.
-5. Check `/admin`: Log in with `miteshpipaliya2202@gmail.com`, verify Admin Claim sync, and authenticate with Admin Security Password.
+Do not merge into `main`, promote a deployment, change production environment variables, alter DNS, or invalidate administrator credentials without the owner's separate approval. Before any later production release, compare the intended commit and environment against the approved Preview results and retain the existing production Firebase project, database, and user data.

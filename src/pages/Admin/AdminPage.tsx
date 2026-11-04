@@ -625,7 +625,7 @@ export const AdminPage: React.FC = () => {
     setAuthSuccess(null);
     try {
       const res = await dataService.requestAdminPasswordResetOtp();
-      setOtpTimeLeft(res.expiresInSeconds || 300);
+      setOtpTimeLeft(res.expiresInSeconds || 180);
       setResendCooldown(res.resendCooldown || 60);
       setForgotOtp('');
       setAuthStep('forgot_otp');

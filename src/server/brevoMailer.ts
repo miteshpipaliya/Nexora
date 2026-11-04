@@ -1,7 +1,7 @@
 /**
  * src/server/brevoMailer.ts
  * Dedicated, resilient Brevo Transactional Email subsystem (Package A / WP7).
- * - Reads BREVO_API_KEY, BREVO_SENDER_EMAIL, BREVO_SENDER_NAME at invocation time (trimmed, quotes stripped)
+ * - Reads Brevo secrets and sender settings at invocation time (trimmed, quotes stripped)
  * - Fails closed on missing credentials or free-mail senders (gmail, yahoo, outlook, hotmail, proton, etc.)
  * - Validates sender domain against Brevo senders/domains cache (5-minute TTL, fails soft on Brevo API lookup)
  * - Uses 10s AbortController timeout
@@ -112,10 +112,13 @@ export function getBrevoConfig(): BrevoConfig {
   }
 
   const senderName = stripQuotes(process.env.BREVO_SENDER_NAME || 'NEXORA');
-  const replyToEmail = stripQuotes(process.env.BREVO_REPLY_TO_EMAIL || 'miteshpipaliya2202@gmail.com');
+  const replyToEmail = stripQuotes(process.env.BREVO_REPLY_TO || process.env.BREVO_REPLY_TO_EMAIL || '');
+  if (replyToEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(replyToEmail)) {
+    throw new BrevoServiceError('Email reply-to address is invalid.', 'EMAIL_CONFIGURATION_INVALID', 503);
+  }
   const replyToName = stripQuotes(process.env.BREVO_REPLY_TO_NAME || 'NEXORA Support');
 
-  return { apiKey, senderEmail, senderName, replyToEmail, replyToName };
+  return { apiKey, senderEmail, senderName, replyToEmail: replyToEmail || undefined, replyToName };
 }
 
 /**
@@ -276,8 +279,15 @@ export async function getBrevoDiagnostics(): Promise<BrevoDiagnostics> {
 export async function sendBrevoOtpEmail(
   toEmail: string,
   otp: string,
-  purpose: 'signup' | 'reset-password' = 'signup'
+  purpose: 'signup' | 'reset-password' | 'admin-setup' | 'admin-login' = 'signup'
 ): Promise<void> {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(toEmail || '').trim())) {
+    throw new BrevoServiceError('A valid recipient email address is required.', 'EMAIL_INVALID_RECIPIENT', 400);
+  }
+  if (!/^\d{6}$/.test(String(otp || ''))) {
+    throw new BrevoServiceError('A six-digit verification code is required.', 'OTP_INVALID', 400);
+  }
+
   const config = getBrevoConfig();
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
@@ -288,15 +298,29 @@ export async function sendBrevoOtpEmail(
     }
   }).catch(() => {});
 
-  const isReset = purpose === 'reset-password';
-  const subject = isReset
-    ? 'NEXORA — Password Recovery Verification Code'
-    : 'NEXORA — Your Email Verification Code';
-
-  const heading = isReset ? 'Password Recovery' : 'Email Verification';
-  const subtext = isReset
-    ? 'We received a request to reset the password for your NEXORA account.'
-    : 'Welcome to NEXORA! We received a request to verify your email address for student registration.';
+  const copy = {
+    signup: {
+      subject: 'NEXORA — Your Email Verification Code',
+      heading: 'Email Verification',
+      subtext: 'We received a request to verify your email address for NEXORA.'
+    },
+    'reset-password': {
+      subject: 'NEXORA — Password Recovery Verification Code',
+      heading: 'Password Recovery',
+      subtext: 'We received a request to reset your NEXORA account password.'
+    },
+    'admin-setup': {
+      subject: 'NEXORA — Administrator Setup Code',
+      heading: 'Administrator Setup',
+      subtext: 'We received a request to initialize NEXORA administrator security. If this was not you, ignore this message and secure your account.'
+    },
+    'admin-login': {
+      subject: 'NEXORA — Administrator Sign-in Code',
+      heading: 'Administrator Sign-in',
+      subtext: 'We received a request to sign in to the NEXORA administrator console. If this was not you, ignore this message and secure your account.'
+    }
+  }[purpose];
+  const { subject, heading, subtext } = copy;
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -325,7 +349,7 @@ export async function sendBrevoOtpEmail(
                     <div style="text-align: center; margin: 16px 0 20px; padding: 18px; background-color: #08080D; border: 1px solid rgba(139, 92, 246, 0.5); border-radius: 12px;">
                       <span style="font-family: 'Courier New', Courier, monospace; font-size: 34px; font-weight: 700; letter-spacing: 0.35em; color: #C4B5FD;">${otp}</span>
                     </div>
-                    <p style="margin: 0 0 16px; font-size: 13px; color: #F87171; text-align: center;"><strong>This verification code expires in 5 minutes.</strong></p>
+                    <p style="margin: 0 0 16px; font-size: 13px; color: #F87171; text-align: center;"><strong>This verification code expires in 3 minutes.</strong></p>
                     <p style="margin: 0 0 8px; font-size: 12px; color: #94A3B8;">If you did not request this verification code, please disregard this message.</p>
                     <p style="margin: 0 0 24px; font-size: 12px; color: #94A3B8;">Never share this verification code with anyone.</p>
                   </td>
@@ -345,7 +369,7 @@ export async function sendBrevoOtpEmail(
     </html>
   `;
 
-  const textContent = `${heading}\n\n${subtext}\n\nYour verification code is:\n\n${otp}\n\nThis verification code expires in 5 minutes.\n\nIf you did not request this code, please ignore this email.\nNever share your verification code with anyone.\n\nNEXORA\nStudent Technology & Innovation Community\nBirla Vishvakarma Mahavidyalaya (BVM)`;
+  const textContent = `${heading}\n\n${subtext}\n\nYour verification code is:\n\n${otp}\n\nThis verification code expires in 3 minutes.\n\nIf you did not request this code, please ignore this email.\nNever share your verification code with anyone.\n\nNEXORA\nStudent Technology & Innovation Community\nBirla Vishvakarma Mahavidyalaya (BVM)`;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -372,7 +396,7 @@ export async function sendBrevoOtpEmail(
 
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
-      console.error(`[BREVO DISPATCH FAILED] ${requestId} Status: ${response.status} Message: ${errData.message || 'unknown'}`);
+      console.error(`[BREVO DISPATCH FAILED] ${requestId} Status: ${response.status} Code: ${String(errData.code || 'unknown').slice(0, 80)}`);
       if (response.status === 401 || response.status === 403) {
         throw new BrevoServiceError('Email service provider rejected authentication. Please notify administrator.', 'EMAIL_PROVIDER_REJECTED', 502);
       }
@@ -393,7 +417,9 @@ export async function sendBrevoOtpEmail(
       console.error(`[BREVO DISPATCH TIMEOUT] ${requestId}: Brevo API took longer than 10s to respond`);
       throw new BrevoServiceError('Email service timed out while dispatching verification code.', 'EMAIL_TIMEOUT', 504);
     }
-    throw fetchErr;
+    if (fetchErr instanceof BrevoServiceError) throw fetchErr;
+    console.error(`[BREVO DISPATCH NETWORK FAILURE] ${requestId}: provider request failed.`);
+    throw new BrevoServiceError('Email service could not be reached. Please try again later.', 'EMAIL_PROVIDER_UNAVAILABLE', 502);
   } finally {
     clearTimeout(timeoutId);
   }
