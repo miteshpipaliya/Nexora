@@ -195,3 +195,42 @@ export const hashPasswordScrypt = (pwd: string, customSalt?: string) => {
 export const verifyPasswordScrypt = (candidate: string, stored: any, customSalt?: string) => {
   return verifyPassword(candidate, stored, customSalt);
 };
+
+/**
+ * Cryptographically generates a secure, high-entropy Admin Security Password
+ * exceeding all policy requirements (upper, lower, digits, symbols, >= 16 chars).
+ */
+export function generateStrongAdminPassword(length = 20): string {
+  const actualLength = Math.max(16, length);
+  const uppers = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lowers = 'abcdefghijkmnopqrstuvwxyz';
+  const digits = '23456789';
+  const symbols = '!@#$%^&*()_+-=[]{};:,.<>?';
+  const allChars = uppers + lowers + digits + symbols;
+
+  // Guarantee minimum representation of each required character category
+  const chars: string[] = [
+    uppers[crypto.randomInt(0, uppers.length)],
+    uppers[crypto.randomInt(0, uppers.length)],
+    lowers[crypto.randomInt(0, lowers.length)],
+    lowers[crypto.randomInt(0, lowers.length)],
+    digits[crypto.randomInt(0, digits.length)],
+    digits[crypto.randomInt(0, digits.length)],
+    symbols[crypto.randomInt(0, symbols.length)],
+    symbols[crypto.randomInt(0, symbols.length)]
+  ];
+
+  while (chars.length < actualLength) {
+    chars.push(allChars[crypto.randomInt(0, allChars.length)]);
+  }
+
+  // Cryptographic Fisher-Yates shuffle
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(0, i + 1);
+    const temp = chars[i];
+    chars[i] = chars[j];
+    chars[j] = temp;
+  }
+
+  return chars.join('');
+}

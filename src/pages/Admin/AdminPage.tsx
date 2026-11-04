@@ -555,6 +555,34 @@ export const AdminPage: React.FC = () => {
     }
   };
 
+  const handleGeneratePassword = async () => {
+    try {
+      const res = await dataService.generateAdminPassword();
+      if (res?.password) {
+        setNewAdminPassword(res.password);
+        setConfirmAdminPassword(res.password);
+        setForgotNewPassword(res.password);
+        setForgotConfirmPassword(res.password);
+        setAuthSuccess('Generated high-entropy 20-character password. Make sure to note it securely.');
+      }
+    } catch {
+      const uppers = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+      const lowers = 'abcdefghijkmnopqrstuvwxyz';
+      const digits = '23456789';
+      const symbols = '!@#$%^&*()_+-=[]{};:,.<>?';
+      const all = uppers + lowers + digits + symbols;
+      let pass = '';
+      for (let i = 0; i < 20; i++) {
+        pass += all.charAt(Math.floor(Math.random() * all.length));
+      }
+      setNewAdminPassword(pass);
+      setConfirmAdminPassword(pass);
+      setForgotNewPassword(pass);
+      setForgotConfirmPassword(pass);
+      setAuthSuccess('Generated high-entropy password. Make sure to note it securely.');
+    }
+  };
+
   // STEP 3: Verify Admin Security Password (Normal Future Logins)
   const handleVerifyPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1379,13 +1407,23 @@ export const AdminPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-1">New Admin Security Password (Min 16 chars)</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-mono text-slate-300">New Admin Security Password (Min 16 chars)</label>
+                    <button
+                      type="button"
+                      onClick={handleGeneratePassword}
+                      className="text-[11px] font-mono text-violet-400 hover:text-violet-300 flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>Generate Strong Password</span>
+                    </button>
+                  </div>
                   <input
                     type="password"
                     placeholder="Minimum 16 characters"
                     value={newAdminPassword}
                     onChange={(e) => setNewAdminPassword(e.target.value)}
-                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white text-xs focus:outline-none focus:border-violet-400"
+                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white text-xs focus:outline-none focus:border-violet-400 font-mono"
                   />
                 </div>
 
@@ -1539,13 +1577,23 @@ export const AdminPage: React.FC = () => {
 
             <div className="space-y-3 pt-2">
               <div>
-                <label className="block text-xs font-mono text-slate-300 mb-1">New Password (Min 16 chars)</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-mono text-slate-300">New Password (Min 16 chars)</label>
+                  <button
+                    type="button"
+                    onClick={handleGeneratePassword}
+                    className="text-[11px] font-mono text-violet-400 hover:text-violet-300 flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>Generate Strong Password</span>
+                  </button>
+                </div>
                 <input
                   type="password"
                   placeholder="Enter at least 16 characters"
                   value={forgotNewPassword}
                   onChange={(e) => setForgotNewPassword(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white text-xs focus:outline-none focus:border-violet-400"
+                  className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white text-xs focus:outline-none focus:border-violet-400 font-mono"
                 />
               </div>
 

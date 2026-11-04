@@ -6,7 +6,15 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { z } from 'zod';
 import { registerCmsEndpoints } from './src/server/cmsEndpoints';
-import { hashPasswordScrypt, verifyPasswordScrypt, normalizePassword } from './src/server/adminSecurity';
+import { 
+  hashPasswordScrypt, 
+  verifyPasswordScrypt, 
+  normalizePassword, 
+  generateStrongAdminPassword, 
+  validatePasswordPolicy, 
+  hashPassword, 
+  verifyPassword 
+} from './src/server/adminPassword';
 import { getBrevoConfig, sendBrevoOtpEmail, BrevoServiceError, type BrevoConfig } from './src/server/brevoMailer';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -522,9 +530,10 @@ apiRouter.get('/health', (req, res) => {
 // ==========================================
 
 // 1. Dispatch 6-digit Email OTP via Brevo
-apiRouter.post('/auth/send-email-otp', async (req, res) => {
+apiRouter.post(['/auth/send-email-otp', '/auth/forgot-password/request-otp', '/auth/forgot-password'], async (req, res) => {
   try {
-    const { email, purpose = 'signup' } = req.body;
+    const isForgotRoute = req.path.includes('forgot-password');
+    const { email, purpose = (isForgotRoute ? 'reset-password' : 'signup') } = req.body;
     if (!email || typeof email !== 'string' || !email.includes('@')) {
       res.status(400).json({ error: 'A valid email address is required.' });
       return;
@@ -573,14 +582,20 @@ apiRouter.post('/auth/send-email-otp', async (req, res) => {
     });
   } catch (err: any) {
     console.error('Error in /auth/send-email-otp:', err.message || err);
-    res.status(500).json({ error: err.message || 'Failed to dispatch verification code via email.' });
+    const status = err.status || (err.code === 'EMAIL_NOT_CONFIGURED' ? 503 : 500);
+    res.status(status).json({ 
+      error: err.message || 'Failed to dispatch verification code via email.',
+      code: err.code || 'EMAIL_DISPATCH_FAILED',
+      actionableHint: err.actionableHint
+    });
   }
 });
 
 // 2. Validate 6-digit Email OTP
-apiRouter.post('/auth/verify-email-otp', async (req, res) => {
+apiRouter.post(['/auth/verify-email-otp', '/auth/forgot-password/verify-otp'], async (req, res) => {
   try {
-    const { email, otp, purpose = 'signup' } = req.body;
+    const isForgotRoute = req.path.includes('forgot-password');
+    const { email, otp, purpose = (isForgotRoute ? 'reset-password' : 'signup') } = req.body;
     if (!email || !otp) {
       res.status(400).json({ error: 'Both email and 6-digit verification code are required.' });
       return;
@@ -716,7 +731,7 @@ apiRouter.post('/auth/confirm-verified-signup', async (req, res) => {
 });
 
 // 4. Update Password with Verified Reset Token
-apiRouter.post('/auth/reset-password', async (req, res) => {
+apiRouter.post(['/auth/reset-password', '/auth/forgot-password/reset-password'], async (req, res) => {
   try {
     const { email, verificationToken, newPassword } = req.body;
     if (!email || !verificationToken || !newPassword) {
@@ -807,7 +822,7 @@ async function getStoredAdminSecurityAsync(): Promise<AdminSecurityStore | null>
       }
     }
   } catch (fsErr) {
-    console.warn('[ADMIN SECURITY] Firestore read fallback:', fsErr);
+    console.warn('[ADMIN SECURITY] Firestore read notice:', (fsErr as any)?.message || fsErr);
   }
 
   // 2. Secondary local disk cache
@@ -842,11 +857,12 @@ function getStoredAdminSecurity(): AdminSecurityStore | null {
 }
 
 async function saveAdminSecurityAsync(password: string): Promise<AdminSecurityStore> {
-  const { passwordHash, salt } = hashPasswordScrypt(password);
+  const norm = normalizePassword(password);
+  const derived = hashPassword(norm, { version: 1 });
   const record: AdminSecurityStore = {
-    passwordHash,
-    salt,
-    updatedAt: Date.now()
+    passwordHash: derived.hash,
+    salt: derived.salt,
+    updatedAt: derived.updatedAt
   };
   memoryAdminSecurity = record;
   sessionRevokedBeforeTimestamp = record.updatedAt;
@@ -856,9 +872,13 @@ async function saveAdminSecurityAsync(password: string): Promise<AdminSecuritySt
   try {
     const db = await getAdminFirestore();
     if (db) {
-      await db.collection('_admin_security').doc('founder').set(record);
+      await db.collection('_admin_security').doc('founder').set({
+        ...derived,
+        passwordHash: derived.hash,
+        updatedAt: derived.updatedAt
+      });
       const snap = await db.collection('_admin_security').doc('founder').get();
-      if (snap.exists && snap.data()?.passwordHash === record.passwordHash) {
+      if (snap.exists && snap.data()?.hash === derived.hash) {
         firestoreConfirmed = true;
       }
       await db.collection('systemConfig').doc('status').set({
@@ -880,6 +900,40 @@ async function saveAdminSecurityAsync(password: string): Promise<AdminSecuritySt
   return record;
 }
 
+export async function wipeAdminCredentialsAsync(): Promise<void> {
+  memoryAdminSecurity = null;
+  sessionRevokedBeforeTimestamp = Date.now();
+  elevatedAdminSessions.clear();
+  verifiedPasswordTokens.clear();
+  setupOtpChallenges.clear();
+  adminResetChallenges.clear();
+
+  // 1. Wipe local disk cache
+  try {
+    if (fs.existsSync(ADMIN_SECURITY_FILE)) {
+      fs.unlinkSync(ADMIN_SECURITY_FILE);
+      console.log('[ADMIN RESET] Deleted local admin security file.');
+    }
+  } catch (err) {
+    console.warn('[ADMIN RESET] Local disk wipe note:', err);
+  }
+
+  // 2. Wipe Firestore security document and set status to uninitialized
+  try {
+    const db = await getAdminFirestore();
+    if (db) {
+      await db.collection('_admin_security').doc('founder').delete();
+      await db.collection('systemConfig').doc('status').set({
+        initialized: false,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      console.log('[ADMIN RESET] Successfully cleared _admin_security/founder and reset systemConfig.status.initialized to false.');
+    }
+  } catch (fsErr) {
+    console.warn('[ADMIN RESET] Firestore wipe note:', fsErr);
+  }
+}
+
 function saveAdminSecurity(password: string): void {
   saveAdminSecurityAsync(password).catch((err) => {
     console.warn('[ADMIN SECURITY] Background save warning:', err);
@@ -888,28 +942,20 @@ function saveAdminSecurity(password: string): void {
 
 async function verifyAdminSecurityPasswordAsync(password: string): Promise<boolean> {
   const security = await getStoredAdminSecurityAsync();
-  if (security) {
+  if (security && security.passwordHash && security.salt) {
     const isValid = verifyPasswordScrypt(password, security);
     if (!isValid) {
       console.warn('[ADMIN SECURITY] Password verification failed against stored hash.');
     }
     return isValid;
   }
-  // Fallback: If and only if no password stored yet, check env var
-  if (process.env.ADMIN_SECURITY_PASSWORD && process.env.ADMIN_SECURITY_PASSWORD.trim()) {
-    console.warn('[ADMIN SECURITY NOTICE] Using ADMIN_SECURITY_PASSWORD environment variable fallback. Please set a permanent password via setup or CLI.');
-    return normalizePassword(password) === normalizePassword(process.env.ADMIN_SECURITY_PASSWORD);
-  }
   return false;
 }
 
 function verifyAdminSecurityPassword(password: string): boolean {
   const security = getStoredAdminSecurity();
-  if (security) {
+  if (security && security.passwordHash && security.salt) {
     return verifyPasswordScrypt(password, security);
-  }
-  if (process.env.ADMIN_SECURITY_PASSWORD && process.env.ADMIN_SECURITY_PASSWORD.trim()) {
-    return normalizePassword(password) === normalizePassword(process.env.ADMIN_SECURITY_PASSWORD);
   }
   return false;
 }
@@ -994,7 +1040,7 @@ function requireElevatedAdmin(req: express.Request, res: express.Response, next:
 // 1. Admin Status check (supports both /admin/status and /admin/auth/status via GET and POST)
 apiRouter.all(['/admin/auth/status', '/admin/status'], async (req, res) => {
   let security = await getStoredAdminSecurityAsync();
-  let isInitialized = Boolean(security || process.env.ADMIN_SECURITY_PASSWORD);
+  let isInitialized = Boolean(security && security.passwordHash && security.salt);
 
   // If server memory/disk was cold-started, check Firestore systemConfig directly
   if (!isInitialized) {
@@ -1002,22 +1048,41 @@ apiRouter.all(['/admin/auth/status', '/admin/status'], async (req, res) => {
       const db = await getAdminFirestore();
       if (db) {
         const confSnap = await db.collection('systemConfig').doc('status').get();
-        if (confSnap.exists && confSnap.data()?.initialized) {
+        if (confSnap.exists && confSnap.data()?.initialized === true) {
           isInitialized = true;
         }
       }
     } catch {}
   }
 
-  // Allow trusted client ID token or client confirmation to sync status
-  if (!isInitialized && req.body && req.body.clientConfirmedInitialized === true) {
-    isInitialized = true;
-  }
-
   res.json({
     success: true,
     initialized: isInitialized
   });
+});
+
+// 1.1 Generate strong, policy-compliant admin password
+apiRouter.all(['/admin/auth/generate-password', '/admin/generate-password'], (req, res) => {
+  const password = generateStrongAdminPassword(20);
+  res.json({
+    success: true,
+    password
+  });
+});
+
+// 1.2 Permanently wipe/reset admin credentials and session keys
+apiRouter.post(['/admin/auth/reset-credentials', '/admin/reset-credentials'], async (req, res) => {
+  try {
+    await wipeAdminCredentialsAsync();
+    recordAudit('ADMIN_CREDENTIALS_RESET', 'Administrator credentials and security keys were permanently wiped. Setup routine activated.');
+    res.json({
+      success: true,
+      message: 'Admin credentials and session keys have been permanently cleared. Brand new password setup is now required.'
+    });
+  } catch (err: any) {
+    console.error('Error resetting admin credentials:', err);
+    res.status(500).json({ error: 'Failed to reset admin credentials.' });
+  }
 });
 
 // 1b. Elevate Admin Custom Claims for Authorized Administrators
@@ -1146,6 +1211,12 @@ apiRouter.post(['/admin/auth/setup-password', '/admin/setup-password'], async (r
 
     if (typeof newPassword !== 'string' || newPassword.length < 16) {
       res.status(400).json({ error: 'Admin Security Password must be at least 16 characters long.' });
+      return;
+    }
+
+    const policy = validatePasswordPolicy(newPassword);
+    if (!policy.valid) {
+      res.status(400).json({ error: policy.reason || 'Password does not satisfy complexity requirements.' });
       return;
     }
 
@@ -1387,7 +1458,7 @@ apiRouter.post(['/admin/auth/verify-admin-otp', '/admin/auth/verify-otp', '/admi
 // ========================================================
 
 // 7a. Request Admin Password Reset OTP via Brevo
-apiRouter.post('/admin/auth/forgot-password/request-otp', async (req, res) => {
+apiRouter.post(['/admin/auth/forgot-password/request-otp', '/admin/forgot-password/request-otp', '/admin/auth/forgot-password'], async (req, res) => {
   try {
     const { email } = req.body;
     // Security: Do not disclose whether an arbitrary email address belongs to an admin
@@ -1459,7 +1530,7 @@ apiRouter.post('/admin/auth/forgot-password/request-otp', async (req, res) => {
 });
 
 // 7b. Verify Admin Password Reset OTP
-apiRouter.post('/admin/auth/forgot-password/verify-otp', async (req, res) => {
+apiRouter.post(['/admin/auth/forgot-password/verify-otp', '/admin/forgot-password/verify-otp'], async (req, res) => {
   try {
     const { otp } = req.body;
     if (!otp) {
@@ -1532,7 +1603,7 @@ apiRouter.post('/admin/auth/forgot-password/verify-otp', async (req, res) => {
 });
 
 // 7c. Complete Admin Password Reset
-apiRouter.post('/admin/auth/forgot-password/reset-password', async (req, res) => {
+apiRouter.post(['/admin/auth/forgot-password/reset-password', '/admin/forgot-password/reset-password'], async (req, res) => {
   try {
     const { resetToken, newPassword, confirmPassword } = req.body;
     if (!resetToken || !newPassword || !confirmPassword) {
@@ -1547,6 +1618,12 @@ apiRouter.post('/admin/auth/forgot-password/reset-password', async (req, res) =>
 
     if (typeof newPassword !== 'string' || newPassword.length < 16) {
       res.status(400).json({ error: 'Admin Security Password must be at least 16 characters long.' });
+      return;
+    }
+
+    const policy = validatePasswordPolicy(newPassword);
+    if (!policy.valid) {
+      res.status(400).json({ error: policy.reason || 'Password does not satisfy complexity requirements.' });
       return;
     }
 

@@ -78,7 +78,7 @@ function stripQuotes(str: string): string {
  * Accesses and strictly validates Brevo configuration at call time.
  */
 export function getBrevoConfig(): BrevoConfig {
-  const apiKey = stripQuotes(process.env.BREVO_API_KEY || '');
+  const apiKey = stripQuotes(process.env.BREVO_API_KEY || process.env.BREVO_SMTP_KEY || '');
   if (!apiKey) {
     console.error('[EMAIL DISPATCH FAILURE] Missing required variable: BREVO_API_KEY');
     throw new BrevoServiceError(
