@@ -1,6 +1,5 @@
-/// <reference types="vite/client" />
-
 interface ImportMetaEnv {
+  readonly [key: string]: string | undefined;
   readonly VERCEL_ENV?: string;
   readonly VITE_FIREBASE_API_KEY?: string;
   readonly VITE_FIREBASE_AUTH_DOMAIN?: string;
@@ -11,3 +10,9 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_MEASUREMENT_ID?: string;
   readonly VITE_FIRESTORE_DATABASE_ID?: string;
 }
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
+
+declare module '*.css' {}

@@ -653,21 +653,17 @@ class NexoraDataService {
 
   // --- REGISTRATIONS ---
   public async getUserRegistrations(userId: string): Promise<RegistrationRecord[]> {
-    try {
-      const q = query(
-        collection(db, 'registrations'),
-        where('user_id', '==', userId)
-      );
-      const snap = await getDocs(q);
-      const results: RegistrationRecord[] = [];
-      snap.forEach((docSnap) => {
-        results.push(docSnap.data() as RegistrationRecord);
-      });
-      return results.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    } catch (err) {
-      console.warn('Could not fetch registrations from Firestore:', err);
-      return [];
-    }
+    const q = query(
+      collection(db, 'registrations'),
+      where('user_id', '==', userId)
+    );
+    const snap = await getDocs(q);
+    const results: RegistrationRecord[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as RegistrationRecord;
+      results.push({ ...data, id: data.id || docSnap.id });
+    });
+    return results.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }
 
   public async getAllRegistrations(): Promise<RegistrationRecord[]> {

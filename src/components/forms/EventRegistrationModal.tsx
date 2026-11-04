@@ -71,6 +71,7 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
   // Submission Statuses
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [registrationCheckError, setRegistrationCheckError] = useState(false);
   const [confirmedRecord, setConfirmedRecord] = useState<RegistrationRecord | null>(null);
   const [copiedId, setCopiedId] = useState(false);
 
@@ -79,9 +80,14 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
     if (!isOpen) {
       setConfirmedRecord(null);
       setErrorMessage(null);
+      setRegistrationCheckError(false);
       setCopiedId(false);
       return;
     }
+
+    setAlreadyRegistered(false);
+    setErrorMessage(null);
+    setRegistrationCheckError(false);
 
     if (user) {
       setFullName(user.full_name || '');
@@ -98,7 +104,11 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
         .then((exists) => {
           setAlreadyRegistered(exists);
         })
-        .catch((err) => console.error(err))
+        .catch((err) => {
+          console.error('Could not verify prior competition registration:', err);
+          setRegistrationCheckError(true);
+          setErrorMessage('We could not verify your existing registration. Please retry before submitting.');
+        })
         .finally(() => setCheckingExisting(false));
     } else {
       setCheckingExisting(false);
@@ -179,6 +189,11 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+
+    if (registrationCheckError) {
+      setErrorMessage('We could not verify your existing registration. Please close and reopen this form to retry.');
+      return;
+    }
 
     if (event.isComingSoon) {
       return setErrorMessage('Registration is currently locked. This competition is Coming Soon.');

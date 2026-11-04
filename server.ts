@@ -19,6 +19,7 @@ import { getBrevoConfig, sendBrevoOtpEmail, BrevoServiceError, type BrevoConfig 
 import { AdminOtpChallengeStore, AdminOtpRateLimitError, AdminOtpStorageError, type OtpConsumeResult } from './src/server/adminOtpChallengeStore';
 import { resolveFirebaseAdminConfig } from './src/server/firebaseAdminConfig';
 import { StudentOtpStore, StudentOtpRateLimitError, StudentOtpStorageError } from './src/server/studentOtpStore';
+import { createRegistrationOnce, RegistrationStoreError } from './src/server/registrationStore';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1494,35 +1495,20 @@ apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/c
     }
 
     const idToken = authHeader.replace(/^Bearer\s+/i, '').trim();
-    let userId = '';
-    let userEmail = '';
-
-    const adminAuth = await getAdminAuth();
-    if (adminAuth) {
-      try {
-        const decoded = await adminAuth.verifyIdToken(idToken);
-        userId = decoded.uid;
-        userEmail = (decoded.email || '').toLowerCase().trim();
-      } catch (err: any) {
-        console.warn('[REGISTRATION] verifyIdToken note:', err?.message);
-      }
-    }
-
-    if (!userId) {
-      try {
-        const parts = idToken.split('.');
-        if (parts.length === 3) {
-          const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-          if (payload && (payload.uid || payload.sub || payload.user_id)) {
-            userId = payload.uid || payload.sub || payload.user_id;
-            userEmail = (payload.email || '').toLowerCase().trim();
-          }
-        }
-      } catch {}
-    }
-
-    if (!userId) {
+    let decodedToken: { uid: string; email?: string };
+    try {
+      const adminAuth = await getAdminAuth();
+      if (!adminAuth) throw new Error('Firebase Admin Auth is unavailable.');
+      decodedToken = await adminAuth.verifyIdToken(idToken);
+    } catch (error: any) {
+      console.warn('[REGISTRATION] Firebase ID token verification failed:', error?.code || error?.name || 'verification_error');
       res.status(401).json({ error: 'Invalid authentication credentials.' });
+      return;
+    }
+    const userId = decodedToken.uid;
+    const userEmail = (decodedToken.email || '').toLowerCase().trim();
+    if (!userId || !userEmail) {
+      res.status(401).json({ error: 'A verified student identity is required.' });
       return;
     }
 
@@ -1547,6 +1533,10 @@ apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/c
     }
 
     const cleanSlug = event_slug.toLowerCase().trim();
+    if (email.trim().toLowerCase() !== userEmail) {
+      res.status(403).json({ error: 'The registration email must match the authenticated account.' });
+      return;
+    }
 
     // Brain Battle squad rule: exactly 5 members
     if (cleanSlug === 'brain-battle' || cleanSlug === 'brainbattle') {
@@ -1562,99 +1552,66 @@ apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/c
     }
 
     const db = await getAdminFirestore();
-    let ev: any = null;
-    if (db) {
-      const evSnap = await db.collection('events').doc(cleanSlug).get();
-      if (evSnap.exists) {
-        ev = evSnap.data();
-      }
+    if (!db) {
+      res.status(503).json({ error: 'Registration storage is temporarily unavailable.' });
+      return;
     }
 
-    if (ev) {
-      if (ev.isComingSoon === true) {
-        res.status(403).json({
-          error: 'This competition is marked COMING SOON. Registrations are blocked.',
-          code: 'COMPETITION_COMING_SOON'
-        });
-        return;
-      }
-
-      if (ev.registration_open === false || ev.status === 'Archived' || ev.status === 'Completed') {
-        res.status(400).json({
-          error: 'Registration for this competition is currently closed.'
-        });
-        return;
-      }
-
-      const capacity = Number(ev.capacity) || 60;
-      const registeredCount = Number(ev.registered_count) || 0;
-      if (registeredCount >= capacity) {
-        res.status(400).json({
-          error: 'Competition capacity has been reached.'
-        });
-        return;
-      }
-    }
-
-    const registrationId = `reg_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-    const referenceId = `NEX-${cleanSlug.slice(0, 4).toUpperCase()}-${Date.now().toString(36).toUpperCase().slice(-5)}`;
     const nowIso = new Date().toISOString();
+    const result = await createRegistrationOnce(db, userId, cleanSlug, (ev, registrationId) => {
+      const referenceId = `NEX-${cleanSlug.slice(0, 4).toUpperCase()}-${Date.now().toString(36).toUpperCase().slice(-5)}`;
+      const isBvm = college.toLowerCase().includes('birla') || college.toLowerCase().includes('bvm');
+      const bvmFee = ev?.bvm_fee ?? ev?.fee_per_participant ?? 50;
+      const externalFee = ev?.external_fee ?? ev?.fee_per_participant ?? 70;
+      const feePaid = isBvm ? bvmFee : externalFee;
+      const memberDetails = Array.isArray(team_member_details) ? team_member_details : [];
+      const memberNames = Array.isArray(team_members) ? team_members : [];
+      return {
+        id: registrationId,
+        competition_id: ev?.competition_id || ev?.id || cleanSlug,
+        reference_id: referenceId,
+        user_id: userId,
+        event_id: cleanSlug,
+        event_slug: cleanSlug,
+        event_title: ev?.title || event_slug,
+        full_name: full_name.trim(),
+        email: userEmail,
+        phone_number: phone_number.trim(),
+        college: college.trim(),
+        branch: branch.trim(),
+        academic_year,
+        enrollment_number: enrollment_number.trim().toUpperCase(),
+        division: division?.trim() || '',
+        team_name: team_name?.trim() || '',
+        team_members: memberNames,
+        team_member_details: memberDetails,
+        participant_count: memberDetails.length || memberNames.length || 1,
+        registration_status: 'Confirmed',
+        payment_status: 'Completed',
+        calculated_fee: feePaid,
+        fee_paid: feePaid,
+        created_at: nowIso,
+        updated_at: nowIso
+      };
+    });
 
-    const isBvm = college.toLowerCase().includes('birla') || college.toLowerCase().includes('bvm');
-    const bvmFee = ev?.bvm_fee ?? ev?.fee_per_participant ?? 50;
-    const externalFee = ev?.external_fee ?? ev?.fee_per_participant ?? 70;
-    const feePaid = isBvm ? bvmFee : externalFee;
-
-    const registrationRecord = {
-      id: registrationId,
-      reference_id: referenceId,
-      user_id: userId,
-      event_id: cleanSlug,
-      event_slug: cleanSlug,
-      event_title: ev?.title || event_slug,
-      full_name: full_name.trim(),
-      email: email.trim().toLowerCase(),
-      phone_number: phone_number.trim(),
-      college: college.trim(),
-      branch: branch.trim(),
-      academic_year,
-      enrollment_number: enrollment_number.trim().toUpperCase(),
-      division: division?.trim() || '',
-      team_name: team_name?.trim() || '',
-      team_members: Array.isArray(team_members) ? team_members : [],
-      team_member_details: Array.isArray(team_member_details) ? team_member_details : [],
-      registration_status: 'Confirmed',
-      payment_status: 'Completed',
-      fee_paid: feePaid,
-      created_at: nowIso,
-      updated_at: nowIso
-    };
-
-    if (db) {
-      const batch = db.batch();
-      const regDocRef = db.collection('registrations').doc(registrationId);
-      batch.set(regDocRef, registrationRecord);
-
-      if (ev) {
-        const evDocRef = db.collection('events').doc(cleanSlug);
-        batch.update(evDocRef, {
-          registered_count: (Number(ev.registered_count) || 0) + 1,
-          updated_at: nowIso
-        });
-      }
-
-      await batch.commit();
+    if (!result.alreadyRegistered) {
+      recordAudit('REGISTRATION_CREATED', `Student ${userEmail} registered for ${cleanSlug} (Ref: ${result.registration.reference_id})`, userEmail);
     }
 
-    recordAudit('REGISTRATION_CREATED', `Student ${email} registered for ${cleanSlug} (Ref: ${referenceId})`, email);
-
-    res.status(201).json({
+    res.status(result.alreadyRegistered ? 200 : 201).json({
       success: true,
-      registration: registrationRecord
+      alreadyRegistered: result.alreadyRegistered,
+      registration: result.registration
     });
   } catch (err: any) {
-    console.error('[REGISTRATION CREATE ERROR]', err);
-    res.status(500).json({ error: err.message || 'Failed to process registration.' });
+    if (err instanceof RegistrationStoreError) {
+      const status = err.code === 'COMPETITION_COMING_SOON' ? 403 : 400;
+      res.status(status).json({ error: err.message, code: err.code });
+      return;
+    }
+    console.error('[REGISTRATION CREATE ERROR]', err?.code || err?.name || 'unknown_error');
+    res.status(500).json({ error: 'Failed to process registration.', code: 'REGISTRATION_SAVE_FAILED' });
   }
 });
 

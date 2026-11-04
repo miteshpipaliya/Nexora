@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   User, 
@@ -26,6 +26,7 @@ export const ProfilePage: React.FC = () => {
 
   const [registrations, setRegistrations] = useState<RegistrationRecord[]>([]);
   const [loadingRegs, setLoadingRegs] = useState(true);
+  const [registrationsError, setRegistrationsError] = useState<string | null>(null);
   const [emailVerificationSent, setEmailVerificationSent] = useState(false);
 
   // Edit Mode states
@@ -41,6 +42,20 @@ export const ProfilePage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const loadRegistrations = useCallback(async (userId: string) => {
+    setLoadingRegs(true);
+    setRegistrationsError(null);
+    try {
+      setRegistrations(await dataService.getUserRegistrations(userId));
+    } catch (error) {
+      console.error('Could not load My Competitions:', error);
+      setRegistrations([]);
+      setRegistrationsError('Your registrations could not be loaded. Check your connection and retry.');
+    } finally {
+      setLoadingRegs(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -58,13 +73,8 @@ export const ProfilePage: React.FC = () => {
     setEditPhone(user.phone_number || '');
 
     // Fetch user's registrations
-    dataService.getUserRegistrations(user.id)
-      .then((regs) => {
-        setRegistrations(regs);
-      })
-      .catch((err) => console.error(err))
-      .finally(() => setLoadingRegs(false));
-  }, [user, navigate]);
+    void loadRegistrations(user.id);
+  }, [user, navigate, loadRegistrations]);
 
   if (!user) return null;
 
@@ -508,6 +518,18 @@ export const ProfilePage: React.FC = () => {
         {loadingRegs ? (
           <div className="p-12 text-center text-xs font-mono text-slate-500">
             Loading registrations...
+          </div>
+        ) : registrationsError ? (
+          <div role="alert" className="p-8 rounded-2xl bg-[#11101B] border border-red-500/25 text-center space-y-4">
+            <AlertCircle className="w-9 h-9 text-red-400 mx-auto" />
+            <p className="text-sm text-red-200">{registrationsError}</p>
+            <button
+              type="button"
+              onClick={() => void loadRegistrations(user.id)}
+              className="px-5 py-2.5 text-xs font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-500"
+            >
+              Retry
+            </button>
           </div>
         ) : registrations.length === 0 ? (
           <div className="p-12 rounded-2xl bg-[#11101B] border border-violet-500/20 text-center space-y-4">
