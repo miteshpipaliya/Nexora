@@ -70,8 +70,9 @@
 
 ### 5.1 Preview startup and isolation
 
-- Vercel's `codex/nexora-production-audit` Preview environment has no configured variables. The Preview API import fails closed with `ConfigError: OTP_HMAC_SECRET must be configured with at least 32 characters in serverless environments.` This is missing Preview configuration, not evidence that a Production credential or database was used.
-- The Preview deployment serves its HTML, but `/api/health` returned `500 FUNCTION_INVOCATION_FAILED`. Firebase Auth, Firestore, Brevo, and the browser experience cannot be integration-tested until isolated Preview settings are added.
+- Fixed in commit `5828b719`: OTP HMAC initialization is lazy. `/api/health` no longer loads authentication secrets during serverless module import, while `/api/auth/*` and `/api/admin/*` fail closed with HTTP 503 when `OTP_HMAC_SECRET` is absent. A Preview-mode regression test covers missing and valid OTP secret cases.
+- The Vercel Preview for `5828b719` is Ready; `/api/health` returns HTTP 200 and a protected auth request returns HTTP 503 while the Preview secret is absent. This verifies health startup and fail-closed behavior, not OTP/Firebase readiness.
+- Vercel metadata confirms there are no Preview environment variables for the audit branch. Frontend Firebase configuration rejects an unconfigured Preview rather than falling back to Production. Firebase Auth, Firestore and Brevo cannot be integration-tested until isolated Preview settings are added.
 - Do not remove the serverless HMAC requirement or Preview Firebase isolation check to make the Preview appear healthy.
 
 ### 5.2 Production Firebase configuration verification limit
@@ -88,7 +89,8 @@
 
 ### 5.4 Checks not completed
 
-- `npm run rules:test` currently fails because `tests/rules.test.ts` does not exist. Firestore rules were inspected statically (including default deny and internal collection denials), but their behavior was not verified against the Firebase emulator.
+- Typecheck, all 88 unit/regression tests and the production build pass locally after the health fix. Vercel reports the audit-branch deployment Ready, but its build log includes a non-fatal `TS2688: Cannot find type definition file for 'vite/client'` diagnostic that needs investigation.
+- `npm run rules:test` still fails because `tests/rules.test.ts` does not exist. Firestore rules were inspected statically (including default deny and internal collection denials), but their behavior was not verified against the Firebase emulator.
 - Student/Admin Firebase workflows, Firestore authorization, registration, responsive UI, and real Brevo delivery were not integration-tested. Staging credentials and authorized test accounts are required. No actual OTP email was sent or inbox receipt confirmed.
 
 ### 5.5 Medium and Low findings
