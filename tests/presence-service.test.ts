@@ -44,10 +44,10 @@ describe('Real-Time Student Presence Service', () => {
     const record: UserPresenceRecord = {
       user_id: 'user_123',
       is_online: true,
-      last_seen: now - 90_000,
+      last_seen: now - (PRESENCE_LEASE_TIMEOUT_MS + 20_000),
       sessions: {
-        tab_1: now - 90_000,
-        tab_2: now - 80_000
+        tab_1: now - (PRESENCE_LEASE_TIMEOUT_MS + 20_000),
+        tab_2: now - (PRESENCE_LEASE_TIMEOUT_MS + 10_000)
       }
     };
     expect(isUserOnline(record)).toBe(false);

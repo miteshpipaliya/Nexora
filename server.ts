@@ -15,7 +15,7 @@ import {
   hashPassword, 
   verifyPassword 
 } from './src/server/adminPassword';
-import { getBrevoConfig, sendBrevoOtpEmail, BrevoServiceError, type BrevoConfig } from './src/server/brevoMailer';
+import { getBrevoConfig, sendBrevoOtpEmail, sendBrevoContactNotification, BrevoServiceError, type BrevoConfig } from './src/server/brevoMailer';
 import { AdminOtpChallengeStore, AdminOtpRateLimitError, AdminOtpStorageError, type OtpConsumeResult } from './src/server/adminOtpChallengeStore';
 import { resolveFirebaseAdminConfig } from './src/server/firebaseAdminConfig';
 import { StudentOtpStore, StudentOtpRateLimitError, StudentOtpStorageError } from './src/server/studentOtpStore';
@@ -1782,6 +1782,263 @@ apiRouter.post('/admin/upload-image', requireElevatedAdmin, (req, res) => {
     }
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Image upload failed.' });
+  }
+});
+
+// ==========================================
+// CONTACT FORM SUBMISSION & RESILIENCE (PROMPT 1)
+// ==========================================
+
+const contactSubmissionSchema = z.object({
+  sender_name: z.string().trim().min(2, 'Name must be at least 2 characters').max(80, 'Name cannot exceed 80 characters'),
+  sender_email: z.string().trim().toLowerCase().email('Please provide a valid email address').max(254, 'Email cannot exceed 254 characters'),
+  subject: z.string().trim().max(150, 'Subject cannot exceed 150 characters').optional().default('NEXORA General Inquiry'),
+  message: z.string().trim().min(10, 'Message must be at least 10 characters').max(2000, 'Message cannot exceed 2000 characters'),
+  submissionId: z.string().trim().uuid('Invalid submission ID format').optional(),
+  honeypot: z.string().optional()
+}).strict();
+
+// In-memory rate-limiter caches
+const contactIpRateLimits = new Map<string, { count: number; windowStart: number }>();
+const contactEmailRateLimits = new Map<string, { count: number; windowStart: number }>();
+let contactGlobalCount = 0;
+let contactGlobalWindowStart = Date.now();
+
+function sanitizeText(str: string): string {
+  return (str || '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim();
+}
+
+apiRouter.post('/contact/submit', async (req, res) => {
+  try {
+    // 1. Silent Honeypot Trap
+    if (typeof req.body?.honeypot === 'string' && req.body.honeypot.trim().length > 0) {
+      res.status(200).json({
+        success: true,
+        id: req.body.submissionId || 'hp_ignored',
+        message: 'Your message has been received. The NEXORA team will review it.'
+      });
+      return;
+    }
+
+    // 2. Strict Zod Schema Validation
+    const parsed = contactSubmissionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const fieldErrors: Record<string, string> = {};
+      const issues = parsed.error.issues || (parsed.error as any).errors || [];
+      issues.forEach((err: any) => {
+        const path = (err.path && Array.isArray(err.path) && err.path.length > 0) ? err.path.join('.') : 'general';
+        fieldErrors[path] = err.message;
+      });
+      res.status(400).json({
+        success: false,
+        error: 'Validation failed for submitted contact form.',
+        fields: fieldErrors
+      });
+      return;
+    }
+
+    const { sender_name, sender_email, subject, message, submissionId } = parsed.data;
+    const cleanName = sanitizeText(sender_name);
+    const cleanSubject = sanitizeText(subject || 'NEXORA General Inquiry');
+    const cleanMessage = sanitizeText(message);
+    const cleanEmail = sender_email.toLowerCase();
+
+    // 3. Abuse Protection via Salted IP & Email Hash (never store raw IP)
+    const rawIp = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1').split(',')[0].trim();
+    const hashedIp = crypto.createHmac('sha256', getHmacSecret()).update(rawIp).digest('hex');
+    const now = Date.now();
+
+    // Global daily cap (100 per 24 hours)
+    if (now - contactGlobalWindowStart > 24 * 60 * 60 * 1000) {
+      contactGlobalCount = 0;
+      contactGlobalWindowStart = now;
+    }
+    if (contactGlobalCount >= 100) {
+      res.status(429).json({ error: 'Daily community contact volume reached. Please contact us directly via email.' });
+      return;
+    }
+
+    // Per IP rate limit (3 per 10 minutes)
+    const ipLimit = contactIpRateLimits.get(hashedIp);
+    if (!ipLimit || now - ipLimit.windowStart > 10 * 60 * 1000) {
+      contactIpRateLimits.set(hashedIp, { count: 1, windowStart: now });
+    } else {
+      if (ipLimit.count >= 3) {
+        const waitSec = Math.ceil((10 * 60 * 1000 - (now - ipLimit.windowStart)) / 1000);
+        res.status(429).json({
+          error: `Too many submissions from this network. Please wait ${waitSec} seconds before sending another message.`,
+          retryAfterSeconds: waitSec
+        });
+        return;
+      }
+      ipLimit.count += 1;
+    }
+
+    // Per email rate limit (5 per 24 hours)
+    const emailLimit = contactEmailRateLimits.get(cleanEmail);
+    if (!emailLimit || now - emailLimit.windowStart > 24 * 60 * 60 * 1000) {
+      contactEmailRateLimits.set(cleanEmail, { count: 1, windowStart: now });
+    } else {
+      if (emailLimit.count >= 5) {
+        res.status(429).json({
+          error: 'Daily contact submission limit reached for this email address. Please try again tomorrow.'
+        });
+        return;
+      }
+      emailLimit.count += 1;
+    }
+
+    contactGlobalCount += 1;
+
+    // 4. Firestore Admin SDK Persistence & Idempotency
+    const db = await getAdminFirestore();
+    if (!db) {
+      res.status(503).json({ error: 'Database service is currently unreachable. Please try again later.' });
+      return;
+    }
+
+    const messageId = submissionId || `msg_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const docRef = db.collection('contactMessages').doc(messageId);
+
+    // Idempotency check: if document already exists, return 200 without duplicate email
+    const existingSnap = await docRef.get();
+    if (existingSnap.exists) {
+      res.status(200).json({
+        success: true,
+        id: messageId,
+        alreadyProcessed: true,
+        message: 'Your message has been received. The NEXORA team will review it.'
+      });
+      return;
+    }
+
+    const messageRecord = {
+      id: messageId,
+      sender_name: cleanName,
+      sender_email: cleanEmail,
+      subject: cleanSubject,
+      message: cleanMessage,
+      status: 'unread',
+      created_at: new Date().toISOString(),
+      delivery_status: 'email_pending',
+      email_attempts: 1
+    };
+
+    await docRef.set(messageRecord);
+
+    // 5. Brevo Email Notification to Organizers
+    const notifyRecipient = (process.env.CONTACT_NOTIFY_EMAIL || 'nexora.bvm@gmail.com').trim();
+    try {
+      await sendBrevoContactNotification(notifyRecipient, {
+        senderName: cleanName,
+        senderEmail: cleanEmail,
+        subject: cleanSubject,
+        message: cleanMessage,
+        messageId
+      });
+      await docRef.update({
+        delivery_status: 'email_sent',
+        updated_at: new Date().toISOString()
+      });
+    } catch (brevoErr: any) {
+      console.error(`[BREVO CONTACT NOTIFY ERROR] ${messageId}:`, brevoErr?.message || brevoErr);
+      await docRef.update({
+        delivery_status: 'email_failed',
+        email_error: brevoErr?.message || 'Email delivery failed',
+        updated_at: new Date().toISOString()
+      }).catch(() => {});
+    }
+
+    recordAudit('CONTACT_MESSAGE_RECEIVED', `Inquiry received from ${cleanEmail} (ID: ${messageId})`);
+
+    res.status(201).json({
+      success: true,
+      id: messageId,
+      message: 'Your message has been received. The NEXORA team will review it.'
+    });
+  } catch (err: any) {
+    console.error('[CONTACT SUBMIT CRASH]', err);
+    res.status(500).json({ error: 'An unexpected error occurred while processing your message. Please try again.' });
+  }
+});
+
+// Admin-only Retry Notification Email endpoint
+apiRouter.post('/admin/contact-messages/:id/retry-email', requireElevatedAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getAdminFirestore();
+    if (!db) {
+      res.status(503).json({ error: 'Database service unreachable.' });
+      return;
+    }
+
+    const docRef = db.collection('contactMessages').doc(id);
+    const snap = await docRef.get();
+    if (!snap.exists) {
+      res.status(404).json({ error: 'Contact message not found.' });
+      return;
+    }
+
+    const data = snap.data();
+    const notifyRecipient = (process.env.CONTACT_NOTIFY_EMAIL || 'nexora.bvm@gmail.com').trim();
+    await sendBrevoContactNotification(notifyRecipient, {
+      senderName: data?.sender_name || 'Visitor',
+      senderEmail: data?.sender_email || '',
+      subject: data?.subject || 'NEXORA General Inquiry',
+      message: data?.message || '',
+      messageId: id
+    });
+
+    await docRef.update({
+      delivery_status: 'email_sent',
+      email_attempts: (Number(data?.email_attempts) || 0) + 1,
+      updated_at: new Date().toISOString()
+    });
+
+    recordAudit('CONTACT_EMAIL_RESENT', `Notification resent for message ${id}`);
+    res.json({ success: true, message: 'Notification email successfully resent.' });
+  } catch (err: any) {
+    res.status(err?.status || 500).json({ error: err.message || 'Failed to resend notification email.' });
+  }
+});
+
+// Fallback admin presence reader
+apiRouter.get('/admin/presence', requireElevatedAdmin, async (req, res) => {
+  try {
+    const db = await getAdminFirestore();
+    if (!db) {
+      res.status(503).json({ error: 'Database service unreachable.' });
+      return;
+    }
+
+    const snap = await db.collection('presenceSessions').get();
+    const now = Date.now();
+    const LEASE_MS = 150_000;
+    const userMap: Record<string, { online: boolean; lastSeen: number; sessionCount: number }> = {};
+
+    snap.forEach((docSnap: any) => {
+      const data = docSnap.data();
+      if (!data?.uid) return;
+      const uid = data.uid;
+      const lastSeen = data.lastSeen?.toMillis ? data.lastSeen.toMillis() : (Number(data.lastSeen) || 0);
+      const isFresh = (now - lastSeen) < LEASE_MS;
+
+      if (!userMap[uid]) {
+        userMap[uid] = { online: isFresh, lastSeen, sessionCount: isFresh ? 1 : 0 };
+      } else {
+        if (lastSeen > userMap[uid].lastSeen) {
+          userMap[uid].lastSeen = lastSeen;
+        }
+        if (isFresh) {
+          userMap[uid].online = true;
+          userMap[uid].sessionCount += 1;
+        }
+      }
+    });
+
+    res.json({ success: true, presence: userMap, mode: 'delayed_admin_sync' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to read presence sessions.' });
   }
 });
 

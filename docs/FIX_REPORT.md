@@ -157,7 +157,39 @@ All four engineering packages (Packages A, B, C, D) have been implemented, teste
 
 ---
 
-## 4. Blocked Items & Boundaries of Testing
+## 4. Contact Form & Live Online/Offline Status (Prompts v1)
+
+### 4.1 Footer Contact Form (`POST /api/contact/submit`)
+- **Root Cause of 404:** The client was dispatching `POST /api/contact/submit`, but the route was missing from Express; the server catch-all `app.use('/api', ...)` returned `API route not found: POST /api/contact/submit`.
+- **Implementation in `server.ts` & `Footer.tsx`:**
+  - Added `POST /contact/submit` to `apiRouter` with Zod validation (name, email, message, submissionId).
+  - Silent honeypot trap to eliminate automated bot spam.
+  - Salted HMAC-SHA256 IP rate limiting (3 requests per 10 minutes) without storing raw IP addresses.
+  - Email rate limiting (5 requests per 24 hours per email address) and global volume cap (100 per 24 hours).
+  - Idempotency via client UUID `submissionId` in Firestore collection `contactMessages`.
+  - Transactional email notification dispatched to organizer (`CONTACT_NOTIFY_EMAIL`).
+  - Added elevated admin retry endpoint `POST /api/admin/contact-messages/:id/retry-email`.
+  - Added Resend Notification Email action with live spinner in Admin Visitor Messages inbox.
+
+### 4.2 Real-time Student Online/Offline Presence
+- **Root Cause of Permanent Offline:** Registered students table checked `s.last_active` which was never written to Firestore; heartbeats went to an unauthenticated in-memory Map wiped on serverless cold starts; client lacked permission to read `userPresence`.
+- **Implementation in `presenceService.ts` & `AdminPage.tsx`:**
+  - Lease-based tracking in `presenceSessions/{sessionId}`: 1 document per browser tab with UUID in `sessionStorage`.
+  - Continuous 45s heartbeat and 150s lease timeout.
+  - Best-effort tab session deletion on `pagehide` without marking the student offline if other tabs are open.
+  - Real-time `onSnapshot` listener in Admin with 10s local timer re-evaluation.
+  - Amber alert banner in Admin when presence listener is unauthorized, displaying `Unknown · Presence unavailable`.
+  - Online-only filter button toggle next to student search input.
+  - Removed invented fake student fallback generator (`2208012001`, 3rd Year) from `dataService.getAllStudents`.
+
+### 4.3 Final Comprehensive Verification Results
+- **TypeScript:** `npx tsc --noEmit` exited 0 (Zero errors).
+- **Test Suite:** `npm test` (Vitest): **29 test files passed, 163 tests passed (0 failures)**.
+- **Build & Lint:** `npm run build` and `npm run lint` completed cleanly.
+
+---
+
+## 5. Blocked Items & Boundaries of Testing
 
 - **Blocked Items:** None. All application code, tests, build scripts, and security rules compile cleanly.
 - **What Was Not Verified (Owner Dependency):**

@@ -14,6 +14,12 @@ export const Footer: React.FC = () => {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [honeypot, setHoneypot] = useState('');
+  const [currentSubmissionId, setCurrentSubmissionId] = useState<string>(() => {
+    return (typeof crypto !== 'undefined' && crypto.randomUUID) 
+      ? crypto.randomUUID() 
+      : 'c0000000-0000-4000-8000-' + Date.now().toString(16).padStart(12, '0');
+  });
 
   useEffect(() => {
     const unsub = dataService.subscribeEvents((events: CompetitionEvent[]) => {
@@ -27,6 +33,7 @@ export const Footer: React.FC = () => {
 
   const handleQuickContact = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return; // Prevent double-clicks
     if (!senderName.trim() || !senderEmail.trim() || !contactMessage.trim()) return;
 
     setSubmitting(true);
@@ -36,15 +43,23 @@ export const Footer: React.FC = () => {
         sender_name: senderName.trim(),
         sender_email: senderEmail.trim(),
         subject: contactSubject.trim() || 'NEXORA General Inquiry',
-        message: contactMessage.trim()
+        message: contactMessage.trim(),
+        submissionId: currentSubmissionId,
+        honeypot: honeypot.trim()
       });
       setSubmitted(true);
       setSenderName('');
       setSenderEmail('');
       setContactSubject('');
       setContactMessage('');
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Unable to dispatch message at this time.');
+      setHoneypot('');
+      // Generate fresh UUID for next potential submission
+      setCurrentSubmissionId((typeof crypto !== 'undefined' && crypto.randomUUID) 
+        ? crypto.randomUUID() 
+        : 'c0000000-0000-4000-8000-' + Date.now().toString(16).padStart(12, '0'));
+    } catch {
+      // User-friendly error message, never raw error or stack trace
+      setErrorMsg('We could not send your message right now. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -164,7 +179,7 @@ export const Footer: React.FC = () => {
             {submitted ? (
               <div className="p-3 bg-violet-950/40 border border-violet-500/30 rounded-lg text-xs text-violet-200 flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
-                <span>Thank you. Your message has been saved for review by the student founder.</span>
+                <span>Your message has been received. The NEXORA team will review it.</span>
               </div>
             ) : (
               <form onSubmit={handleQuickContact} className="space-y-2">
@@ -174,13 +189,25 @@ export const Footer: React.FC = () => {
                     <span>{errorMsg}</span>
                   </div>
                 )}
+                {/* Hidden Honeypot Field */}
+                <input
+                  type="text"
+                  name="website"
+                  value={honeypot}
+                  onChange={(e) => setHoneypot(e.target.value)}
+                  tabIndex={-1}
+                  autoComplete="off"
+                  className="hidden"
+                  aria-hidden="true"
+                />
                 <input
                   type="text"
                   placeholder="Your Name"
                   value={senderName}
                   onChange={(e) => setSenderName(e.target.value)}
                   required
-                  className="w-full px-2.5 py-1.5 text-xs bg-[#11101B] border border-violet-500/20 rounded-md text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 select-text"
+                  disabled={submitting}
+                  className="w-full px-2.5 py-1.5 text-xs bg-[#11101B] border border-violet-500/20 rounded-md text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 select-text disabled:opacity-50"
                 />
                 <input
                   type="email"
@@ -188,7 +215,8 @@ export const Footer: React.FC = () => {
                   value={senderEmail}
                   onChange={(e) => setSenderEmail(e.target.value)}
                   required
-                  className="w-full px-2.5 py-1.5 text-xs bg-[#11101B] border border-violet-500/20 rounded-md text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 select-text"
+                  disabled={submitting}
+                  className="w-full px-2.5 py-1.5 text-xs bg-[#11101B] border border-violet-500/20 rounded-md text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 select-text disabled:opacity-50"
                 />
                 <textarea
                   placeholder="Your thoughts, questions, or faculty inquiry..."
@@ -196,12 +224,13 @@ export const Footer: React.FC = () => {
                   value={contactMessage}
                   onChange={(e) => setContactMessage(e.target.value)}
                   required
-                  className="w-full px-2.5 py-1.5 text-xs bg-[#11101B] border border-violet-500/20 rounded-md text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 select-text"
+                  disabled={submitting}
+                  className="w-full px-2.5 py-1.5 text-xs bg-[#11101B] border border-violet-500/20 rounded-md text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 select-text disabled:opacity-50"
                 />
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full py-1.5 text-xs font-medium text-white bg-violet-600 rounded-md hover:bg-violet-500 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60 cursor-pointer"
+                  className="w-full py-1.5 text-xs font-medium text-white bg-violet-600 rounded-md hover:bg-violet-500 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60 cursor-pointer disabled:cursor-not-allowed"
                 >
                   <Send className="w-3 h-3" />
                   <span>{submitting ? 'Sending...' : 'Send Message'}</span>

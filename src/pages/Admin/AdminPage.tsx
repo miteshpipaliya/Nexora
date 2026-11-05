@@ -39,7 +39,8 @@ import {
   Trash2,
   ExternalLink,
   Sparkles,
-  Edit2
+  Edit2,
+  AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
@@ -64,8 +65,8 @@ import { LocalImageUploader } from '../../components/admin/LocalImageUploader';
 import { ImageSelector } from '../../components/admin/ImageSelector';
 import { ImageLibraryModal } from '../../components/admin/ImageLibraryModal';
 import { PrizePoolEditor } from '../../components/admin/PrizePoolEditor';
-import { FOUNDING_TEAM, INITIAL_EVENTS } from '../../services/mockData';
-import { isUserOnline, formatLastSeen, type UserPresenceRecord } from '../../services/presenceService';
+import { isUserOnline, formatLastSeen, formatPresenceLastSeen, type UserPresenceRecord } from '../../services/presenceService';
+import { INITIAL_EVENTS } from '../../services/mockData';
 
 export const STANDARD_TEAM_ROLES = [
   {
@@ -205,6 +206,10 @@ export const AdminPage: React.FC = () => {
   const [events, setEvents] = useState<CompetitionEvent[]>([]);
   const [students, setStudents] = useState<UserProfile[]>([]);
   const [presenceMap, setPresenceMap] = useState<Record<string, UserPresenceRecord>>({});
+  const [presenceError, setPresenceError] = useState<boolean>(false);
+  const [presenceTick, setPresenceTick] = useState<number>(0);
+  const [onlineOnlyFilter, setOnlineOnlyFilter] = useState<boolean>(false);
+  const [retryingEmailId, setRetryingEmailId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
   const [messages, setMessages] = useState<ContactMessage[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -435,8 +440,9 @@ export const AdminPage: React.FC = () => {
     });
 
     // 6. Subscribe to student presence
-    const unsubPresence = dataService.subscribeStudentPresence((presence: Record<string, UserPresenceRecord>) => {
+    const unsubPresence = dataService.subscribeStudentPresence((presence: Record<string, UserPresenceRecord>, isError?: boolean) => {
       setPresenceMap(presence);
+      setPresenceError(!!isError);
     });
 
     return () => {
@@ -448,6 +454,14 @@ export const AdminPage: React.FC = () => {
       unsubPresence();
     };
   }, [elevatedAdminVerified]);
+
+  // Re-evaluate presence locally every 10 seconds so expired leases reflect without delay
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPresenceTick((t) => t + 1);
+    }, 10_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Session timer countdown (15 min)
   useEffect(() => {
@@ -1101,6 +1115,25 @@ export const AdminPage: React.FC = () => {
     }
   };
 
+  // RETRY VISITOR NOTIFICATION EMAIL DISPATCH
+  const handleRetryContactEmail = async (msgId: string) => {
+    if (!msgId || retryingEmailId) return;
+    setRetryingEmailId(msgId);
+    try {
+      const res = await dataService.retryContactEmail(msgId);
+      if (res && res.success) {
+        showSuccessToast(res.message || 'Notification email dispatched successfully.');
+        loadDashboardData();
+      } else {
+        showErrorToast(res?.message || 'Failed to dispatch email.');
+      }
+    } catch (err: any) {
+      showErrorToast(err?.message || 'Error retrying notification email.');
+    } finally {
+      setRetryingEmailId(null);
+    }
+  };
+
   // TEAM CRUD ACTIONS (PHASE 5)
   const handleSaveTeamMember = async () => {
     if (!newTeamMemberData.name?.trim()) {
@@ -1260,12 +1293,17 @@ export const AdminPage: React.FC = () => {
 
   // Filtered students
   const filteredStudents = students.filter((s) => {
-    return (
+    const matchesSearch =
       (s.full_name || '').toLowerCase().includes(studentSearch.toLowerCase()) ||
       (s.email || '').toLowerCase().includes(studentSearch.toLowerCase()) ||
       (s.enrollment_number || '').toLowerCase().includes(studentSearch.toLowerCase()) ||
-      (s.branch || '').toLowerCase().includes(studentSearch.toLowerCase())
-    );
+      (s.branch || '').toLowerCase().includes(studentSearch.toLowerCase());
+
+    if (!matchesSearch) return false;
+    if (onlineOnlyFilter) {
+      return !presenceError && isUserOnline(presenceMap[s.id]);
+    }
+    return true;
   });
 
   // Calculate computed stats if realStats not loaded yet
@@ -2456,7 +2494,14 @@ export const AdminPage: React.FC = () => {
           </div>
 
           {/* Real-time Presence Metrics Summary */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {presenceError && (
+            <div className="p-3.5 bg-amber-950/40 border border-amber-500/40 rounded-xl text-amber-200 text-xs flex items-center gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Presence listener is temporarily unauthorized or unavailable. Student presence is shown as Unknown.</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div className="p-3.5 bg-[#171426] border border-violet-500/20 rounded-xl flex items-center justify-between">
               <div>
                 <p className="text-[11px] font-mono uppercase tracking-wider text-slate-400">Total Registered</p>
@@ -2471,7 +2516,7 @@ export const AdminPage: React.FC = () => {
                   Online Now
                 </p>
                 <p className="text-xl font-bold text-white mt-0.5">
-                  {students.filter((s) => isUserOnline(presenceMap[s.id])).length}
+                  {presenceError ? 0 : students.filter((s) => isUserOnline(presenceMap[s.id])).length}
                 </p>
               </div>
               <UserCheck className="w-5 h-5 text-emerald-400 opacity-80" />
@@ -2483,22 +2528,50 @@ export const AdminPage: React.FC = () => {
                   Offline
                 </p>
                 <p className="text-xl font-bold text-white mt-0.5">
-                  {students.length - students.filter((s) => isUserOnline(presenceMap[s.id])).length}
+                  {presenceError
+                    ? 0
+                    : students.length - students.filter((s) => isUserOnline(presenceMap[s.id])).length}
                 </p>
               </div>
               <Clock className="w-5 h-5 text-slate-500 opacity-80" />
             </div>
+            <div className="p-3.5 bg-[#171426] border border-amber-500/20 rounded-xl flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-mono uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  Unknown
+                </p>
+                <p className="text-xl font-bold text-white mt-0.5">
+                  {presenceError ? students.length : 0}
+                </p>
+              </div>
+              <AlertCircle className="w-5 h-5 text-amber-400 opacity-80" />
+            </div>
           </div>
 
-          <div className="relative max-w-md">
-            <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
-            <input
-              type="text"
-              value={studentSearch}
-              onChange={(e) => setStudentSearch(e.target.value)}
-              placeholder="Search by student name, email, or enrollment no..."
-              className="w-full pl-10 pr-4 py-2 bg-[#171426] border border-violet-500/20 rounded-xl text-white text-xs focus:outline-none focus:border-violet-400"
-            />
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                value={studentSearch}
+                onChange={(e) => setStudentSearch(e.target.value)}
+                placeholder="Search by student name, email, or enrollment no..."
+                className="w-full pl-10 pr-4 py-2 bg-[#171426] border border-violet-500/20 rounded-xl text-white text-xs focus:outline-none focus:border-violet-400"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setOnlineOnlyFilter((prev) => !prev)}
+              className={`px-3.5 py-2 text-xs font-semibold rounded-xl border transition-colors flex items-center gap-2 cursor-pointer ${
+                onlineOnlyFilter
+                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-950/50'
+                  : 'bg-[#171426] text-slate-300 border-violet-500/20 hover:border-violet-500/40'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${onlineOnlyFilter ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+              <span>Online Only {onlineOnlyFilter && `(${filteredStudents.length})`}</span>
+            </button>
           </div>
 
           {filteredStudents.length === 0 ? (
@@ -2524,10 +2597,10 @@ export const AdminPage: React.FC = () => {
                   <tbody className="divide-y divide-violet-500/10 text-slate-300">
                     {filteredStudents.map((s) => {
                       const presence = presenceMap[s.id];
-                      const online = isUserOnline(presence);
-                      const lastSeen = presence?.last_seen 
-                        ? formatLastSeen(presence.last_seen) 
-                        : (typeof s.last_active === 'number' && s.last_active > 0 ? formatLastSeen(s.last_active) : 'Never');
+                      const online = !presenceError && isUserOnline(presence);
+                      const lastSeen = presence?.lastSeen
+                        ? formatPresenceLastSeen(presence.lastSeen)
+                        : (presence?.last_seen ? formatPresenceLastSeen(presence.last_seen) : 'Never');
 
                       return (
                         <tr key={s.id} className="hover:bg-violet-950/20 transition-colors">
@@ -2542,14 +2615,21 @@ export const AdminPage: React.FC = () => {
                           <td className="py-3 px-4 font-mono">{s.branch} · {s.academic_year}</td>
                           <td className="py-3 px-4 font-mono text-violet-300 select-text">{s.enrollment_number || '—'}</td>
                           <td className="py-3 px-4">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono rounded-full ${
-                              online
-                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-950/50'
-                                : 'bg-slate-900 text-slate-400 border border-slate-700/60'
-                            }`}>
-                              <span className={`w-2 h-2 rounded-full ${online ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-                              <span>{online ? 'Active now' : `Offline · ${lastSeen}`}</span>
-                            </span>
+                            {presenceError ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono rounded-full bg-amber-950/60 text-amber-300 border border-amber-500/30">
+                                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                                <span>Unknown · Presence unavailable</span>
+                              </span>
+                            ) : (
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono rounded-full ${
+                                online
+                                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-950/50'
+                                  : 'bg-slate-900 text-slate-400 border border-slate-700/60'
+                              }`}>
+                                <span className={`w-2 h-2 rounded-full ${online ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                                <span>{online ? 'Online' : `Offline · ${lastSeen}`}</span>
+                              </span>
+                            )}
                           </td>
                           <td className="py-3 px-4 font-mono text-slate-400 text-[11px]">
                             {new Date(s.created_at).toLocaleDateString()}
@@ -2675,6 +2755,12 @@ export const AdminPage: React.FC = () => {
                       }`}>
                         {m.status}
                       </span>
+                      {m.delivery_status === 'email_failed' && (
+                        <span className="px-2 py-0.5 text-[10px] font-mono rounded bg-amber-950 text-amber-300 border border-amber-500/40 font-semibold flex items-center gap-1">
+                          <AlertTriangle className="w-2.5 h-2.5" />
+                          <span>Email Delivery Failed</span>
+                        </span>
+                      )}
                     </div>
                     <span className="text-[10px] font-mono text-slate-500">{new Date(m.created_at).toLocaleString()}</span>
                   </div>
@@ -2699,6 +2785,18 @@ export const AdminPage: React.FC = () => {
                   )}
 
                   <div className="pt-2 flex items-center justify-end gap-2">
+                    {m.delivery_status === 'email_failed' && (
+                      <button
+                        type="button"
+                        onClick={() => handleRetryContactEmail(m.id)}
+                        disabled={retryingEmailId === m.id}
+                        className="px-3.5 py-1.5 text-xs font-semibold text-amber-300 bg-amber-950/70 border border-amber-500/40 rounded-lg hover:bg-amber-900/60 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        title="Retry sending notification email to organizer"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${retryingEmailId === m.id ? 'animate-spin' : ''}`} />
+                        <span>{retryingEmailId === m.id ? 'Retrying...' : 'Resend Email'}</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => {

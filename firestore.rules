@@ -91,7 +91,21 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Real-Time Student Online/Offline Presence Tracking
+    // Real-Time Student Online/Offline Presence Sessions (Prompt 2)
+    match /presenceSessions/{sessionId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasAll(['uid', 'startedAt', 'lastSeen', 'expireAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'startedAt', 'lastSeen', 'expireAt']);
+      allow update: if isSignedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeen', 'expireAt']);
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // Backward-compatible fallback for legacy userPresence
     match /userPresence/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow write: if isOwner(userId) || isAdmin();

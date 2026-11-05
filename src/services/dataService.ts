@@ -771,35 +771,42 @@ class NexoraDataService {
     return json.registration;
   }
 
-  // --- CONTACT INQUIRIES ---
+  // --- CONTACT INQUIRIES (PROMPT 1) ---
   public async submitContactMessage(data: {
     sender_name: string;
     sender_email: string;
     subject?: string;
     message: string;
-  }): Promise<ContactMessage> {
+    submissionId?: string;
+    honeypot?: string;
+  }): Promise<{ success: boolean; id: string; message: string }> {
     const payload = {
       sender_name: data.sender_name.trim(),
       sender_email: data.sender_email.trim().toLowerCase(),
-      subject: data.subject?.trim() || 'General Inquiry',
-      message: data.message.trim()
+      subject: data.subject?.trim() || 'NEXORA General Inquiry',
+      message: data.message.trim(),
+      submissionId: data.submissionId,
+      honeypot: data.honeypot
     };
 
-    const res = await safeApiFetch<{ success: boolean; messageId?: string; contact?: ContactMessage }>('/api/contact/submit', {
+    const res = await safeApiFetch<{ success: boolean; id?: string; messageId?: string; message?: string }>('/api/contact/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
 
-    return res.contact || {
-      id: res.messageId || `msg_${Date.now()}`,
-      sender_name: payload.sender_name,
-      sender_email: payload.sender_email,
-      subject: payload.subject,
-      message: payload.message,
-      status: 'unread',
-      created_at: new Date().toISOString()
+    return {
+      success: true,
+      id: res.id || res.messageId || data.submissionId || `msg_${Date.now()}`,
+      message: res.message || 'Your message has been received. The NEXORA team will review it.'
     };
+  }
+
+  public async retryContactEmail(id: string): Promise<{ success: boolean; message: string }> {
+    return safeApiFetch<{ success: boolean; message: string }>(`/api/admin/contact-messages/${id}/retry-email`, {
+      method: 'POST',
+      headers: this.getAdminHeaders()
+    });
   }
 
   // --- FOUNDER ADMIN SECURITY & CONSOLE METHODS ---
@@ -1171,29 +1178,62 @@ class NexoraDataService {
     }
   }
 
-  // --- REAL-TIME STUDENT ONLINE/OFFLINE PRESENCE ---
+  // --- REAL-TIME STUDENT ONLINE/OFFLINE PRESENCE (PROMPT 2) ---
   public subscribeStudentPresence(
-    callback: (presenceMap: Record<string, UserPresenceRecord>) => void
+    callback: (presenceMap: Record<string, { online: boolean; lastSeen: number; sessionCount: number }>, isError?: boolean) => void
   ): () => void {
     try {
-      const q = collection(db, 'userPresence');
+      const q = collection(db, 'presenceSessions');
       const unsubscribe = onSnapshot(
         q,
         (snap) => {
-          const map: Record<string, UserPresenceRecord> = {};
+          const map: Record<string, { online: boolean; lastSeen: number; sessionCount: number }> = {};
+          const now = Date.now();
+          const LEASE_MS = 150_000;
+
           snap.forEach((d) => {
-            map[d.id] = d.data() as UserPresenceRecord;
+            const data = d.data();
+            if (!data || !data.uid) return;
+            const uid = data.uid;
+            const rawTs = data.lastSeen;
+            const lastSeen = rawTs?.toMillis ? rawTs.toMillis() : (typeof rawTs === 'number' ? rawTs : (rawTs ? new Date(rawTs).getTime() : 0));
+            const isFresh = (now - lastSeen) < LEASE_MS && lastSeen > 0;
+
+            if (!map[uid]) {
+              map[uid] = {
+                online: isFresh,
+                lastSeen,
+                sessionCount: isFresh ? 1 : 0
+              };
+            } else {
+              if (lastSeen > map[uid].lastSeen) {
+                map[uid].lastSeen = lastSeen;
+              }
+              if (isFresh) {
+                map[uid].online = true;
+                map[uid].sessionCount += 1;
+              }
+            }
           });
-          callback(map);
+          callback(map, false);
         },
-        (err) => {
-          console.warn('[PRESENCE] Real-time presence listener error:', err);
-          callback({});
+        async (err) => {
+          console.warn('[PRESENCE] Real-time presenceSessions listener note:', err?.message || err);
+          try {
+            const fallback = await safeApiFetch<{ success: boolean; presence: Record<string, any> }>('/api/admin/presence', {
+              headers: this.getAdminHeaders()
+            });
+            if (fallback && fallback.presence) {
+              callback(fallback.presence, false);
+              return;
+            }
+          } catch {}
+          callback({}, true);
         }
       );
       return unsubscribe;
     } catch {
-      callback({});
+      callback({}, true);
       return () => {};
     }
   }
@@ -1287,24 +1327,11 @@ class NexoraDataService {
       if (!snap.empty) {
         return snap.docs.map(d => d.data() as UserProfile);
       }
-    } catch {}
-    try {
-      const adminRes = await this.getAdminStudents();
-      if (Array.isArray(adminRes?.students)) {
-        return adminRes.students.map((s: any) => ({
-          id: s.id,
-          full_name: s.email ? s.email.split('@')[0] : 'Student',
-          email: s.email,
-          college: 'BVM Engineering College',
-          branch: 'Computer Engineering',
-          academic_year: '3rd Year',
-          enrollment_number: '2208012001',
-          created_at: new Date(s.lastSeen || Date.now()).toISOString(),
-          updated_at: new Date(s.lastSeen || Date.now()).toISOString()
-        }));
-      }
-    } catch {}
-    return [];
+      return [];
+    } catch (err) {
+      console.warn('[STUDENTS DIRECTORY] Firestore users query warning:', err);
+      return [];
+    }
   }
 
   public async getNotifications(): Promise<InAppNotification[]> {

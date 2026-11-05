@@ -1,229 +1,275 @@
 /**
  * src/services/presenceService.ts
- * Real-Time Student Online/Offline Presence Tracking
+ * Real-Time Student Online/Offline Presence Tracking (Prompt 2)
  *
- * Implements multi-tab heartbeat leasing, disconnect detection,
- * automatic reconnect on visibility change, and secure Firestore sync.
+ * Implements short session leases in Firestore collection `presenceSessions`:
+ * - 1 document per browser tab: `presenceSessions/{sessionId}` (UUID in sessionStorage)
+ * - Heartbeat dispatched every 45 seconds using serverTimestamp()
+ * - Online threshold: 150 seconds (2.5 minutes)
+ * - Automatic refresh on visibilitychange, online, reconnect
+ * - Best-effort session removal on pagehide and logout
+ * - Pure computePresence helper for unit testing
  */
 
-import { doc, setDoc, deleteField } from 'firebase/firestore';
-import { db } from './firebase';
+import { doc, setDoc, deleteDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { db, auth } from './firebase';
 
-export interface UserPresenceRecord {
-  user_id: string;
-  is_online: boolean;
-  last_seen: number;
-  last_active_at?: string;
-  sessions?: Record<string, number>;
-  client_info?: {
-    user_agent?: string;
-    platform?: string;
-  };
+export interface PresenceSessionData {
+  uid: string;
+  startedAt: string;
+  lastSeen: any;
+  expireAt: any;
 }
 
-// Presence lease threshold: Heartbeat dispatched every 25 seconds; lease valid for 65 seconds
-export const PRESENCE_HEARTBEAT_INTERVAL_MS = 25_000;
-export const PRESENCE_LEASE_TIMEOUT_MS = 65_000;
+export interface UserPresenceState {
+  online?: boolean;
+  lastSeen?: number;
+  sessionCount?: number;
+  user_id?: string;
+  is_online?: boolean;
+  last_seen?: number;
+  sessions?: Record<string, number>;
+}
+export type UserPresenceRecord = UserPresenceState;
 
-let currentHeartbeatTimer: NodeJS.Timeout | null = null;
+export const PRESENCE_HEARTBEAT_INTERVAL_MS = 45_000;
+export const PRESENCE_LEASE_TIMEOUT_MS = 150_000;
+
+let currentHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let activePresenceUserId: string | null = null;
 let currentTabSessionId: string | null = null;
 let isListenersRegistered = false;
 
 /**
- * Returns or creates a stable session ID for this browser tab
+ * Returns or creates a stable UUID for this browser tab session.
+ * Survives page reloads within the same tab, but opening a new tab creates a fresh session.
  */
 export function getTabSessionId(): string {
   if (currentTabSessionId) return currentTabSessionId;
-  if (typeof window === 'undefined') return 'server_session';
+  if (typeof window === 'undefined') return 'server-session';
 
   try {
-    const existing = window.sessionStorage.getItem('nexora_tab_session_id');
-    if (existing) {
+    const existing = window.sessionStorage.getItem('nexora_tab_presence_session_id');
+    if (existing && /^[a-fA-F0-9\-]{36}$/.test(existing)) {
       currentTabSessionId = existing;
       return existing;
     }
-    const generated = 'tab_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now().toString(36);
-    window.sessionStorage.setItem('nexora_tab_session_id', generated);
-    currentTabSessionId = generated;
-    return generated;
+    const newId = (typeof crypto !== 'undefined' && crypto.randomUUID) 
+      ? crypto.randomUUID() 
+      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0;
+          const v = c === 'x' ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+        });
+    window.sessionStorage.setItem('nexora_tab_presence_session_id', newId);
+    currentTabSessionId = newId;
+    return newId;
   } catch {
-    currentTabSessionId = 'tab_' + Math.random().toString(36).slice(2, 10);
+    currentTabSessionId = '00000000-0000-4000-8000-000000000000';
     return currentTabSessionId;
   }
 }
 
 /**
- * Checks whether a given presence document represents an actively connected user
+ * Pure function to compute presence for a user from their active sessions.
+ * Online when at least one session was updated within the lease window.
  */
-export function isUserOnline(presence?: UserPresenceRecord | null, leaseMs = PRESENCE_LEASE_TIMEOUT_MS): boolean {
-  if (!presence) return false;
-  const now = Date.now();
+export function computePresence(
+  sessions: Array<{ lastSeen: number | Timestamp | string | null }>,
+  now: number = Date.now(),
+  leaseMs: number = PRESENCE_LEASE_TIMEOUT_MS
+): UserPresenceState {
+  if (!sessions || sessions.length === 0) {
+    return { online: false, lastSeen: 0, sessionCount: 0 };
+  }
 
-  // If multi-tab session tracking is present, check if any active session is within the lease window
-  if (presence.sessions && typeof presence.sessions === 'object') {
-    const sessionTimes = Object.values(presence.sessions).filter(
-      (ts): ts is number => typeof ts === 'number' && Number.isFinite(ts)
-    );
-    if (sessionTimes.length > 0) {
-      const mostRecentSession = Math.max(...sessionTimes);
-      if (now - mostRecentSession < leaseMs) {
-        return true;
-      }
+  let latestLastSeen = 0;
+  let activeCount = 0;
+
+  for (const s of sessions) {
+    if (!s || s.lastSeen == null) continue;
+    let ts = 0;
+    if (typeof s.lastSeen === 'number') {
+      ts = s.lastSeen;
+    } else if (typeof (s.lastSeen as any).toMillis === 'function') {
+      ts = (s.lastSeen as any).toMillis();
+    } else if (typeof s.lastSeen === 'string') {
+      ts = new Date(s.lastSeen).getTime();
+    }
+
+    if (ts > latestLastSeen) {
+      latestLastSeen = ts;
+    }
+
+    if (now - ts < leaseMs && ts > 0) {
+      activeCount += 1;
     }
   }
 
-  // If explicitly flagged offline and no active session, user is offline
-  if (presence.is_online === false) return false;
-
-  const lastSeen = typeof presence.last_seen === 'number' ? presence.last_seen : 0;
-  if (lastSeen <= 0) return false;
-  return (now - lastSeen) < leaseMs;
+  const isOnline = activeCount > 0 && (now - latestLastSeen < leaseMs);
+  return {
+    online: isOnline,
+    lastSeen: latestLastSeen,
+    sessionCount: activeCount
+  };
 }
 
 /**
- * Formats a last_seen timestamp into human-readable relative time
+ * Formats a last_seen epoch millisecond into human-readable relative string
+ * or Asia/Kolkata date format when older than an hour.
  */
-export function formatLastSeen(lastSeen?: number | null): string {
-  if (!lastSeen || typeof lastSeen !== 'number') return 'Never seen';
-  const diffMs = Date.now() - lastSeen;
+export function formatPresenceLastSeen(lastSeen?: number | null, now: number = Date.now()): string {
+  if (!lastSeen || lastSeen <= 0) return 'Never seen';
+  const diffMs = now - lastSeen;
   if (diffMs < 0) return 'Just now';
 
-  const seconds = Math.floor(diffMs / 1000);
-  if (seconds < 60) return 'Just now';
-
-  const minutes = Math.floor(seconds / 60);
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return 'Just now';
   if (minutes < 60) return `${minutes}m ago`;
 
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
 
-  const days = Math.floor(hours / 24);
-  if (days === 1) return 'Yesterday';
-  if (days < 7) return `${days}d ago`;
+  // For older than 24 hours, format using Asia/Kolkata timezone
+  try {
+    const dateObj = new Date(lastSeen);
+    const timeStr = dateObj.toLocaleTimeString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
 
-  return new Date(lastSeen).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric'
-  });
+    const isToday = new Date(now).toDateString() === dateObj.toDateString();
+    if (isToday) {
+      return `Today at ${timeStr}`;
+    }
+
+    const dateStr = dateObj.toLocaleDateString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      month: 'short',
+      day: 'numeric'
+    });
+    return `${dateStr} at ${timeStr}`;
+  } catch {
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  }
 }
 
 /**
- * Dispatches a single heartbeat ping to Firestore
+ * Dispatches a single heartbeat ping to Firestore collection `presenceSessions`.
  */
-async function sendHeartbeat(userId: string): Promise<void> {
+export async function sendSessionHeartbeat(userId: string): Promise<void> {
   if (!userId || !db) return;
   const sessionId = getTabSessionId();
-  const now = Date.now();
 
   try {
-    const presenceRef = doc(db, 'userPresence', userId);
+    const sessionRef = doc(db, 'presenceSessions', sessionId);
+    const expireTimestamp = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
     await setDoc(
-      presenceRef,
+      sessionRef,
       {
-        user_id: userId,
-        is_online: true,
-        last_seen: now,
-        last_active_at: new Date(now).toISOString(),
-        sessions: {
-          [sessionId]: now
-        }
+        uid: userId,
+        startedAt: new Date().toISOString(),
+        lastSeen: serverTimestamp(),
+        expireAt: expireTimestamp
       },
       { merge: true }
     );
   } catch (err) {
-    // Non-fatal: network fluctuation or permissions during token refresh
-    console.debug('[PRESENCE] Heartbeat write silently bypassed:', err);
+    // Failures must never crash the UI or throw uncaught errors
+    console.debug('[PRESENCE] Session heartbeat write note:', err);
   }
 }
 
 /**
- * Dispatches a leave notification on tab unload / disconnect
+ * Dispatches a best-effort delete of this tab's session lease document.
  */
-async function sendDisconnect(userId: string, isFullLogout: boolean = false): Promise<void> {
-  if (!userId || !db) return;
+export async function removeSessionDoc(userId?: string): Promise<void> {
+  if (!db) return;
   const sessionId = getTabSessionId();
 
   try {
-    const presenceRef = doc(db, 'userPresence', userId);
-    const updatePayload: Record<string, any> = {
-      last_seen: Date.now(),
-      last_active_at: new Date().toISOString(),
-      [`sessions.${sessionId}`]: deleteField()
-    };
-    if (isFullLogout) {
-      updatePayload.is_online = false;
-      updatePayload.sessions = {};
-    }
-    await setDoc(presenceRef, updatePayload, { merge: true });
+    const sessionRef = doc(db, 'presenceSessions', sessionId);
+    await deleteDoc(sessionRef);
   } catch (err) {
-    console.debug('[PRESENCE] Disconnect write silently bypassed:', err);
+    console.debug('[PRESENCE] Session delete note:', err);
+  }
+
+  // Also best-effort REST keepalive beacon if window supports it
+  if (typeof navigator !== 'undefined' && typeof window !== 'undefined' && auth.currentUser) {
+    try {
+      auth.currentUser.getIdToken().then((token) => {
+        if (!token) return;
+        const projectId = 'gen-lang-client-0089073748';
+        const dbId = 'ai-studio-nexorastudenttec-75ba3757-5549-44e3-a3ae-2ae34026863b';
+        const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${dbId}/documents/presenceSessions/${sessionId}`;
+        fetch(url, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+          keepalive: true
+        }).catch(() => {});
+      }).catch(() => {});
+    } catch {}
   }
 }
 
 /**
- * Starts continuous heartbeat tracking for the authenticated user
+ * Starts continuous heartbeat leasing for the signed-in user.
  */
 export function startPresenceHeartbeat(userId: string): void {
   if (!userId) return;
 
-  // If already tracking this exact user, ping immediately and retain
   if (activePresenceUserId === userId && currentHeartbeatTimer) {
-    void sendHeartbeat(userId);
+    void sendSessionHeartbeat(userId);
     return;
   }
 
-  // Stop previous tracking if switching user
   if (activePresenceUserId && activePresenceUserId !== userId) {
     stopPresenceHeartbeat(activePresenceUserId);
   }
 
   activePresenceUserId = userId;
+  void sendSessionHeartbeat(userId);
 
-  // Immediate first heartbeat
-  void sendHeartbeat(userId);
-
-  // Setup periodic heartbeat
   if (currentHeartbeatTimer) {
     clearInterval(currentHeartbeatTimer);
   }
   currentHeartbeatTimer = setInterval(() => {
     if (activePresenceUserId) {
-      void sendHeartbeat(activePresenceUserId);
+      void sendSessionHeartbeat(activePresenceUserId);
     }
   }, PRESENCE_HEARTBEAT_INTERVAL_MS);
 
-  // Register window lifecycle listeners once
+  // Register window lifecycle hooks once
   if (!isListenersRegistered && typeof window !== 'undefined') {
     isListenersRegistered = true;
 
-    // Visibility change: When student switches tabs back, trigger immediate heartbeat
     window.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && activePresenceUserId) {
-        void sendHeartbeat(activePresenceUserId);
+        void sendSessionHeartbeat(activePresenceUserId);
       }
     });
 
-    // Online event: network reconnect
     window.addEventListener('online', () => {
       if (activePresenceUserId) {
-        void sendHeartbeat(activePresenceUserId);
+        void sendSessionHeartbeat(activePresenceUserId);
       }
     });
 
-    // Page unload / tab close
     const handleUnload = () => {
       if (activePresenceUserId) {
-        void sendDisconnect(activePresenceUserId, false);
+        void removeSessionDoc(activePresenceUserId);
       }
     };
     window.addEventListener('pagehide', handleUnload);
-    window.addEventListener('beforeunload', handleUnload);
   }
 }
 
 /**
- * Stops continuous heartbeat tracking (e.g. on user logout)
+ * Stops continuous heartbeat tracking (e.g. on user logout) and removes this session.
  */
 export function stopPresenceHeartbeat(userId?: string): void {
   const targetId = userId || activePresenceUserId;
@@ -234,10 +280,31 @@ export function stopPresenceHeartbeat(userId?: string): void {
   }
 
   if (targetId) {
-    void sendDisconnect(targetId, true);
+    void removeSessionDoc(targetId);
   }
 
   if (!userId || userId === activePresenceUserId) {
     activePresenceUserId = null;
   }
+}
+
+// Backward compatibility helper
+export function isUserOnline(presence?: any, leaseMs: number = PRESENCE_LEASE_TIMEOUT_MS): boolean {
+  if (!presence) return false;
+  if (presence.sessions && typeof presence.sessions === 'object') {
+    const sessionValues = Object.values(presence.sessions);
+    const hasActiveSession = sessionValues.some((val: any) => {
+      const ts = typeof val === 'number' ? val : 0;
+      return (Date.now() - ts) < leaseMs;
+    });
+    return hasActiveSession;
+  }
+  if (typeof presence.online === 'boolean') return presence.online;
+  const lastSeen = typeof presence.lastSeen === 'number' ? presence.lastSeen : (typeof presence.last_seen === 'number' ? presence.last_seen : 0);
+  if (lastSeen <= 0) return false;
+  return (Date.now() - lastSeen) < leaseMs;
+}
+
+export function formatLastSeen(lastSeen?: number | null): string {
+  return formatPresenceLastSeen(lastSeen);
 }

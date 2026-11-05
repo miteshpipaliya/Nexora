@@ -139,6 +139,8 @@ export interface ContactMessage {
   competition_reference?: string;
   user_id?: string;
   status: 'unread' | 'read' | 'resolved' | 'archived';
+  delivery_status?: 'sent' | 'email_failed' | 'pending';
+  delivery_error?: string;
   replies?: MessageReply[];
   created_at: string;
   updated_at?: string;
