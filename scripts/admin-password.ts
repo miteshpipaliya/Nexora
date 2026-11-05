@@ -9,7 +9,7 @@ async function askHidden(query: string): Promise<string> {
     });
 
     // Mute output for password confidentiality
-    const stdin = process.openStdin();
+    const stdin = process.stdin;
     const onData = (char: Buffer) => {
       const charStr = char.toString('utf8');
       if (charStr === '\n' || charStr === '\r' || charStr === '\u0004') {

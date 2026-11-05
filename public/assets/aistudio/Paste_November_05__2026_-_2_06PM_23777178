@@ -1,0 +1,1125 @@
+# NEXORA — COMPLETE WEB APPLICATION RECOVERY, FULL FEATURE AUDIT, ADMIN PASSWORD REPLACEMENT, SECURITY HARDENING AND PRODUCTION RELEASE
+
+## 0. YOUR ROLE AND MISSION
+
+You are the lead engineer responsible for auditing, repairing, testing and preparing the existing NEXORA web application for reliable production operation.
+
+Act as:
+
+- Senior full-stack engineer
+- React and TypeScript specialist
+- Firebase Authentication engineer
+- Firestore database and security-rules engineer
+- Vercel serverless and DevOps engineer
+- Brevo transactional email engineer
+- Authentication and account-recovery security specialist
+- Real-time notification and messaging engineer
+- Automated testing and QA engineer
+- Application security reviewer
+- Production incident and release engineer
+
+Your mission is to inspect the REAL existing NEXORA repository, understand every feature, identify actual defects, implement appropriate fixes, and verify the complete application.
+
+Do not simply make tests pass. Verify that real users can complete the intended workflows.
+
+Do not rebuild the website, replace its architecture without justification, remove existing features, or redesign the UI unnecessarily.
+
+Preserve the NEXORA brand, visual design, animations, pages, navigation, event content and existing valid user data.
+
+## 1. PROJECT DETAILS
+
+GitHub repository:
+https://github.com/miteshpipaliya/Nexora
+
+MANDATORY AND ONLY BRANCH:
+main
+
+Production domain:
+https://www.nexora-bvm.online
+
+Apex domain:
+https://nexora-bvm.online
+
+Hosting:
+Vercel
+
+Authentication:
+Firebase Authentication
+
+Database:
+Cloud Firestore
+
+Transactional email:
+Brevo
+
+Expected email sender:
+NEXORA <no-reply@nexora-bvm.online>
+
+Expected Reply-To:
+nexora.bvm@gmail.com
+
+Previously deployed commit:
+35ea29508b7a686edc3a82d9804214e467aa642e
+
+Previously prepared local fix commit:
+cac60bfb7daa90a784b73430df8063a7087671b4
+
+These SHAs are historical references only. Fetch and verify the latest actual repository and deployment state.
+
+## 2. NON-NEGOTIABLE GIT BRANCH POLICY
+
+I want exactly ONE GitHub branch:
+
+main
+
+You MUST:
+
+1. Work directly on the existing local main branch.
+2. Fetch and inspect origin/main before changes.
+3. Check whether local commit cac60bf exists and whether it has already been pushed.
+4. Preserve all valid existing work.
+5. Make every code modification on main.
+6. Commit all verified changes on main.
+7. Never create a second local or remote branch.
+8. Never create codex/*, fix/*, feature/*, audit/*, staging/* or temporary Git branches.
+9. Never force-push or rewrite Git history.
+10. Never discard uncommitted work.
+11. Never delete main.
+12. Verify the remote repository still has exactly one branch after the final push.
+
+If the execution platform requires an additional branch, report that limitation rather than silently creating one.
+
+Do not confuse working on main with permission to deploy incomplete changes.
+
+## 3. OWNER AUTHORIZATION AND PRODUCTION SAFETY
+
+I authorize:
+
+- Complete repository inspection
+- Read-only production diagnostics
+- Local code modifications on main
+- Adding automated tests
+- Compatible dependency upgrades
+- Firebase emulator testing
+- Safe isolated integration testing
+- Local commits on main
+- Preparing a production release
+
+I also explicitly request a secure administrator password replacement workflow.
+
+However:
+
+- Do not push to remote main or deploy to Production until I approve the final release.
+- Do not directly change an existing production admin password until I complete the authorized recovery/setup verification and explicitly approve the change.
+- Do not expose passwords, private keys, OTPs or API keys.
+- Do not delete Firebase users or production registrations.
+- Do not weaken authentication to make features work.
+- Do not run destructive tests against production.
+- Do not modify BigRock DNS without separate approval.
+- Do not disable security protections or bypass Firestore rules.
+- Do not falsely claim a workflow is verified if it was only mocked.
+
+If configuration or credentials are missing, complete all safe code work and give me precise manual setup instructions.
+
+---
+
+# PHASE 1 — COMPLETE WEBSITE DISCOVERY AND FEATURE INVENTORY
+
+Before editing code, inspect the entire repository.
+
+Read:
+
+- package.json and lockfiles
+- All frontend routes and pages
+- All React components
+- All Firebase services
+- All backend API endpoints
+- All Firestore collection access
+- Firestore security rules
+- Firebase configuration
+- Authentication and authorization logic
+- Brevo integration
+- Admin dashboard
+- Student dashboard
+- Event and competition pages
+- Registration services
+- Profile pages
+- Notification services
+- Broadcast messaging
+- Password recovery flows
+- Vercel configuration
+- Existing automated tests
+- Security and deployment documentation
+
+Build a complete feature inventory from the actual code.
+
+For each discovered feature, record:
+
+1. Feature name
+2. Relevant files
+3. Frontend route
+4. Backend/API dependencies
+5. Firebase/Firestore dependencies
+6. Expected behavior
+7. Current test coverage
+8. Actual defects
+9. Required fixes
+10. Verification status
+
+Do not limit the audit to the features named in this prompt.
+
+Any additional existing feature must be included in the audit.
+
+Do not invent features that are not implemented.
+
+---
+
+# PHASE 2 — FIX FIREBASE ADMIN INITIALIZATION AND SHARED OTP FAILURE
+
+Previously confirmed production error:
+
+Firebase Admin Auth failed because jwks-rsa attempted CommonJS require() of ESM-only jose@6.
+
+This caused shared Firebase Admin initialization to fail.
+
+Both student and administrator OTP storage were affected.
+
+A local fix was reportedly prepared using a scoped jose@5.10.0 override.
+
+Required actions:
+
+1. Inspect the latest dependency tree.
+2. Verify the actual installed firebase-admin, jwks-rsa and jose versions.
+3. Inspect the existing compatibility override.
+4. Reproduce the original module-loading failure where possible.
+5. Verify Firebase Admin Auth imports successfully in the target Vercel Node runtime.
+6. Verify Firebase Admin Firestore initialization.
+7. Verify service-account project alignment.
+8. Verify Firestore database ID selection.
+9. Verify required environment variables.
+10. Add regression tests for module compatibility.
+11. Ensure serverless cold starts do not break Firebase initialization.
+12. Ensure authentication failures do not prevent unrelated health checks.
+13. Ensure protected routes fail closed when security configuration is missing.
+14. Ensure the fix does not introduce incompatible or vulnerable dependencies.
+
+Do not assume the OTP system works merely because the Firebase module loads.
+
+Verify actual Firestore operations separately.
+
+---
+
+# PHASE 3 — STUDENT AUTHENTICATION AND OTP
+
+Audit and repair the entire student authentication system.
+
+Cover:
+
+- Student signup
+- Student login
+- Email OTP request
+- OTP delivery
+- OTP verification
+- Resend OTP
+- Expired OTP
+- Incorrect OTP
+- OTP replay prevention
+- Attempt limits
+- Rate limiting
+- Session persistence
+- Logout
+- Account recovery, if implemented
+- Firebase Authentication synchronization
+- Student profile creation
+- Authentication error handling
+
+Previously observed error:
+
+"Verification service is temporarily unavailable."
+
+Required successful workflow:
+
+1. Student opens signup or login.
+2. Student enters valid account information.
+3. Backend verifies eligibility.
+4. Backend generates a secure OTP challenge.
+5. Challenge is persisted securely.
+6. Brevo sends the OTP email.
+7. Student receives the email.
+8. Student enters the correct OTP.
+9. Backend verifies the OTP.
+10. OTP is consumed exactly once.
+11. Student completes the intended signup or login.
+12. Firebase Authentication session is established.
+13. Student profile loads correctly.
+14. Session survives refresh according to the intended security design.
+15. Logout clears the session appropriately.
+
+Security tests:
+
+- Invalid OTP
+- Expired OTP
+- Reused OTP
+- Excessive attempts
+- Resend abuse
+- Unauthorized account access
+- Session expiration
+- Firebase failures
+- Brevo failures
+- Concurrent verification
+- Serverless restart behavior
+
+Do not expose OTP values to logs, browser responses or analytics.
+
+---
+
+# PHASE 4 — ADMIN LOGIN AND COMPLETE ADMIN AUTHENTICATION
+
+Previously observed error:
+
+"Administrator OTP storage is unavailable."
+
+Audit the complete administrator security gate.
+
+Verify:
+
+- Firebase identity token verification
+- Admin role authorization
+- Admin password validation
+- Brevo OTP delivery
+- OTP challenge persistence
+- OTP verification
+- Session creation
+- Admin dashboard access
+- Admin logout
+- Session expiration
+- Privilege revocation
+- Unauthorized access rejection
+
+Requirements:
+
+1. Admin access must be verified server-side.
+2. Ordinary students must never gain admin privileges.
+3. Admin roles must not be assigned based solely on email strings.
+4. OTP must expire and be single-use.
+5. Password validation must use a secure supported mechanism.
+6. Admin sessions must be revocable.
+7. Sensitive operations must require appropriate authorization.
+8. Existing admin accounts and data must be preserved.
+
+Do not bypass any security layer.
+
+---
+
+# PHASE 5 — MOST IMPORTANT: NEW ADMIN PASSWORD SETUP AND OLD PASSWORD INVALIDATION
+
+I am the website owner.
+
+I want to securely set a completely NEW administrator password.
+
+After successful authorized replacement, the OLD administrator password must stop working.
+
+This is a high-priority requirement.
+
+## 5.1 Inspect the current password architecture
+
+Determine:
+
+- Whether the admin password is stored in Firebase Authentication
+- Whether a separate administrator security password exists
+- Whether password hashes are stored in Firestore
+- Whether the password is controlled through Vercel environment variables
+- Whether multiple admin accounts exist
+- Whether the current recovery flow supports secure rotation
+- Whether a password reset also needs Firebase session revocation
+
+Do not assume there is only one password system.
+
+## 5.2 Build or repair secure password setup/recovery
+
+Provide a secure owner-authorized password replacement workflow.
+
+The flow must:
+
+1. Identify the correct administrator account.
+2. Require strong owner identity verification.
+3. Use existing authorized recovery mechanisms where possible.
+4. Send a recovery OTP to the authorized administrator recovery address.
+5. Verify the recovery OTP server-side.
+6. Require a fresh, short-lived, single-use reset authorization.
+7. Allow the owner to enter a new strong password.
+8. Validate the new password against a suitable password policy.
+9. Store the new password through the correct supported authentication system.
+10. Never store plaintext passwords.
+11. Never log passwords.
+12. Invalidate the old password only after the new password is committed successfully.
+13. Revoke old sessions or refresh tokens as appropriate.
+14. Invalidate outstanding reset challenges.
+15. Verify the new password works.
+16. Verify the old password no longer works.
+17. Verify unauthorized users cannot perform the reset.
+
+## 5.3 Handle separate admin security passwords correctly
+
+If NEXORA uses a separate admin security-gate password in addition to Firebase Auth:
+
+- Identify the actual password authority.
+- Use a secure password-hashing and verification design.
+- Support safe credential rotation.
+- Ensure all relevant Vercel instances use the new credential consistently.
+- Do not leave the old credential accepted through a fallback.
+- Do not introduce hardcoded default passwords.
+- Do not create a permanent bypass or recovery backdoor.
+
+If the password is controlled by an environment variable, provide a secure owner-controlled rotation procedure rather than pretending a Firestore update changes it.
+
+## 5.4 Owner approval and safety
+
+Do not rotate a production credential automatically during debugging.
+
+First implement and test the workflow in isolation.
+
+Then give the owner the exact steps to authorize and complete the real password change.
+
+Do not delete the administrator account.
+
+Do not remove legitimate administrator permissions.
+
+Do not invalidate all users' sessions.
+
+## 5.5 Mandatory acceptance tests
+
+PASS only when:
+
+- Authorized owner can complete password replacement.
+- New password successfully authenticates.
+- Old password fails.
+- Reused recovery OTP fails.
+- Expired recovery OTP fails.
+- Unauthorized reset requests fail.
+- Admin privileges remain correctly assigned.
+- Existing Firestore records remain intact.
+- Old admin sessions are revoked according to the security design.
+
+If live verification is unavailable, report NOT VERIFIED.
+
+---
+
+# PHASE 6 — BREVO EMAIL SYSTEM
+
+Audit the complete Brevo integration.
+
+Expected sender:
+
+NEXORA <no-reply@nexora-bvm.online>
+
+Expected Reply-To:
+
+nexora.bvm@gmail.com
+
+Check:
+
+BREVO_API_KEY
+BREVO_SENDER_NAME
+BREVO_SENDER_EMAIL
+BREVO_REPLY_TO
+
+Verify:
+
+1. Server-side API key configuration.
+2. Sender identity.
+3. Reply-To.
+4. Transactional email endpoint.
+5. Email template rendering.
+6. Correct recipient selection.
+7. API error handling.
+8. Rate limiting.
+9. Retry behavior.
+10. Delivery status reporting.
+11. Email OTP formatting.
+12. Admin recovery email formatting.
+13. Student email formatting.
+14. No sensitive data leakage.
+
+Perform real authorized delivery tests only with a designated test inbox.
+
+Do not confuse API acceptance with successful inbox delivery.
+
+---
+
+# PHASE 7 — EVENT AND COMPETITION REGISTRATION
+
+Previously reported issue:
+
+A student registers for a competition, receives a success indication, but the competition does not appear under My Competitions.
+
+Returning to the event allows registration again.
+
+Audit:
+
+- Event listing
+- Event details
+- Competition listing
+- Registration form
+- Student identity
+- Registration API
+- Firestore writes
+- Registration status
+- Profile data queries
+- Event participant counts
+- Duplicate prevention
+- Registration cancellation, if supported
+- Capacity enforcement, if supported
+- Payment status, if supported
+
+Do not invent payment or cancellation functionality if the project does not support it.
+
+Required behavior:
+
+1. Student authenticates.
+2. Student selects an event or competition.
+3. Student submits valid registration information.
+4. Backend verifies Firebase identity.
+5. Backend validates the event and registration.
+6. Firestore transaction creates the registration.
+7. The transaction updates relevant participant counts.
+8. Success is displayed only after the write succeeds.
+9. Registration is linked to the correct Firebase UID.
+10. Registration is linked to a stable event ID.
+11. My Competitions displays the registration.
+12. Refresh preserves the enrollment.
+13. Logout and login preserve the enrollment.
+14. The event page shows Registered or equivalent.
+15. Duplicate submissions do not create duplicate records.
+16. Concurrent requests remain consistent.
+17. Other students cannot alter the registration.
+
+Inspect the previously prepared authenticated and idempotent registration implementation.
+
+Do not reintroduce unverified JWT decoding.
+
+Do not trust a user ID supplied by the browser without verifying ownership.
+
+---
+
+# PHASE 8 — PROFILE AND STUDENT DASHBOARD
+
+Audit the entire profile system.
+
+Verify:
+
+- Profile creation
+- Profile loading
+- Profile editing
+- Correct authenticated UID
+- Student details
+- My Competitions
+- Enrollment history
+- Registration status
+- Relevant notifications
+- Loading states
+- Empty states
+- Error states
+- Session refresh behavior
+
+A Firestore query failure must never be silently displayed as "No registrations."
+
+Ensure the registration writer and profile reader use the same authoritative data model.
+
+Preserve existing valid profiles and registrations.
+
+---
+
+# PHASE 9 — BROADCAST MESSAGES AND NOTIFICATIONS
+
+This is another mandatory priority.
+
+I want the existing admin broadcast messaging and notification system to work reliably.
+
+First discover its actual architecture.
+
+Inspect:
+
+- Admin broadcast UI
+- Broadcast creation
+- Message storage
+- Recipient selection
+- Notification generation
+- Student notification UI
+- Notification unread counts
+- Read/unread status
+- Real-time listeners
+- Firebase security rules
+- Message timestamps
+- Notification persistence
+- Existing delivery mechanisms
+
+Do not assume push notifications, email notifications or browser notifications are implemented unless the code confirms them.
+
+## 9.1 Admin broadcast requirements
+
+Authorized administrators must be able to:
+
+1. Open the broadcast interface.
+2. Compose a message.
+3. Select supported recipients or audience.
+4. Submit the message.
+5. Receive accurate success or failure feedback.
+6. See the broadcast saved in the database.
+7. View broadcast history where supported.
+
+Unauthorized students must not be able to create administrator broadcasts.
+
+## 9.2 Student notification requirements
+
+Students must:
+
+1. Receive broadcasts intended for their audience.
+2. See them in the existing notification interface.
+3. See correct timestamps.
+4. See correct unread counts.
+5. Open messages.
+6. Mark messages as read if supported.
+7. Retain notifications after refresh and new login.
+8. Never see private messages intended for other users.
+
+## 9.3 Real-time synchronization
+
+If the existing design supports real-time Firestore listeners:
+
+- Verify subscriptions.
+- Verify listener cleanup.
+- Verify unread count synchronization.
+- Verify reconnect behavior.
+- Prevent duplicate notification rendering.
+- Prevent duplicate message delivery caused by repeated frontend actions.
+
+## 9.4 Broadcast security
+
+- Enforce admin authorization server-side or through appropriate Firestore rules.
+- Validate message contents.
+- Prevent script injection.
+- Prevent unauthorized recipient modification.
+- Prevent users from changing another user's notification status.
+- Apply reasonable message-size limits and abuse controls.
+- Avoid leaking recipient lists.
+
+## 9.5 Mandatory end-to-end tests
+
+Test:
+
+A. Authorized admin sends a broadcast.
+
+B. The broadcast is persisted.
+
+C. Intended student receives it.
+
+D. Unintended student does not receive private content.
+
+E. Unread count updates.
+
+F. Message opens correctly.
+
+G. Read status persists after refresh.
+
+H. Logout/login preserves expected notification history.
+
+I. Unauthorized broadcast creation fails.
+
+J. Firestore errors are surfaced accurately.
+
+Do not mark the broadcast system PASS unless actual persistence and delivery to the intended in-app audience are verified.
+
+---
+
+# PHASE 10 — FIRESTORE DATABASE INTEGRITY
+
+Audit all collections used by the website.
+
+Determine:
+
+- Collection names
+- Document schemas
+- Ownership fields
+- Firebase UID references
+- Event references
+- Admin authorization fields
+- Notification recipient fields
+- Registration uniqueness strategy
+- Required indexes
+- Timestamp consistency
+- Query compatibility
+- Error handling
+
+Verify all important writes are persisted.
+
+Use transactions for operations requiring atomicity.
+
+Ensure frontend success messages correspond to confirmed backend success.
+
+Do not delete or rewrite production data during the audit.
+
+If existing records require migration, provide a reviewed, reversible migration plan and request separate approval.
+
+---
+
+# PHASE 11 — FIRESTORE SECURITY RULES
+
+The previous audit identified:
+
+npm run rules:test fails because tests/rules.test.ts is missing.
+
+Repair this test infrastructure.
+
+Inspect firestore.rules and firebase.json.
+
+Create the missing rules test suite using the Firebase Emulator and official Firebase testing tools.
+
+Test:
+
+1. Unauthenticated access.
+2. Student-owned profile reads.
+3. Student-owned profile writes.
+4. Cross-user access denial.
+5. Admin-only operations.
+6. Event registration authorization.
+7. Duplicate registration restrictions where applicable.
+8. Notification recipient privacy.
+9. Broadcast creation permissions.
+10. Notification read-status updates.
+11. Protected OTP challenge collections.
+12. Privilege escalation attempts.
+13. Invalid document writes.
+14. Legitimate allowed operations.
+
+If Java is unavailable:
+
+- Check whether a safe supported Java runtime can be installed.
+- Use a supported isolated test environment if available.
+- Do not claim emulator tests passed without running them.
+- Report the precise blocker if execution is impossible.
+
+Do not run destructive tests against Production Firestore.
+
+---
+
+# PHASE 12 — COMPLETE API AND BACKEND AUDIT
+
+Inspect every existing backend route.
+
+For each route, verify:
+
+- HTTP method
+- Request validation
+- Authentication
+- Authorization
+- Response status
+- Error handling
+- Rate limiting where appropriate
+- Database operations
+- External service calls
+- Idempotency where appropriate
+- Logging without secret leakage
+
+Include:
+
+- Health endpoints
+- Student OTP endpoints
+- Admin authentication endpoints
+- Admin recovery endpoints
+- Event registration endpoints
+- Broadcast endpoints
+- Notification endpoints
+- Profile-related endpoints
+- Every other discovered API route
+
+Check that Vercel serverless behavior does not break state persistence.
+
+Do not use process-local memory as the sole authoritative store for persistent security challenges or registrations.
+
+---
+
+# PHASE 13 — FRONTEND, UI AND RESPONSIVENESS
+
+Preserve the current NEXORA design.
+
+Audit:
+
+- Homepage
+- Navigation
+- Mobile menu
+- Signup/login screens
+- Admin security gate
+- Admin dashboard
+- Events and competitions
+- Registration modal
+- Student profile
+- My Competitions
+- Notifications
+- Broadcast interface
+- Error messages
+- Loading indicators
+- Empty states
+- Mobile responsiveness
+- Desktop responsiveness
+- Form validation
+- Browser refresh behavior
+
+Fix broken functionality without unnecessary redesign.
+
+Ensure errors are understandable and do not falsely indicate success.
+
+Check for JavaScript console errors and failed network requests.
+
+---
+
+# PHASE 14 — DEPENDENCY AND BUILD SECURITY
+
+Investigate the remaining reported advisories:
+
+High:
+GHSA-m9gg-hp2v-232j
+
+Low:
+GHSA-f596-whhp-79r4
+
+Moderate:
+GHSA-3g3m-2fjr-6pw4
+
+Moderate:
+GHSA-g3hv-75wg-m249
+
+Check actual installed versions and dependency paths.
+
+Apply compatible fixes where available.
+
+Do not introduce a broken Firebase dependency to silence an audit warning.
+
+Verify the jose compatibility fix remains functional.
+
+Investigate:
+
+TS2688: Cannot find type definition file for vite/client
+
+Investigate the large JavaScript bundle warning.
+
+Optimize safely without removing functionality.
+
+Report any remaining advisories and their runtime relevance.
+
+---
+
+# PHASE 15 — COMPLETE AUTOMATED TESTING
+
+Run:
+
+npm run typecheck
+npm test
+npm run rules:test
+npm run build
+
+Add tests for all discovered critical workflows.
+
+Use appropriate unit, integration and browser tests.
+
+Test:
+
+- Student signup
+- Student OTP
+- Student login
+- Logout
+- Session persistence
+- Admin login
+- Admin OTP
+- Admin password recovery
+- New admin password setup
+- Old admin password rejection
+- Event registration
+- Duplicate registration
+- Profile enrollment synchronization
+- Broadcast creation
+- Notification delivery
+- Notification read status
+- Firestore authorization
+- Backend cold starts
+- Missing configuration handling
+
+Do not inflate the test count with meaningless assertions.
+
+Use real Firebase emulators or isolated test resources for integration tests.
+
+A mocked email test does not prove real email delivery.
+
+A passing build does not prove production readiness.
+
+---
+
+# PHASE 16 — FULL END-TO-END USER JOURNEYS
+
+Create and execute realistic test scenarios.
+
+## Student journey
+
+1. Open NEXORA.
+2. Create an authorized test student account.
+3. Request OTP.
+4. Receive OTP through Brevo.
+5. Verify OTP.
+6. Complete signup.
+7. Log in.
+8. Open profile.
+9. Register for an event.
+10. Confirm registration.
+11. Open My Competitions.
+12. Verify event appears.
+13. Refresh.
+14. Verify registration remains.
+15. Logout.
+16. Login again.
+17. Verify registration remains.
+18. Reopen the event.
+19. Verify duplicate registration is prevented.
+20. Receive an authorized test broadcast.
+21. Open notification.
+22. Mark it read.
+23. Refresh and verify read status.
+
+## Admin journey
+
+1. Open admin login.
+2. Verify authorized identity.
+3. Complete admin password authentication.
+4. Receive and verify admin OTP.
+5. Open admin dashboard.
+6. Create an authorized test broadcast.
+7. Verify intended recipients receive it.
+8. Inspect registration data.
+9. Initiate authorized password recovery.
+10. Complete identity and OTP verification.
+11. Set a new admin password in a controlled test environment.
+12. Verify new password works.
+13. Verify old password fails.
+14. Verify appropriate old sessions are revoked.
+15. Verify admin permissions remain intact.
+
+Do not rotate real production admin credentials during automated tests.
+
+Perform destructive password-rotation tests only with isolated test accounts.
+
+---
+
+# PHASE 17 — PRODUCTION ENVIRONMENT VERIFICATION
+
+Inspect the existing Vercel environment variable configuration securely.
+
+Verify the actual variable names required by the code.
+
+Check Firebase client configuration:
+
+VITE_FIREBASE_API_KEY
+VITE_FIREBASE_AUTH_DOMAIN
+VITE_FIREBASE_PROJECT_ID
+VITE_FIREBASE_STORAGE_BUCKET
+VITE_FIREBASE_APP_ID
+VITE_FIRESTORE_DATABASE_ID
+
+Check Firebase Admin configuration:
+
+FIREBASE_SERVICE_ACCOUNT
+
+OR supported equivalent credentials:
+
+FIREBASE_CLIENT_EMAIL
+FIREBASE_PRIVATE_KEY
+
+Also verify:
+
+FIREBASE_PROJECT_ID
+FIRESTORE_DATABASE_ID
+OTP_HMAC_SECRET
+
+Check Brevo:
+
+BREVO_API_KEY
+BREVO_SENDER_NAME
+BREVO_SENDER_EMAIL
+BREVO_REPLY_TO
+
+Do not assume these are the exact names used by the latest implementation. Verify the code.
+
+Verify the production Firebase Admin service account belongs to the correct Firebase project and has the required permissions.
+
+Do not print private keys or secrets.
+
+If an owner action is necessary, provide precise Vercel/Firebase setup instructions.
+
+Do not automatically replace production credentials.
+
+---
+
+# PHASE 18 — PRODUCTION RELEASE PROCESS
+
+All code changes must remain on main.
+
+Do not create a second Git branch.
+
+Before release:
+
+1. Finish local code fixes.
+2. Run all available tests.
+3. Record unresolved blockers.
+4. Confirm no secrets are committed.
+5. Verify the local main commit.
+6. Verify origin/main has not changed unexpectedly.
+7. Prepare a production deployment checklist.
+8. Request my explicit final approval before pushing.
+
+After I approve:
+
+1. Push main normally.
+2. Monitor Vercel Production deployment.
+3. Confirm deployment Ready.
+4. Verify www.nexora-bvm.online.
+5. Verify /api/health.
+6. Check API startup and runtime logs.
+7. Verify authorized student OTP.
+8. Verify authorized admin OTP.
+9. Verify competition registration persistence.
+10. Verify profile synchronization.
+11. Verify broadcast and notification workflows.
+12. Report the actual results.
+
+If production has a critical regression, stop further changes and provide rollback instructions.
+
+Do not claim the site is secure or fully working until the required tests are actually completed.
+
+---
+
+# PHASE 19 — FINAL REPORT
+
+Produce a comprehensive report.
+
+## A. GitHub
+
+- Original main SHA
+- Latest local main SHA
+- Final remote main SHA after approved push
+- Number of remote branches
+- Confirmation that no new branches were created
+
+## B. Feature inventory
+
+For every discovered feature:
+
+- Feature name
+- Expected behavior
+- Problems found
+- Fixes made
+- Test results
+- Remaining limitations
+
+## C. OTP
+
+- Firebase Admin initialization
+- Student OTP generation
+- Brevo delivery
+- Student OTP verification
+- Admin OTP generation
+- Admin OTP verification
+- OTP storage
+- Expiry and replay protection
+
+## D. Admin password replacement
+
+- Current password authority
+- New password setup workflow
+- Old password invalidation
+- Session revocation
+- Authorization checks
+- Actual verification status
+- Owner actions required
+
+## E. Events and registrations
+
+- Registration persistence
+- My Competitions synchronization
+- Duplicate prevention
+- Participant counts
+- Security validation
+
+## F. Broadcast and notifications
+
+- Admin message creation
+- Recipient targeting
+- Message persistence
+- Student notification delivery
+- Unread counts
+- Read-status persistence
+- Authorization and privacy
+
+## G. Security
+
+- Firestore rules test results
+- Remaining vulnerabilities
+- Authorization findings
+- Secrets handling
+- Unverified risks
+
+## H. Deployment
+
+- Production deployment ID
+- Production commit
+- Domain status
+- Health endpoint
+- End-to-end test results
+- Remaining blockers
+
+Use only these status categories:
+
+PASS — Verified successfully.
+
+FAIL — Tested and failed.
+
+NOT VERIFIED — Not tested or insufficient evidence.
+
+BLOCKED — Requires credentials, permissions, infrastructure or owner action.
+
+Do not substitute assumptions for evidence.
+
+---
+
+# FINAL EXECUTION INSTRUCTION
+
+My priorities, in order:
+
+1. Restore student signup/login and OTP.
+2. Restore admin login and OTP.
+3. Implement secure NEW admin password setup and invalidate the OLD password after authorized rotation.
+4. Fix competition registration persistence.
+5. Fix My Competitions and duplicate registration.
+6. Restore admin broadcast messaging.
+7. Restore student notifications and read/unread synchronization.
+8. Audit and repair every other existing feature.
+9. Fix Firestore security rules and missing tests.
+10. Fix dependency and build issues.
+11. Complete meaningful end-to-end verification.
+12. Prepare the verified changes on the existing main branch only.
+13. Request my final approval before pushing and deploying.
+
+I expect actual engineering work, not only an audit report.
+
+Implement and test everything that can be safely completed with the available access.
+
+For missing credentials or manual setup, provide exact instructions.
+
+Do not create any new Git branch.
+
+Do not remove existing features.
+
+Do not delete production data.
+
+Do not reset the production admin password without completing authorized owner verification and receiving my separate approval.
+
+Do not claim everything works unless real tests prove it.
+
+BEGIN NOW ON MAIN.
