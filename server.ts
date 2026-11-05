@@ -1827,13 +1827,17 @@ async function startServer() {
   }
 
   const isProd = process.env.NODE_ENV === 'production';
+  const http = await import('http');
+  const httpServer = http.createServer(app);
 
   if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { 
         middlewareMode: true,
-        hmr: false // In AI Studio dev server, disable Vite WebSocket HMR to prevent port 24678 collision
+        hmr: {
+          server: httpServer
+        }
       },
       appType: 'spa'
     });
@@ -1846,7 +1850,7 @@ async function startServer() {
   }
 
   const port = Number(PORT);
-  app.listen(port, '0.0.0.0', () => {
+  httpServer.listen(port, '0.0.0.0', () => {
     console.log(`NEXORA Server running on http://0.0.0.0:${port}`);
   });
 }

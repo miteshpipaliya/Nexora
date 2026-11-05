@@ -65,6 +65,7 @@ import { ImageSelector } from '../../components/admin/ImageSelector';
 import { ImageLibraryModal } from '../../components/admin/ImageLibraryModal';
 import { PrizePoolEditor } from '../../components/admin/PrizePoolEditor';
 import { FOUNDING_TEAM, INITIAL_EVENTS } from '../../services/mockData';
+import { isUserOnline, formatLastSeen, type UserPresenceRecord } from '../../services/presenceService';
 
 export const STANDARD_TEAM_ROLES = [
   {
@@ -203,6 +204,7 @@ export const AdminPage: React.FC = () => {
   const [registrations, setRegistrations] = useState<RegistrationRecord[]>([]);
   const [events, setEvents] = useState<CompetitionEvent[]>([]);
   const [students, setStudents] = useState<UserProfile[]>([]);
+  const [presenceMap, setPresenceMap] = useState<Record<string, UserPresenceRecord>>({});
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
   const [messages, setMessages] = useState<ContactMessage[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -432,12 +434,18 @@ export const AdminPage: React.FC = () => {
       setSiteContent(content);
     });
 
+    // 6. Subscribe to student presence
+    const unsubPresence = dataService.subscribeStudentPresence((presence: Record<string, UserPresenceRecord>) => {
+      setPresenceMap(presence);
+    });
+
     return () => {
       unsubEvents();
       unsubRegs();
       unsubNotifs();
       unsubMsgs();
       unsubContent();
+      unsubPresence();
     };
   }, [elevatedAdminVerified]);
 
@@ -1263,10 +1271,7 @@ export const AdminPage: React.FC = () => {
   // Calculate computed stats if realStats not loaded yet
   const displayStats = realStats || {
     totalStudents: students.length,
-    activeStudents: students.filter((s) => {
-      const lastActive = typeof s.last_active === 'number' ? s.last_active : 0;
-      return Date.now() - lastActive < 15 * 60 * 1000;
-    }).length,
+    activeStudents: students.filter((s) => isUserOnline(presenceMap[s.id])).length,
     totalCompetitions: events.length,
     publishedCompetitions: events.filter((e) => e.status !== 'Draft' && e.status !== 'Archived').length,
     totalRegistrations: registrations.length,
@@ -2450,6 +2455,41 @@ export const AdminPage: React.FC = () => {
             </button>
           </div>
 
+          {/* Real-time Presence Metrics Summary */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="p-3.5 bg-[#171426] border border-violet-500/20 rounded-xl flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-mono uppercase tracking-wider text-slate-400">Total Registered</p>
+                <p className="text-xl font-bold text-white mt-0.5">{students.length}</p>
+              </div>
+              <Users className="w-5 h-5 text-violet-400 opacity-80" />
+            </div>
+            <div className="p-3.5 bg-[#171426] border border-emerald-500/30 rounded-xl flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-mono uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Online Now
+                </p>
+                <p className="text-xl font-bold text-white mt-0.5">
+                  {students.filter((s) => isUserOnline(presenceMap[s.id])).length}
+                </p>
+              </div>
+              <UserCheck className="w-5 h-5 text-emerald-400 opacity-80" />
+            </div>
+            <div className="p-3.5 bg-[#171426] border border-slate-700/60 rounded-xl flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-mono uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-slate-500" />
+                  Offline
+                </p>
+                <p className="text-xl font-bold text-white mt-0.5">
+                  {students.length - students.filter((s) => isUserOnline(presenceMap[s.id])).length}
+                </p>
+              </div>
+              <Clock className="w-5 h-5 text-slate-500 opacity-80" />
+            </div>
+          </div>
+
           <div className="relative max-w-md">
             <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
             <input
@@ -2483,8 +2523,12 @@ export const AdminPage: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-violet-500/10 text-slate-300">
                     {filteredStudents.map((s) => {
-                      const lastActive = typeof s.last_active === 'number' ? s.last_active : 0;
-                      const isOnline = Date.now() - lastActive < 15 * 60 * 1000;
+                      const presence = presenceMap[s.id];
+                      const online = isUserOnline(presence);
+                      const lastSeen = presence?.last_seen 
+                        ? formatLastSeen(presence.last_seen) 
+                        : (typeof s.last_active === 'number' && s.last_active > 0 ? formatLastSeen(s.last_active) : 'Never');
+
                       return (
                         <tr key={s.id} className="hover:bg-violet-950/20 transition-colors">
                           <td className="py-3 px-4 select-text">
@@ -2498,13 +2542,13 @@ export const AdminPage: React.FC = () => {
                           <td className="py-3 px-4 font-mono">{s.branch} · {s.academic_year}</td>
                           <td className="py-3 px-4 font-mono text-violet-300 select-text">{s.enrollment_number || '—'}</td>
                           <td className="py-3 px-4">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono rounded-full ${
-                              isOnline
-                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
-                                : 'bg-slate-900 text-slate-400 border border-slate-700'
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono rounded-full ${
+                              online
+                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-950/50'
+                                : 'bg-slate-900 text-slate-400 border border-slate-700/60'
                             }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-                              {isOnline ? 'Active' : 'Offline'}
+                              <span className={`w-2 h-2 rounded-full ${online ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                              <span>{online ? 'Active now' : `Offline · ${lastSeen}`}</span>
                             </span>
                           </td>
                           <td className="py-3 px-4 font-mono text-slate-400 text-[11px]">

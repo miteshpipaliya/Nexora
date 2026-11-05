@@ -18,7 +18,7 @@ import {
   TeamDepartment,
   TeamMember
 } from '../types';
-import { UserPresenceRecord } from './presenceService';
+import { UserPresenceRecord, startPresenceHeartbeat, stopPresenceHeartbeat } from './presenceService';
 import { 
   auth, 
   db, 
@@ -142,7 +142,10 @@ interface LocalChallenge {
 const localAdminChallenges = new Map<string, LocalChallenge>();
 
 export async function sendPresenceHeartbeat(): Promise<void> {
-  // Presence heartbeat tracking removed per security audit C-08
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    startPresenceHeartbeat(uid);
+  }
 }
 
 class NexoraDataService {
@@ -155,12 +158,14 @@ class NexoraDataService {
     // Listen to Firebase auth state changes
     auth.onAuthStateChanged(async (fbUser) => {
       if (fbUser) {
+        startPresenceHeartbeat(fbUser.uid);
         try {
           this.currentUserCache = await this.fetchUserProfile(fbUser.uid, fbUser);
         } catch {
           this.currentUserCache = this.buildFallbackProfile(fbUser);
         }
       } else {
+        stopPresenceHeartbeat();
         this.currentUserCache = null;
       }
       this.authInitialized = true;
@@ -580,6 +585,7 @@ class NexoraDataService {
 
   // 6. Sign Out
   public async logout(): Promise<void> {
+    stopPresenceHeartbeat();
     await signOut(auth);
     this.currentUserCache = null;
     this.notify();

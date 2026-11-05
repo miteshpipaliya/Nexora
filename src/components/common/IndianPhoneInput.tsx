@@ -48,17 +48,30 @@ export const IndianPhoneInput: React.FC<IndianPhoneInputProps> = ({
   }, [value]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Keep only digits, maximum 10 digits
-    const raw = e.target.value.replace(/\D/g, '');
-    const truncated = raw.slice(0, 10);
-    setNationalNumber(truncated);
+    const raw = e.target.value;
+    const national = extractIndianNationalNumber(raw);
+    setNationalNumber(national);
 
-    const validation = validateIndianMobile(truncated);
-    const canonical = truncated.length === 10 && validation.valid
-      ? normalizeIndianMobile(truncated)
-      : (truncated ? `+91${truncated}` : '');
+    const validation = validateIndianMobile(national);
+    const canonical = national.length === 10 && validation.valid
+      ? normalizeIndianMobile(national)
+      : (national ? `+91${national}` : '');
 
-    onChange(canonical, truncated, validation.valid);
+    onChange(canonical, national, validation.valid);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text');
+    const national = extractIndianNationalNumber(pasted);
+    setNationalNumber(national);
+
+    const validation = validateIndianMobile(national);
+    const canonical = national.length === 10 && validation.valid
+      ? normalizeIndianMobile(national)
+      : (national ? `+91${national}` : '');
+
+    onChange(canonical, national, validation.valid);
   };
 
   const handleBlur = () => {
@@ -103,6 +116,7 @@ export const IndianPhoneInput: React.FC<IndianPhoneInputProps> = ({
           maxLength={10}
           value={nationalNumber}
           onChange={handleInputChange}
+          onPaste={handlePaste}
           onBlur={handleBlur}
           disabled={disabled}
           placeholder={placeholder}

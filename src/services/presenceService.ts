@@ -58,10 +58,27 @@ export function getTabSessionId(): string {
  */
 export function isUserOnline(presence?: UserPresenceRecord | null, leaseMs = PRESENCE_LEASE_TIMEOUT_MS): boolean {
   if (!presence) return false;
-  if (presence.is_online !== true) return false;
+  const now = Date.now();
+
+  // If multi-tab session tracking is present, check if any active session is within the lease window
+  if (presence.sessions && typeof presence.sessions === 'object') {
+    const sessionTimes = Object.values(presence.sessions).filter(
+      (ts): ts is number => typeof ts === 'number' && Number.isFinite(ts)
+    );
+    if (sessionTimes.length > 0) {
+      const mostRecentSession = Math.max(...sessionTimes);
+      if (now - mostRecentSession < leaseMs) {
+        return true;
+      }
+    }
+  }
+
+  // If explicitly flagged offline and no active session, user is offline
+  if (presence.is_online === false) return false;
+
   const lastSeen = typeof presence.last_seen === 'number' ? presence.last_seen : 0;
   if (lastSeen <= 0) return false;
-  return (Date.now() - lastSeen) < leaseMs;
+  return (now - lastSeen) < leaseMs;
 }
 
 /**
@@ -123,23 +140,22 @@ async function sendHeartbeat(userId: string): Promise<void> {
 /**
  * Dispatches a leave notification on tab unload / disconnect
  */
-async function sendDisconnect(userId: string): Promise<void> {
+async function sendDisconnect(userId: string, isFullLogout: boolean = false): Promise<void> {
   if (!userId || !db) return;
   const sessionId = getTabSessionId();
 
   try {
     const presenceRef = doc(db, 'userPresence', userId);
-    await setDoc(
-      presenceRef,
-      {
-        is_online: false,
-        last_seen: Date.now(),
-        sessions: {
-          [sessionId]: deleteField()
-        }
-      },
-      { merge: true }
-    );
+    const updatePayload: Record<string, any> = {
+      last_seen: Date.now(),
+      last_active_at: new Date().toISOString(),
+      [`sessions.${sessionId}`]: deleteField()
+    };
+    if (isFullLogout) {
+      updatePayload.is_online = false;
+      updatePayload.sessions = {};
+    }
+    await setDoc(presenceRef, updatePayload, { merge: true });
   } catch (err) {
     console.debug('[PRESENCE] Disconnect write silently bypassed:', err);
   }
@@ -198,7 +214,7 @@ export function startPresenceHeartbeat(userId: string): void {
     // Page unload / tab close
     const handleUnload = () => {
       if (activePresenceUserId) {
-        void sendDisconnect(activePresenceUserId);
+        void sendDisconnect(activePresenceUserId, false);
       }
     };
     window.addEventListener('pagehide', handleUnload);
@@ -218,7 +234,7 @@ export function stopPresenceHeartbeat(userId?: string): void {
   }
 
   if (targetId) {
-    void sendDisconnect(targetId);
+    void sendDisconnect(targetId, true);
   }
 
   if (!userId || userId === activePresenceUserId) {

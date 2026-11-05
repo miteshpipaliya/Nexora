@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { UserProfile } from '../types';
 import { dataService } from '../services/dataService';
 import { auth } from '../services/firebase';
+import { startPresenceHeartbeat, stopPresenceHeartbeat } from '../services/presenceService';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -103,23 +104,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  // Periodic user presence heartbeat
+  // Active student presence tracking
   useEffect(() => {
-    if (!user) return;
-    try {
-      dataService.sendPresenceHeartbeat?.();
-    } catch (err) {
-      console.warn('[Presence] Heartbeat error:', err);
+    if (user?.id) {
+      startPresenceHeartbeat(user.id);
+    } else {
+      stopPresenceHeartbeat();
     }
-    const interval = setInterval(() => {
-      try {
-        dataService.sendPresenceHeartbeat?.();
-      } catch (err) {
-        console.warn('[Presence] Interval heartbeat error:', err);
-      }
-    }, 60000);
-    return () => clearInterval(interval);
-  }, [user]);
+    return () => {
+      stopPresenceHeartbeat();
+    };
+  }, [user?.id]);
 
   const loginWithGoogle = async () => {
     setLoading(true);
@@ -165,6 +160,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     setLoading(true);
     try {
+      stopPresenceHeartbeat(user?.id);
       dataService.clearElevatedAdminSession();
       setElevatedAdminVerified(false);
       await dataService.logout();
