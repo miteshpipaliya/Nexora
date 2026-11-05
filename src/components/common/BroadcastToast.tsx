@@ -1,15 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, ExternalLink, Volume2, VolumeX, AlertTriangle, AlertCircle, Sparkles } from 'lucide-react';
+import { X, ExternalLink, AlertTriangle, AlertCircle, Sparkles } from 'lucide-react';
 import { InAppNotification } from '../../types';
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
 import { isValidSafeUrl } from '../../shared/lib/safeUrl';
-import {
-  playNotificationSound,
-  isNotificationSoundEnabled,
-  setNotificationSoundEnabled
-} from '../../shared/lib/notificationSound';
+import { playNotificationSound } from '../../shared/lib/notificationSound';
 
 const SEEN_BROADCASTS_KEY = 'nexora_seen_broadcasts';
 const MAX_SEEN_CACHE = 200;
@@ -69,15 +65,8 @@ export const BroadcastToast: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [activeToasts, setActiveToasts] = useState<ToastItem[]>([]);
-  const [soundEnabled, setSoundEnabledState] = useState<boolean>(() => isNotificationSoundEnabled());
-  const mountTimeRef = useRef<number>(Date.now());
+  const isInitialSnapshotRef = useRef<boolean>(true);
   const touchStartXRef = useRef<number | null>(null);
-
-  const toggleSound = () => {
-    const next = !soundEnabled;
-    setSoundEnabledState(next);
-    setNotificationSoundEnabled(next);
-  };
 
   // Dismiss a specific toast and record seen everywhere
   const dismissToast = useCallback((id: string) => {
@@ -103,6 +92,31 @@ export const BroadcastToast: React.FC = () => {
       const seen = getSeenBroadcastIds();
       const now = Date.now();
 
+      // On initial load, mark all pre-existing notifications as baseline so we never chime on page load
+      if (isInitialSnapshotRef.current) {
+        isInitialSnapshotRef.current = false;
+        // Don't play sound for initial load, only show unexpired toasts if created very recently (<30s)
+        const initialToasts = allNotifs.filter((n: InAppNotification) => {
+          if (n.status !== 'Published') return false;
+          if (seen.has(n.id)) return false;
+          const createdMs = new Date(n.created_at).getTime();
+          return !isNaN(createdMs) && (now - createdMs) < 30000;
+        });
+
+        if (initialToasts.length > 0) {
+          const items: ToastItem[] = initialToasts.slice(-MAX_STACK).map(n => ({
+            notification: n,
+            remainingMs: AUTO_DISMISS_MS,
+            isPaused: false,
+            timerStart: Date.now(),
+            isFreshLive: false
+          }));
+          setActiveToasts(items);
+        }
+        return;
+      }
+
+      // Subsequent real-time broadcasts
       const freshNotifs = allNotifs.filter((n: InAppNotification) => {
         if (n.status !== 'Published') return false;
         if (seen.has(n.id)) return false;
@@ -119,8 +133,27 @@ export const BroadcastToast: React.FC = () => {
           if (!isNaN(exp) && exp < now) return false;
         }
 
+        // Audience check
+        if (n.audience && n.audience !== 'all') {
+          if (n.audience === 'admin' && !user?.is_admin) return false;
+          if (n.audience === 'students' && user?.is_admin) return false;
+        }
+
+        // Skip if sender is the current admin user themselves
+        if (n.created_by) {
+          const creator = n.created_by.toLowerCase().trim();
+          if (user?.email && creator === user.email.toLowerCase().trim()) {
+            markBroadcastSeenLocally(n.id);
+            return false;
+          }
+          if (user?.id && creator === user.id.toLowerCase().trim()) {
+            markBroadcastSeenLocally(n.id);
+            return false;
+          }
+        }
+
         const createdMs = new Date(n.created_at).getTime();
-        // Item created > 5 minutes ago while user was away: skip toast, show in bell only
+        // Item created > 5 minutes ago: skip toast, show in bell only
         if (!isNaN(createdMs) && (now - createdMs) > MAX_TOAST_AGE_MS) {
           markBroadcastSeenLocally(n.id);
           return false;
@@ -137,26 +170,18 @@ export const BroadcastToast: React.FC = () => {
 
         if (toAdd.length === 0) return prev;
 
-        // Determine if notification went live while page is open
+        // Play chime for incoming live broadcast
         for (const item of toAdd) {
-          const itemTime = new Date(item.created_at).getTime();
-          const isFreshLive = !isNaN(itemTime) && itemTime >= (mountTimeRef.current - 10000);
-          if (isFreshLive) {
-            playNotificationSound(item.id).catch(() => {});
-          }
+          playNotificationSound(item.id).catch(() => {});
         }
 
-        const newItems: ToastItem[] = toAdd.map(n => {
-          const itemTime = new Date(n.created_at).getTime();
-          const isFreshLive = !isNaN(itemTime) && itemTime >= (mountTimeRef.current - 10000);
-          return {
-            notification: n,
-            remainingMs: AUTO_DISMISS_MS,
-            isPaused: false,
-            timerStart: Date.now(),
-            isFreshLive
-          };
-        });
+        const newItems: ToastItem[] = toAdd.map(n => ({
+          notification: n,
+          remainingMs: AUTO_DISMISS_MS,
+          isPaused: false,
+          timerStart: Date.now(),
+          isFreshLive: true
+        }));
 
         const merged = [...prev, ...newItems];
         return merged.slice(-MAX_STACK);
@@ -164,7 +189,7 @@ export const BroadcastToast: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [user]);
 
   // Cross-tab synchronization via storage event
   useEffect(() => {
@@ -172,9 +197,6 @@ export const BroadcastToast: React.FC = () => {
       if (e.key === SEEN_BROADCASTS_KEY) {
         const seen = getSeenBroadcastIds();
         setActiveToasts(prev => prev.filter(t => !seen.has(t.notification.id)));
-      }
-      if (e.key === 'nexora_notif_sound') {
-        setSoundEnabledState(e.newValue !== 'false');
       }
     };
 
@@ -292,7 +314,7 @@ export const BroadcastToast: React.FC = () => {
               <div className="relative shrink-0">
                 <div className="w-10 h-10 rounded-full bg-violet-950/80 border border-violet-500/40 p-1.5 flex items-center justify-center shadow-inner">
                   <img
-                    src="/logo.png"
+                    src="/logo_transparent.png"
                     alt="NEXORA"
                     className="w-full h-full object-contain rounded-full"
                     onError={(e) => {
@@ -339,21 +361,8 @@ export const BroadcastToast: React.FC = () => {
                 </div>
               </div>
 
-              {/* Sound Mute & Close buttons */}
+              {/* Close button */}
               <div className="flex items-center gap-1 shrink-0 -mr-1">
-                <button
-                  type="button"
-                  onClick={toggleSound}
-                  title={soundEnabled ? 'Mute notification sound' : 'Unmute notification sound'}
-                  className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-white/5 transition-colors cursor-pointer"
-                  aria-label={soundEnabled ? 'Mute sound' : 'Unmute sound'}
-                >
-                  {soundEnabled ? (
-                    <Volume2 className="w-3.5 h-3.5 text-violet-400" />
-                  ) : (
-                    <VolumeX className="w-3.5 h-3.5 text-slate-500" />
-                  )}
-                </button>
                 <button
                   type="button"
                   onClick={() => dismissToast(notification.id)}

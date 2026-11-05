@@ -67,6 +67,7 @@ import { ImageLibraryModal } from '../../components/admin/ImageLibraryModal';
 import { PrizePoolEditor } from '../../components/admin/PrizePoolEditor';
 import { isUserOnline, formatLastSeen, formatPresenceLastSeen, type UserPresenceRecord } from '../../services/presenceService';
 import { INITIAL_EVENTS } from '../../services/mockData';
+import { markBroadcastSeenLocally } from '../../components/common/BroadcastToast';
 
 export const STANDARD_TEAM_ROLES = [
   {
@@ -1062,7 +1063,13 @@ export const AdminPage: React.FC = () => {
     }
     setLoading(true);
     try {
-      await dataService.createNotification(newNotification);
+      const created = await dataService.createNotification({
+        ...newNotification,
+        created_by: user?.email || user?.id || 'admin'
+      });
+      if (created?.id) {
+        markBroadcastSeenLocally(created.id);
+      }
       showSuccessToast('Announcement published successfully! Students will receive it in real-time.');
       setShowNotificationModal(false);
       setNewNotification({

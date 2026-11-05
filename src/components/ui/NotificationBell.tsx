@@ -8,28 +8,18 @@ import {
   Megaphone,
   Calendar,
   AlertTriangle,
-  Info,
-  Volume2,
-  VolumeX,
-  Play
+  Info
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { InAppNotification } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { isValidSafeUrl } from '../../shared/lib/safeUrl';
-import {
-  isNotificationSoundEnabled,
-  setNotificationSoundEnabled,
-  playNotificationSound
-} from '../../shared/lib/notificationSound';
 
 export const NotificationBell: React.FC = () => {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [isOpen, setIsOpen] = useState(false);
-  const [soundEnabled, setSoundEnabledState] = useState<boolean>(() => isNotificationSoundEnabled());
-  const [testingSound, setTestingSound] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const originalTitleRef = useRef<string>(typeof document !== 'undefined' ? document.title : 'NEXORA');
 
@@ -86,16 +76,6 @@ export const NotificationBell: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Sync sound preferences across tabs
-  useEffect(() => {
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === 'nexora_notif_sound') {
-        setSoundEnabledState(e.newValue !== 'false');
-      }
-    };
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
-  }, []);
 
   // Close popover when clicking outside
   useEffect(() => {
@@ -130,17 +110,6 @@ export const NotificationBell: React.FC = () => {
     };
   }, [unreadCount]);
 
-  const toggleSound = () => {
-    const next = !soundEnabled;
-    setSoundEnabledState(next);
-    setNotificationSoundEnabled(next);
-  };
-
-  const handleTestSound = async () => {
-    setTestingSound(true);
-    await playNotificationSound(undefined, true);
-    setTimeout(() => setTestingSound(false), 500);
-  };
 
   const markAsRead = (id: string) => {
     const next = new Set(readIds);
@@ -248,37 +217,6 @@ export const NotificationBell: React.FC = () => {
             </div>
           </div>
 
-          {/* Sound Controls Bar (Package D) */}
-          <div className="px-4 py-2 border-b border-violet-500/15 bg-[#0d0c15] flex items-center justify-between text-xs font-mono text-slate-400">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={toggleSound}
-                className="inline-flex items-center gap-1.5 text-[11px] text-slate-300 hover:text-white transition-colors cursor-pointer"
-              >
-                {soundEnabled ? (
-                  <>
-                    <Volume2 className="w-3.5 h-3.5 text-violet-400" />
-                    <span>Sound: ON</span>
-                  </>
-                ) : (
-                  <>
-                    <VolumeX className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Sound: OFF</span>
-                  </>
-                )}
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={handleTestSound}
-              disabled={testingSound}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-violet-300 bg-violet-950/60 border border-violet-500/30 hover:bg-violet-900/60 transition-colors cursor-pointer"
-            >
-              <Play className="w-2.5 h-2.5" />
-              <span>{testingSound ? 'Playing...' : 'Test sound'}</span>
-            </button>
-          </div>
 
           {/* Notification List */}
           <div className="overflow-y-auto divide-y divide-violet-500/10 flex-1 max-h-[60vh]">

@@ -11,58 +11,114 @@ const rootDir = path.resolve(__dirname, '..');
 const MASTER_PATH = path.join(rootDir, 'design', 'nexora-logo-master.png');
 const PUBLIC_DIR = path.join(rootDir, 'public');
 const DOCS_DIR = path.join(rootDir, 'docs');
+const DESIGN_DIR = path.join(rootDir, 'design');
 
-const BG_COLOR = { r: 5, g: 1, b: 15, alpha: 1 }; // #05010F
-const BG_HEX = '#05010F';
+/**
+ * Extracts a true transparent RGBA alpha channel from the master glowing logo.
+ * The master image is rendered additively on a near-pitch-black background (~#000000 - #05010f).
+ * By subtracting noise floor, computing continuous alpha from luminance/max-channel,
+ * and un-premultiplying color channels, we achieve smooth, glowing edges with ZERO
+ * dark halos on light backgrounds and full luminous beauty on dark backgrounds.
+ */
+async function extractTransparentLogo(sourcePath) {
+  const img = sharp(sourcePath);
+  const { data, info } = await img.raw().toBuffer({ resolveWithObject: true });
+  const { width, height, channels } = info;
+
+  const rgbaBuffer = Buffer.alloc(width * height * 4);
+  const NOISE_FLOOR = 7;
+  const RANGE = 255 - NOISE_FLOOR;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const srcIdx = (y * width + x) * channels;
+      const dstIdx = (y * width + x) * 4;
+
+      const r = data[srcIdx];
+      const g = data[srcIdx + 1];
+      const b = data[srcIdx + 2];
+
+      const maxVal = Math.max(r, g, b);
+
+      if (maxVal <= NOISE_FLOOR) {
+        rgbaBuffer[dstIdx] = 0;
+        rgbaBuffer[dstIdx + 1] = 0;
+        rgbaBuffer[dstIdx + 2] = 0;
+        rgbaBuffer[dstIdx + 3] = 0;
+      } else {
+        const rawAlpha = (maxVal - NOISE_FLOOR) / RANGE;
+        // 0.88 power curve preserves the delicate purple cosmic glow without dark fringe
+        const alpha = Math.min(1, Math.pow(rawAlpha, 0.88));
+
+        // Un-premultiply RGB: C_src / alpha to recover true source emission color
+        const unmultFactor = 1 / Math.max(rawAlpha, 0.05);
+        const unR = Math.min(255, Math.round(r * unmultFactor));
+        const unG = Math.min(255, Math.round(g * unmultFactor));
+        const unB = Math.min(255, Math.round(b * unmultFactor));
+
+        rgbaBuffer[dstIdx] = unR;
+        rgbaBuffer[dstIdx + 1] = unG;
+        rgbaBuffer[dstIdx + 2] = unB;
+        rgbaBuffer[dstIdx + 3] = Math.min(255, Math.max(0, Math.round(alpha * 255)));
+      }
+    }
+  }
+
+  return sharp(rgbaBuffer, { raw: { width, height, channels: 4 } });
+}
 
 async function main() {
   if (!fs.existsSync(MASTER_PATH)) {
     throw new Error(`Master logo not found at ${MASTER_PATH}`);
   }
 
-  const metadata = await sharp(MASTER_PATH).metadata();
-  console.log(`[ICONS] Master logo loaded: ${metadata.width}x${metadata.height}, format: ${metadata.format}`);
-
   if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR, { recursive: true });
   if (!fs.existsSync(DOCS_DIR)) fs.mkdirSync(DOCS_DIR, { recursive: true });
 
-  const { width = 1254, height = 1254 } = metadata;
+  console.log('[ICONS] Processing transparent master from design/nexora-logo-master.png...');
+  const transparentSharp = await extractTransparentLogo(MASTER_PATH);
 
-  // 1. Full logo with ~6% margin for large sizes (96px and above)
-  // Master image is 1254x1254. 6% margin is already naturally present around the star tips.
-  const fullLogoBuffer = await sharp(MASTER_PATH)
-    .flatten({ background: BG_HEX })
+  // 1. Generate master transparent 1024x1024 PNG
+  const master1024Buffer = await transparentSharp
+    .clone()
+    .resize(1024, 1024, { kernel: sharp.kernel.lanczos3 })
+    .png({ compressionLevel: 9 })
     .toBuffer();
 
-  // 2. Tighter crop for small sizes (48px and below)
-  // Trim ~8% from each side so the four star points fill the frame and remain bold at 16-48px
-  const trimX = Math.round(width * 0.08);
-  const trimY = Math.round(height * 0.08);
-  const croppedWidth = width - trimX * 2;
-  const croppedHeight = height - trimY * 2;
+  fs.writeFileSync(path.join(DESIGN_DIR, 'nexora-logo-transparent-1024.png'), master1024Buffer);
+  fs.writeFileSync(path.join(PUBLIC_DIR, 'logo_transparent.png'), master1024Buffer);
+  // Also update public/logo.png with transparent version
+  fs.writeFileSync(path.join(PUBLIC_DIR, 'logo.png'), master1024Buffer);
+  console.log('Saved 1024x1024 transparent master to design/ and public/');
 
-  const smallLogoBuffer = await sharp(MASTER_PATH)
-    .extract({ left: trimX, top: trimY, width: croppedWidth, height: croppedHeight })
-    .modulate({ brightness: 1.05, saturation: 1.25 })
-    .linear(1.1, -10) // slight contrast boost
-    .flatten({ background: BG_HEX })
-    .toBuffer();
-
-  // Generate public/icon-512.png (512x512)
-  await sharp(fullLogoBuffer)
+  // 2. High-resolution icons (96px, 144px, 180px, 192px, 512px)
+  await sharp(master1024Buffer)
     .resize(512, 512, { kernel: sharp.kernel.lanczos3 })
     .toFile(path.join(PUBLIC_DIR, 'icon-512.png'));
-  console.log('Generated public/icon-512.png');
+  console.log('Generated public/icon-512.png (512x512 transparent)');
 
-  // Generate public/icon-192.png (192x192)
-  await sharp(fullLogoBuffer)
+  await sharp(master1024Buffer)
     .resize(192, 192, { kernel: sharp.kernel.lanczos3 })
     .toFile(path.join(PUBLIC_DIR, 'icon-192.png'));
-  console.log('Generated public/icon-192.png');
+  console.log('Generated public/icon-192.png (192x192 transparent)');
 
-  // Generate public/icon-maskable-512.png (star & arcs within central 80% safe area)
-  // 512 * 0.8 = ~410px inner content, placed over 512x512 solid #05010F background
-  const maskableInner = await sharp(fullLogoBuffer)
+  await sharp(master1024Buffer)
+    .resize(180, 180, { kernel: sharp.kernel.lanczos3 })
+    .toFile(path.join(PUBLIC_DIR, 'apple-touch-icon.png'));
+  console.log('Generated public/apple-touch-icon.png (180x180 transparent)');
+
+  await sharp(master1024Buffer)
+    .resize(144, 144, { kernel: sharp.kernel.lanczos3 })
+    .toFile(path.join(PUBLIC_DIR, 'favicon-144x144.png'));
+  console.log('Generated public/favicon-144x144.png (144x144 transparent)');
+
+  await sharp(master1024Buffer)
+    .resize(96, 96, { kernel: sharp.kernel.lanczos3 })
+    .toFile(path.join(PUBLIC_DIR, 'favicon-96x96.png'));
+  console.log('Generated public/favicon-96x96.png (96x96 transparent)');
+
+  // 3. Maskable icon: star inside 80% safe zone with transparent outer padding
+  const maskableInner = await sharp(master1024Buffer)
     .resize(410, 410, { kernel: sharp.kernel.lanczos3 })
     .toBuffer();
 
@@ -70,61 +126,55 @@ async function main() {
     create: {
       width: 512,
       height: 512,
-      channels: 3,
-      background: BG_HEX
+      channels: 4,
+      background: { r: 5, g: 1, b: 15, alpha: 1 } // #05010F per PWA spec for maskable
     }
   })
     .composite([{ input: maskableInner, gravity: 'center' }])
     .toFile(path.join(PUBLIC_DIR, 'icon-maskable-512.png'));
-  console.log('Generated public/icon-maskable-512.png');
+  console.log('Generated public/icon-maskable-512.png (512x512 maskable)');
 
-  // Generate public/apple-touch-icon.png (180x180)
-  await sharp(fullLogoBuffer)
-    .resize(180, 180, { kernel: sharp.kernel.lanczos3 })
-    .toFile(path.join(PUBLIC_DIR, 'apple-touch-icon.png'));
-  console.log('Generated public/apple-touch-icon.png');
+  // 4. Small sizes (48px, 32px, 16px):
+  // Trim 6% margins so the four compass star points and orbital arcs maximize presence and remain crisp
+  // at 16-48px in browser tabs, address bars, and mobile bookmarks.
+  const croppedSmallBuffer = await sharp(master1024Buffer)
+    .extract({
+      left: Math.round(1024 * 0.05),
+      top: Math.round(1024 * 0.05),
+      width: Math.round(1024 * 0.90),
+      height: Math.round(1024 * 0.90)
+    })
+    .modulate({ brightness: 1.08, saturation: 1.25 })
+    .toBuffer();
 
-  // Generate public/favicon-144x144.png (144x144)
-  await sharp(fullLogoBuffer)
-    .resize(144, 144, { kernel: sharp.kernel.lanczos3 })
-    .toFile(path.join(PUBLIC_DIR, 'favicon-144x144.png'));
-  console.log('Generated public/favicon-144x144.png');
-
-  // Generate public/favicon-96x96.png (96x96)
-  await sharp(fullLogoBuffer)
-    .resize(96, 96, { kernel: sharp.kernel.lanczos3 })
-    .toFile(path.join(PUBLIC_DIR, 'favicon-96x96.png'));
-  console.log('Generated public/favicon-96x96.png');
-
-  // Generate small sizes (48x48, 32x32, 16x16) with tighter crop & light sharpen
-  await sharp(smallLogoBuffer)
+  await sharp(croppedSmallBuffer)
     .resize(48, 48, { kernel: sharp.kernel.lanczos3 })
-    .sharpen({ sigma: 0.8, m1: 0.5, m2: 2 })
-    .toFile(path.join(PUBLIC_DIR, 'favicon-48x48.png'));
-  console.log('Generated public/favicon-48x48.png');
-
-  await sharp(smallLogoBuffer)
-    .resize(32, 32, { kernel: sharp.kernel.lanczos3 })
     .sharpen({ sigma: 0.7, m1: 0.5, m2: 2 })
+    .toFile(path.join(PUBLIC_DIR, 'favicon-48x48.png'));
+  console.log('Generated public/favicon-48x48.png (48x48 transparent)');
+
+  await sharp(croppedSmallBuffer)
+    .resize(32, 32, { kernel: sharp.kernel.lanczos3 })
+    .sharpen({ sigma: 0.65, m1: 0.6, m2: 2.2 })
     .toFile(path.join(PUBLIC_DIR, 'favicon-32x32.png'));
-  console.log('Generated public/favicon-32x32.png');
+  console.log('Generated public/favicon-32x32.png (32x32 transparent)');
 
-  await sharp(smallLogoBuffer)
+  await sharp(croppedSmallBuffer)
     .resize(16, 16, { kernel: sharp.kernel.lanczos3 })
-    .sharpen({ sigma: 0.6, m1: 0.5, m2: 2 })
+    .sharpen({ sigma: 0.6, m1: 0.8, m2: 2.5 })
     .toFile(path.join(PUBLIC_DIR, 'favicon-16x16.png'));
-  console.log('Generated public/favicon-16x16.png');
+  console.log('Generated public/favicon-16x16.png (16x16 transparent)');
 
-  // Generate multi-resolution public/favicon.ico containing 16x16, 32x32, and 48x48
+  // 5. Generate transparent multi-resolution public/favicon.ico (16, 32, 48)
   try {
     const ico16 = path.join(PUBLIC_DIR, 'favicon-16x16.png');
     const ico32 = path.join(PUBLIC_DIR, 'favicon-32x32.png');
     const ico48 = path.join(PUBLIC_DIR, 'favicon-48x48.png');
     const icoOut = path.join(PUBLIC_DIR, 'favicon.ico');
-    execSync(`convert "${ico16}" "${ico32}" "${ico48}" "${icoOut}"`, { stdio: 'inherit' });
-    console.log('Generated public/favicon.ico (16, 32, 48)');
+    execSync(`convert -background none "${ico16}" "${ico32}" "${ico48}" "${icoOut}"`, { stdio: 'inherit' });
+    console.log('Generated public/favicon.ico with 16x16, 32x32, 48x48 transparent layers');
   } catch (err) {
-    console.warn('ImageMagick convert failed for ICO; writing standard 48px ICO fallback', err);
+    console.warn('ImageMagick convert failed for ICO; writing standard 48px fallback', err);
     fs.copyFileSync(path.join(PUBLIC_DIR, 'favicon-48x48.png'), path.join(PUBLIC_DIR, 'favicon.ico'));
   }
 
@@ -132,7 +182,7 @@ async function main() {
   fs.copyFileSync(path.join(PUBLIC_DIR, 'icon-192.png'), path.join(PUBLIC_DIR, 'android-chrome-192x192.png'));
   fs.copyFileSync(path.join(PUBLIC_DIR, 'icon-512.png'), path.join(PUBLIC_DIR, 'android-chrome-512x512.png'));
 
-  // 3. Generate docs/icon-preview.png: every size on white and dark background, square and circular
+  // 6. Generate docs/icon-preview.png: visual verification sheet
   await generatePreviewSheet();
   console.log('[ICONS] All brand icons generated successfully.');
 }
@@ -141,13 +191,6 @@ async function generatePreviewSheet() {
   const previewWidth = 800;
   const previewHeight = 600;
 
-  // Render a clean preview canvas showing:
-  // - 16, 32, 48, 96, 180 on dark (#0F0A1C) background (square & circular badge)
-  // - 16, 32, 48, 96, 180 on light (#FFFFFF) background (square & circular badge)
-  const sizes = [16, 32, 48, 96, 180];
-  const composits = [];
-
-  // We can generate SVG text overlay and compose icons onto a preview canvas
   const canvas = sharp({
     create: {
       width: previewWidth,
@@ -163,7 +206,6 @@ async function generatePreviewSheet() {
   const icon32 = await sharp(path.join(PUBLIC_DIR, 'favicon-32x32.png')).toBuffer();
   const icon16 = await sharp(path.join(PUBLIC_DIR, 'favicon-16x16.png')).toBuffer();
 
-  // Circular masks
   const circle48 = await sharp(icon48).composite([{
     input: Buffer.from(`<svg><circle cx="24" cy="24" r="24" fill="#000"/></svg>`),
     blend: 'dest-in'
@@ -179,7 +221,7 @@ async function generatePreviewSheet() {
     blend: 'dest-in'
   }]).toBuffer();
 
-  composits.push(
+  const composits = [
     { input: icon180, top: 80, left: 50 },
     { input: icon96, top: 120, left: 260 },
     { input: icon48, top: 140, left: 390 },
@@ -188,11 +230,11 @@ async function generatePreviewSheet() {
     { input: circle32, top: 150, left: 610 },
     { input: icon16, top: 160, left: 670 },
     { input: circle16, top: 160, left: 710 }
-  );
+  ];
 
-  // White background panel for Google Search light-mode simulation
+  // Light background panel for Google Search light-mode and light tab simulation
   const whitePanel = await sharp({
-    create: { width: 700, height: 260, channels: 3, background: '#FFFFFF' }
+    create: { width: 700, height: 260, channels: 3, background: '#F8F9FA' }
   })
     .composite([
       { input: icon180, top: 40, left: 30 },

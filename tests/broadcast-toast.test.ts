@@ -65,12 +65,14 @@ describe('Broadcast Toast Subsystem (WP3 / R3)', () => {
   });
 
   describe('Chime audio invocation', () => {
-    it('does not throw when audio context is unavailable or muted', () => {
-      localStorage.setItem('nexora_toast_muted', 'true');
-      expect(() => playNotificationChime()).not.toThrow();
+    it('is enabled by default across all clients', async () => {
+      const { isNotificationSoundEnabled } = await import('../src/shared/lib/notificationSound');
+      expect(isNotificationSoundEnabled()).toBe(true);
+    });
 
-      localStorage.removeItem('nexora_toast_muted');
+    it('does not throw when audio context is unavailable or invoked', () => {
       expect(() => playNotificationChime()).not.toThrow();
+      expect(() => playNotificationChime('notif-test-1', true)).not.toThrow();
     });
   });
 });

@@ -1,20 +1,21 @@
 /**
  * src/shared/lib/notificationSound.ts
- * Synthesized Web Audio notification chime (Package D / R3).
+ * Upgraded Professional Broadcast Notification Chime for NEXORA.
  * 
  * Features:
- * - Original two-note sine synthesizer: 880 Hz (A5) then 1320 Hz (E6), ~120ms each, soft envelope
- * - Volume calibrated at ~0.35, no external audio files or copyrighted assets
- * - Audio unlock on first user gesture (pointerdown, keydown, touchstart)
- * - Safe silent fallback when locked or unsupported (never throws)
- * - Throttled: at most once per notification ID, at most once per 3000ms
- * - Multi-tab deduplication lock via BroadcastChannel / localStorage (single tab audio playback)
- * - User preference persisted in localStorage ('nexora_notif_sound', defaults to true)
+ * - High-fidelity 3-tone ascending digital chime (F5 698.5Hz -> A5 880Hz -> C6 1046.5Hz + crystalline shimmer)
+ * - Calibrated peak gain (~0.52) for rich, louder presence with warm low-pass filtering (no distortion, no sirens)
+ * - Fast 8ms attack with smooth 1.05s exponential ring-out
+ * - Unlocked silently on initial user interaction (pointerdown, keydown, touchstart)
+ * - Enabled by default across all clients
+ * - Multi-tab deduplication lock via localStorage & BroadcastChannel
+ * - Throttled: at most once per notification ID, at most once per 2500ms
+ * - Never throws; gracefully silent if AudioContext is unsupported
  */
 
 const SOUND_PREF_KEY = 'nexora_notif_sound';
 const SOUND_LOCK_KEY = 'nexora_sound_claim_lock';
-const THROTTLE_MS = 3000;
+const THROTTLE_MS = 2500;
 
 let audioCtx: AudioContext | null = null;
 let lastSoundPlayedAt = 0;
@@ -31,11 +32,14 @@ try {
   // BroadcastChannel unavailable in some environments
 }
 
+/**
+ * Returns whether notification sound is enabled. Always true by default.
+ */
 export function isNotificationSoundEnabled(): boolean {
   try {
-    if (localStorage.getItem('nexora_toast_muted') === 'true') return false;
     const val = localStorage.getItem(SOUND_PREF_KEY);
-    return val === null ? true : val === 'true';
+    // Enabled by default unless explicitly disabled
+    return val !== 'false';
   } catch {
     return true;
   }
@@ -102,12 +106,16 @@ function claimSoundPlayback(notificationId: string): boolean {
     localStorage.setItem(lockKey, String(now));
     return true;
   } catch {
-    return true; // Fallback to allowing play if localStorage blocked
+    return true;
   }
 }
 
 /**
- * Synthesizes an original two-tone chime (880 Hz -> 1320 Hz)
+ * Synthesizes the professional 3-tone ascending digital broadcast chime (~1.05s).
+ * Tones:
+ * 1. F5 (698.46 Hz) + harmonic at t=0
+ * 2. A5 (880.00 Hz) + harmonic at t=0.12s
+ * 3. C6 (1046.50 Hz) + crystal overtone (1318.5 Hz) at t=0.25s decaying smoothly to 1.05s
  */
 export async function playNotificationSound(notificationId?: string, forceTest: boolean = false): Promise<boolean> {
   if (!forceTest && !isNotificationSoundEnabled()) {
@@ -152,35 +160,56 @@ export async function playNotificationSound(notificationId?: string, forceTest: 
     const ctx = audioCtx;
     const startTime = ctx.currentTime + 0.02;
 
-    // First Tone: A5 (880 Hz), 120ms
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(880, startTime);
+    // Master filter to keep chime warm, rich, and digital without high-freq harshness
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(3600, startTime);
+    filter.connect(ctx.destination);
 
-    gain1.gain.setValueAtTime(0.0001, startTime);
-    gain1.gain.exponentialRampToValueAtTime(0.35, startTime + 0.02);
-    gain1.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.14);
+    // Master output gain
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(0.52, startTime);
+    masterGain.connect(filter);
 
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-    osc1.start(startTime);
-    osc1.stop(startTime + 0.15);
+    // Helper to generate a soft harmonic voice
+    const playTone = (
+      freq: number,
+      startOffset: number,
+      duration: number,
+      peakGain: number,
+      type: OscillatorType = 'sine',
+      decayTime: number = duration
+    ) => {
+      const toneStart = startTime + startOffset;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-    // Second Tone: E6 (1320 Hz), 120ms (with gentle harmonic ring)
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(1320, startTime + 0.11);
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, toneStart);
 
-    gain2.gain.setValueAtTime(0.0001, startTime + 0.11);
-    gain2.gain.exponentialRampToValueAtTime(0.32, startTime + 0.13);
-    gain2.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.28);
+      gain.gain.setValueAtTime(0.0001, toneStart);
+      gain.gain.exponentialRampToValueAtTime(peakGain, toneStart + 0.008); // 8ms crisp attack
+      gain.gain.exponentialRampToValueAtTime(0.0001, toneStart + decayTime);
 
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.start(startTime + 0.11);
-    osc2.stop(startTime + 0.30);
+      osc.connect(gain);
+      gain.connect(masterGain);
+
+      osc.start(toneStart);
+      osc.stop(toneStart + decayTime + 0.05);
+    };
+
+    // Tone 1: F5 fundamental (698.46 Hz) + gentle octave
+    playTone(698.46, 0.00, 0.28, 0.38, 'sine', 0.28);
+    playTone(1396.92, 0.00, 0.22, 0.12, 'sine', 0.22);
+
+    // Tone 2: A5 fundamental (880.00 Hz) + gentle octave
+    playTone(880.00, 0.12, 0.35, 0.42, 'sine', 0.35);
+    playTone(1760.00, 0.12, 0.25, 0.14, 'sine', 0.25);
+
+    // Tone 3: C6 fundamental (1046.50 Hz) + crystalline E6 shimmer (1318.5 Hz) ringing out
+    playTone(1046.50, 0.24, 0.80, 0.46, 'sine', 0.80);
+    playTone(1318.51, 0.25, 0.75, 0.20, 'sine', 0.75);
+    playTone(2093.00, 0.25, 0.40, 0.08, 'triangle', 0.40); // high sparkle
 
     lastSoundPlayedAt = now;
     return true;
