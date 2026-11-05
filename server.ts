@@ -20,6 +20,7 @@ import { AdminOtpChallengeStore, AdminOtpRateLimitError, AdminOtpStorageError, t
 import { resolveFirebaseAdminConfig } from './src/server/firebaseAdminConfig';
 import { StudentOtpStore, StudentOtpRateLimitError, StudentOtpStorageError } from './src/server/studentOtpStore';
 import { createRegistrationOnce, RegistrationStoreError } from './src/server/registrationStore';
+import { validateIndianMobile, normalizeIndianMobile } from './src/shared/lib/phoneUtils';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1539,6 +1540,13 @@ apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/c
       return;
     }
 
+    const phoneValidation = validateIndianMobile(phone_number);
+    if (!phoneValidation.valid) {
+      res.status(400).json({ error: phoneValidation.error || 'A valid 10-digit Indian mobile number is required.' });
+      return;
+    }
+    const canonicalPhone = normalizeIndianMobile(phone_number);
+
     const cleanSlug = event_slug.toLowerCase().trim();
     if (email.trim().toLowerCase() !== userEmail) {
       res.status(403).json({ error: 'The registration email must match the authenticated account.' });
@@ -1583,7 +1591,7 @@ apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/c
         event_title: ev?.title || event_slug,
         full_name: full_name.trim(),
         email: userEmail,
-        phone_number: phone_number.trim(),
+        phone_number: canonicalPhone,
         college: college.trim(),
         branch: branch.trim(),
         academic_year,

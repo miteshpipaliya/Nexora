@@ -18,6 +18,7 @@ import {
   TeamDepartment,
   TeamMember
 } from '../types';
+import { UserPresenceRecord } from './presenceService';
 import { 
   auth, 
   db, 
@@ -1160,6 +1161,33 @@ class NexoraDataService {
       });
       return unsubscribe;
     } catch {
+      return () => {};
+    }
+  }
+
+  // --- REAL-TIME STUDENT ONLINE/OFFLINE PRESENCE ---
+  public subscribeStudentPresence(
+    callback: (presenceMap: Record<string, UserPresenceRecord>) => void
+  ): () => void {
+    try {
+      const q = collection(db, 'userPresence');
+      const unsubscribe = onSnapshot(
+        q,
+        (snap) => {
+          const map: Record<string, UserPresenceRecord> = {};
+          snap.forEach((d) => {
+            map[d.id] = d.data() as UserPresenceRecord;
+          });
+          callback(map);
+        },
+        (err) => {
+          console.warn('[PRESENCE] Real-time presence listener error:', err);
+          callback({});
+        }
+      );
+      return unsubscribe;
+    } catch {
+      callback({});
       return () => {};
     }
   }

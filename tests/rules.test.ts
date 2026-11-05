@@ -117,6 +117,10 @@ class FirestoreRulesModel implements SecurityRuleEvaluator {
       if (operation === 'delete') return this.isAdmin(ctx);
     }
 
+    if (collection === 'userPresence') {
+      return this.isOwner(ctx, docId) || this.isAdmin(ctx);
+    }
+
     if (collection === 'events') {
       if (isRead) {
         return (resourceData?.status === 'Published') || this.isAdmin(ctx);
@@ -413,6 +417,43 @@ describe('Firestore Security Rules Test Suite (firestore.rules)', () => {
       const receiptId = 'student_A_notif_99';
       expect(model.canAccess('userNotificationReads', receiptId, 'get', studentB)).toBe(false);
       expect(model.canAccess('userNotificationReads', receiptId, 'create', studentB)).toBe(false);
+    });
+  });
+
+  describe('Real-Time Student Presence Rules (userPresence)', () => {
+    const studentUser: RequestContext = {
+      auth: { uid: 'user_tiks_g' }
+    };
+    const otherStudent: RequestContext = {
+      auth: { uid: 'user_taushal_q' }
+    };
+    const adminCtx: RequestContext = {
+      auth: {
+        uid: 'founder_admin',
+        token: { admin: true, email_verified: true, email: 'miteshpipaliya2202@gmail.com' }
+      }
+    };
+    const publicCtx: RequestContext = { auth: null };
+
+    it('allows student to read and write their own presence status', () => {
+      expect(model.canAccess('userPresence', 'user_tiks_g', 'get', studentUser)).toBe(true);
+      expect(model.canAccess('userPresence', 'user_tiks_g', 'update', studentUser)).toBe(true);
+    });
+
+    it('denies student from reading or writing another student presence document', () => {
+      expect(model.canAccess('userPresence', 'user_tiks_g', 'get', otherStudent)).toBe(false);
+      expect(model.canAccess('userPresence', 'user_tiks_g', 'update', otherStudent)).toBe(false);
+    });
+
+    it('denies unauthenticated public from accessing user presence', () => {
+      expect(model.canAccess('userPresence', 'user_tiks_g', 'get', publicCtx)).toBe(false);
+      expect(model.canAccess('userPresence', 'user_tiks_g', 'update', publicCtx)).toBe(false);
+    });
+
+    it('allows administrator to read and manage any presence record', () => {
+      expect(model.canAccess('userPresence', 'user_tiks_g', 'get', adminCtx)).toBe(true);
+      expect(model.canAccess('userPresence', 'user_taushal_q', 'get', adminCtx)).toBe(true);
+      expect(model.canAccess('userPresence', 'user_tiks_g', 'list', adminCtx)).toBe(true);
     });
   });
 });

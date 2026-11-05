@@ -14,11 +14,18 @@ import {
   ExternalLink,
   Shield,
   Layers,
-  Lock
+  Lock,
+  Phone
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import { RegistrationRecord, UserProfile } from '../../types';
+import { IndianPhoneInput } from '../../components/common/IndianPhoneInput';
+import {
+  validateIndianMobile,
+  normalizeIndianMobile,
+  formatIndianMobileDisplay
+} from '../../shared/lib/phoneUtils';
 
 export const ProfilePage: React.FC = () => {
   const { user, logout, updateProfile, isAdmin, sendVerificationEmail } = useAuth();
@@ -88,6 +95,13 @@ export const ProfilePage: React.FC = () => {
       if (!editFullName.trim()) throw new Error('Full name cannot be empty.');
       if (!editEnrollment.trim()) throw new Error('Enrollment number is required.');
 
+      if (editPhone.trim()) {
+        const phoneVal = validateIndianMobile(editPhone);
+        if (!phoneVal.valid) {
+          throw new Error(phoneVal.error || 'Please enter a valid 10-digit Indian mobile number.');
+        }
+      }
+
       await updateProfile({
         full_name: editFullName.trim(),
         college: editCollege.trim(),
@@ -95,7 +109,7 @@ export const ProfilePage: React.FC = () => {
         academic_year: editYear,
         enrollment_number: editEnrollment.trim().toUpperCase(),
         division: editDivision.trim(),
-        phone_number: editPhone.trim()
+        phone_number: editPhone.trim() ? normalizeIndianMobile(editPhone) : ''
       });
 
       setSaveSuccess(true);
@@ -247,6 +261,16 @@ export const ProfilePage: React.FC = () => {
               <span className="text-slate-200">{user.academic_year}</span>
             </div>
 
+            {user.phone_number && (
+              <div className="flex items-center justify-between py-1 border-b border-violet-500/10">
+                <span className="text-slate-500 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-violet-400" />
+                  <span>Mobile:</span>
+                </span>
+                <span className="text-slate-200 font-mono text-xs">{formatIndianMobileDisplay(user.phone_number)}</span>
+              </div>
+            )}
+
             <div className="flex items-center justify-between py-1">
               <span className="text-slate-500 flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-violet-400" />
@@ -371,6 +395,17 @@ export const ProfilePage: React.FC = () => {
                       value={editDivision}
                       onChange={(e) => setEditDivision(e.target.value)}
                       className="w-full px-3 py-2 text-xs bg-[#171426] border border-violet-500/20 rounded-lg text-white focus:outline-none focus:border-violet-400 selectable-content"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <IndianPhoneInput
+                      id="profile-phone"
+                      label="Indian Mobile Number (Optional)"
+                      value={editPhone}
+                      onChange={(canonical) => setEditPhone(canonical)}
+                      placeholder="Enter 10-digit mobile number"
+                      helperText="Optional 10-digit Indian mobile number for competition notices."
                     />
                   </div>
                 </div>

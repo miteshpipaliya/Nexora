@@ -23,6 +23,12 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { NexoraLogo } from '../../components/ui/NexoraLogo';
 import { AcademicYear } from '../../types';
+import { IndianPhoneInput } from '../../components/common/IndianPhoneInput';
+import {
+  validateIndianMobile,
+  normalizeIndianMobile,
+  formatIndianMobileDisplay
+} from '../../shared/lib/phoneUtils';
 
 const COLLEGES = [
   'Birla Vishvakarma Mahavidyalaya (BVM)',
@@ -373,6 +379,13 @@ export const SignupPage: React.FC = () => {
 
     // Step 10: Phone Number (Optional)
     if (currentStep === 10) {
+      if (phone.trim()) {
+        const val = validateIndianMobile(phone);
+        if (!val.valid) {
+          setStepError(val.error || 'Please enter a valid 10-digit Indian mobile number.');
+          return;
+        }
+      }
       setCurrentStep(11);
       return;
     }
@@ -426,7 +439,7 @@ export const SignupPage: React.FC = () => {
 
     const finalCollege = college === 'Other College' ? customCollege.trim() : college;
     const finalBranch = branch === 'Other' ? customBranch.trim() : branch;
-    const formattedPhone = phone.trim() ? `${countryCode} ${phone.trim()}` : '';
+    const formattedPhone = phone.trim() ? normalizeIndianMobile(phone) : '';
 
     try {
       if (isGoogleAuth && googleUserUid) {
@@ -969,30 +982,19 @@ export const SignupPage: React.FC = () => {
                 </p>
               </div>
 
-              <div className="flex gap-2">
-                <select
-                  value={countryCode}
-                  onChange={(e) => setCountryCode(e.target.value)}
-                  className="w-24 px-2.5 py-3 bg-[#08080D] border border-violet-500/25 rounded-xl text-xs text-white focus:outline-none focus:border-violet-400"
-                >
-                  <option value="+91">+91 (IN)</option>
-                  <option value="+1">+1 (US)</option>
-                  <option value="+44">+44 (UK)</option>
-                  <option value="+971">+971 (UAE)</option>
-                </select>
-
-                <div className="relative flex-1">
-                  <Phone className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
-                  <input
-                    ref={mainInputRef}
-                    type="tel"
-                    placeholder="Enter your mobile number"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-                    onKeyDown={(e) => e.key === 'Enter' && handleNext()}
-                    className="w-full pl-10 pr-4 py-3 bg-[#08080D] border border-violet-500/25 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-400 transition-all select-text"
-                  />
-                </div>
+              <div>
+                <IndianPhoneInput
+                  id="signup-phone"
+                  label="Indian Mobile Number (Optional)"
+                  value={phone}
+                  onChange={(canonical) => {
+                    setPhone(canonical);
+                    setStepError(null);
+                  }}
+                  placeholder="Enter 10-digit mobile number"
+                  error={stepError}
+                  helperText="Enter 10 digits starting with 6, 7, 8, or 9. Leave blank or skip if not desired."
+                />
               </div>
             </div>
           )}
@@ -1085,7 +1087,7 @@ export const SignupPage: React.FC = () => {
                 {phone && (
                   <div className="flex justify-between items-center py-1">
                     <span className="text-slate-400">Phone:</span>
-                    <span className="text-white">{countryCode} {phone}</span>
+                    <span className="text-white font-mono">{formatIndianMobileDisplay(phone)}</span>
                   </div>
                 )}
               </div>

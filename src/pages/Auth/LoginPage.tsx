@@ -18,6 +18,8 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { NexoraLogo } from '../../components/ui/NexoraLogo';
 import { AcademicYear } from '../../types';
+import { IndianPhoneInput } from '../../components/common/IndianPhoneInput';
+import { validateIndianMobile, normalizeIndianMobile } from '../../shared/lib/phoneUtils';
 
 interface ErrorDetails {
   message: string;
@@ -122,6 +124,17 @@ export const LoginPage: React.FC = () => {
       });
       return;
     }
+
+    if (academicData.phone_number?.trim()) {
+      const phoneVal = validateIndianMobile(academicData.phone_number);
+      if (!phoneVal.valid) {
+        setErrorDetails({
+          message: phoneVal.error || 'Please enter a valid 10-digit Indian mobile number.'
+        });
+        return;
+      }
+    }
+
     setSavingProfile(true);
     try {
       await updateProfile({
@@ -130,7 +143,7 @@ export const LoginPage: React.FC = () => {
         academic_year: academicData.academic_year,
         enrollment_number: academicData.enrollment_number.trim().toUpperCase(),
         division: academicData.division.trim(),
-        phone_number: academicData.phone_number.trim(),
+        phone_number: academicData.phone_number?.trim() ? normalizeIndianMobile(academicData.phone_number) : '',
         is_profile_complete: true
       });
       setShowProfileCompleteModal(false);
@@ -466,13 +479,13 @@ export const LoginPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs text-slate-300 mb-1">Mobile Number (Optional)</label>
-                <input
-                  type="tel"
+                <IndianPhoneInput
+                  id="login-academic-phone"
+                  label="Mobile Number (Optional)"
                   value={academicData.phone_number}
-                  onChange={(e) => setAcademicData({ ...academicData, phone_number: e.target.value })}
-                  placeholder="Enter contact phone number"
-                  className="w-full bg-[#08080D] border border-violet-500/25 rounded-xl p-2.5 text-xs text-white"
+                  onChange={(canonical) => setAcademicData({ ...academicData, phone_number: canonical })}
+                  placeholder="Enter 10-digit mobile number"
+                  helperText="Optional for collegiate and event notices."
                 />
               </div>
 

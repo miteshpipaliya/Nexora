@@ -14,6 +14,8 @@ import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import { CompetitionEvent, RegistrationRecord, TeamMemberDetail } from '../../types';
 import { NexoraLogo } from '../ui/NexoraLogo';
+import { IndianPhoneInput } from '../common/IndianPhoneInput';
+import { validateIndianMobile, normalizeIndianMobile } from '../../shared/lib/phoneUtils';
 
 interface EventRegistrationModalProps {
   event: CompetitionEvent;
@@ -202,7 +204,8 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
     // Validation
     if (!fullName.trim()) return setErrorMessage('Full name is required.');
     if (!email.trim() || !email.includes('@')) return setErrorMessage('Valid email address is required.');
-    if (!phone.trim() || phone.length < 8) return setErrorMessage('Valid mobile phone number is required.');
+    const phoneValidation = validateIndianMobile(phone);
+    if (!phoneValidation.valid) return setErrorMessage(phoneValidation.error || 'Valid 10-digit Indian mobile number is required.');
     if (college === 'Other' && !customCollege.trim()) return setErrorMessage('Please specify your institution name.');
     if (!branch.trim()) return setErrorMessage('Branch/department is required.');
     if (!enrollmentNo.trim()) return setErrorMessage('Enrollment number is required.');
@@ -225,7 +228,7 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
         event_slug: event.slug,
         full_name: fullName.trim(),
         email: email.trim(),
-        phone_number: phone.trim(),
+        phone_number: normalizeIndianMobile(phone),
         college: activeCollege,
         branch: branch.trim(),
         academic_year: academicYear as any,
@@ -445,16 +448,13 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
                   </div>
 
                   <div className="sm:col-span-2">
-                    <label className="block text-xs font-medium text-slate-300 mb-1">
-                      Mobile Number (WhatsApp) *
-                    </label>
-                    <input
-                      type="tel"
+                    <IndianPhoneInput
+                      id="event-reg-phone"
+                      label="Mobile Number (WhatsApp)"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(canonical) => setPhone(canonical)}
                       required
-                      placeholder="+91 98765 43210"
-                      className="w-full px-3 py-2 text-xs bg-[#11101B] border border-violet-500/25 rounded-lg text-white focus:outline-none focus:border-violet-400 select-text"
+                      placeholder="Enter 10-digit mobile number"
                     />
                   </div>
                 </div>
