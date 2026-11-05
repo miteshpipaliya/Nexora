@@ -222,6 +222,13 @@ async function getAdminFirestore(): Promise<any> {
         : config.clientEmail && config.privateKey
           ? adminApp.cert({ projectId: config.projectId, clientEmail: config.clientEmail, privateKey: config.privateKey })
           : undefined;
+
+      // In development when credentials are not configured, do not create an unauthenticated app that triggers 7 PERMISSION_DENIED
+      if (!credential && !process.env.GOOGLE_APPLICATION_CREDENTIALS && !isServerless && process.env.VERCEL_ENV !== 'production' && process.env.VERCEL_ENV !== 'preview') {
+        console.warn('[FIREBASE ADMIN] No service account credentials detected in development environment. Using local in-memory storage fallback.');
+        return null;
+      }
+
       appInstance = adminApp.initializeApp({ projectId: config.projectId, ...(credential ? { credential } : {}) }, `nexora-${process.env.VERCEL_ENV || 'local'}`);
     }
     adminAuthInstance = adminAuthMod.getAuth(appInstance);

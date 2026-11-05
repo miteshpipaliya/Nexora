@@ -23,3 +23,9 @@ server.js
 serviceAccountKey.json
 firebase-service-account*.json
 firebase-credentials*.json
+
+# Google AI Studio temporary artifacts
+.aistudio/
+.aistudio/artifacts/brain/
+**/.tempmediaStorage/
+

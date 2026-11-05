@@ -115,12 +115,22 @@ export class StudentOtpStore {
     }
 
     const ref = db.collection('_otp_challenges').doc(id);
-    await db.runTransaction(async (transaction: any) => {
-      const snapshot = await transaction.get(ref);
-      const current = snapshot.exists ? snapshot.data() as StudentOtpChallenge : null;
-      this.enforceCooldown(current?.lastSentAt, now);
-      transaction.set(ref, record);
-    });
+    try {
+      await db.runTransaction(async (transaction: any) => {
+        const snapshot = await transaction.get(ref);
+        const current = snapshot.exists ? snapshot.data() as StudentOtpChallenge : null;
+        this.enforceCooldown(current?.lastSentAt, now);
+        transaction.set(ref, record);
+      });
+    } catch (err) {
+      if (!this.requirePersistence) {
+        const current = this.challenges.get(id);
+        this.enforceCooldown(current?.lastSentAt, now);
+        this.challenges.set(id, record);
+        return;
+      }
+      throw err;
+    }
   }
 
   async getChallenge(email: string, purpose: StudentOtpPurpose): Promise<StudentOtpChallenge | undefined> {
@@ -133,10 +143,18 @@ export class StudentOtpStore {
     }
 
     const ref = db.collection('_otp_challenges').doc(id);
-    const snapshot = await ref.get();
-    if (!snapshot.exists) return undefined;
-    const challenge = snapshot.data() as StudentOtpChallenge;
-    return challenge.status === 'pending' && challenge.expiresAt > Date.now() ? challenge : undefined;
+    try {
+      const snapshot = await ref.get();
+      if (!snapshot.exists) return undefined;
+      const challenge = snapshot.data() as StudentOtpChallenge;
+      return challenge.status === 'pending' && challenge.expiresAt > Date.now() ? challenge : undefined;
+    } catch (err) {
+      if (!this.requirePersistence) {
+        const local = this.challenges.get(id);
+        return local?.status === 'pending' && local.expiresAt > Date.now() ? local : undefined;
+      }
+      throw err;
+    }
   }
 
   async verifyChallenge(email: string, purpose: StudentOtpPurpose, actualHash: string, now = Date.now()): Promise<StudentOtpVerification> {
@@ -149,12 +167,20 @@ export class StudentOtpStore {
     }
 
     const ref = db.collection('_otp_challenges').doc(id);
-    return db.runTransaction(async (transaction: any) => {
-      const snapshot = await transaction.get(ref);
-      if (!snapshot.exists) return { status: 'missing' } as StudentOtpVerification;
-      const challenge = snapshot.data() as StudentOtpChallenge;
-      return this.evaluateChallenge(transaction, ref, challenge, actualHash, now);
-    });
+    try {
+      return await db.runTransaction(async (transaction: any) => {
+        const snapshot = await transaction.get(ref);
+        if (!snapshot.exists) return { status: 'missing' } as StudentOtpVerification;
+        const challenge = snapshot.data() as StudentOtpChallenge;
+        return this.evaluateChallenge(transaction, ref, challenge, actualHash, now);
+      });
+    } catch (err) {
+      if (!this.requirePersistence) {
+        const challenge = this.challenges.get(id);
+        return this.verifyLocal(id, challenge, actualHash, now);
+      }
+      throw err;
+    }
   }
 
   async deleteChallenge(email: string, purpose: StudentOtpPurpose): Promise<void> {
@@ -164,7 +190,15 @@ export class StudentOtpStore {
       this.challenges.delete(id);
       return;
     }
-    await db.collection('_otp_challenges').doc(id).delete();
+    try {
+      await db.collection('_otp_challenges').doc(id).delete();
+    } catch (err) {
+      if (!this.requirePersistence) {
+        this.challenges.delete(id);
+        return;
+      }
+      throw err;
+    }
   }
 
   async setAuthorization(email: string, purpose: StudentOtpPurpose, token: string, expiresAt: number): Promise<void> {

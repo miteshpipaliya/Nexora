@@ -316,11 +316,12 @@ export const CosmicHeroObject: React.FC = () => {
 
     // Continuous Smooth Animation Loop (Frame-rate independent delta time)
     let animId: number;
-    const clock = new THREE.Clock();
+    const timer = new THREE.Timer();
 
     const animate = () => {
       animId = requestAnimationFrame(animate);
-      const delta = clock.getDelta();
+      timer.update();
+      const delta = timer.getDelta();
 
       // Exponential damping for silky smooth parallax
       currentRotX = THREE.MathUtils.damp(currentRotX, targetRotX, 4, delta);

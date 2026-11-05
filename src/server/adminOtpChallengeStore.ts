@@ -54,8 +54,13 @@ export class AdminOtpChallengeStore {
   async get(id: string): Promise<AdminOtpChallenge | null> {
     const db = await this.database();
     if (!db) return this.local.get(id) ?? null;
-    const snapshot = await db.collection('_admin_challenges').doc(id).get();
-    return snapshot.exists ? snapshot.data() as AdminOtpChallenge : null;
+    try {
+      const snapshot = await db.collection('_admin_challenges').doc(id).get();
+      return snapshot.exists ? snapshot.data() as AdminOtpChallenge : null;
+    } catch (err) {
+      if (!this.requirePersistence) return this.local.get(id) ?? null;
+      throw err;
+    }
   }
 
   async create(id: string, challenge: AdminOtpChallenge, cooldownMs: number): Promise<void> {
@@ -71,15 +76,28 @@ export class AdminOtpChallengeStore {
     }
 
     const ref = db.collection('_admin_challenges').doc(id);
-    await db.runTransaction(async (transaction: any) => {
-      const snapshot = await transaction.get(ref);
-      const previous = snapshot.exists ? snapshot.data() as AdminOtpChallenge : null;
-      this.enforceCooldown(previous, challenge.lastSentAt, cooldownMs);
-      if (previous?.flow === 'admin-login' && ['consumed', 'locked'].includes(previous.status)) {
-        throw new Error('This administrator login challenge is no longer active.');
+    try {
+      await db.runTransaction(async (transaction: any) => {
+        const snapshot = await transaction.get(ref);
+        const previous = snapshot.exists ? snapshot.data() as AdminOtpChallenge : null;
+        this.enforceCooldown(previous, challenge.lastSentAt, cooldownMs);
+        if (previous?.flow === 'admin-login' && ['consumed', 'locked'].includes(previous.status)) {
+          throw new Error('This administrator login challenge is no longer active.');
+        }
+        transaction.set(ref, challenge);
+      });
+    } catch (err) {
+      if (!this.requirePersistence) {
+        const previous = this.local.get(id);
+        this.enforceCooldown(previous, challenge.lastSentAt, cooldownMs);
+        if (previous?.flow === 'admin-login' && ['consumed', 'locked'].includes(previous.status)) {
+          throw new Error('This administrator login challenge is no longer active.');
+        }
+        this.local.set(id, challenge);
+        return;
       }
-      transaction.set(ref, challenge);
-    });
+      throw err;
+    }
   }
 
   async consume(id: string, actualHash: string, now = Date.now()): Promise<OtpConsumeResult> {
@@ -90,17 +108,25 @@ export class AdminOtpChallengeStore {
     }
 
     const ref = db.collection('_admin_challenges').doc(id);
-    return db.runTransaction(async (transaction: any) => {
-      const snapshot = await transaction.get(ref);
-      if (!snapshot.exists) return { status: 'missing' } as OtpConsumeResult;
-      const challenge = snapshot.data() as AdminOtpChallenge;
-      if (challenge.status !== 'pending') return { status: challenge.status === 'locked' ? 'locked' : 'consumed' } as OtpConsumeResult;
-      if (now > challenge.expiresAt) {
-        transaction.set(ref, { ...challenge, hash: null, status: 'expired' });
-        return { status: 'expired' } as OtpConsumeResult;
+    try {
+      return await db.runTransaction(async (transaction: any) => {
+        const snapshot = await transaction.get(ref);
+        if (!snapshot.exists) return { status: 'missing' } as OtpConsumeResult;
+        const challenge = snapshot.data() as AdminOtpChallenge;
+        if (challenge.status !== 'pending') return { status: challenge.status === 'locked' ? 'locked' : 'consumed' } as OtpConsumeResult;
+        if (now > challenge.expiresAt) {
+          transaction.set(ref, { ...challenge, hash: null, status: 'expired' });
+          return { status: 'expired' } as OtpConsumeResult;
+        }
+        return this.evaluateAndPersist(transaction, ref, challenge, actualHash);
+      });
+    } catch (err) {
+      if (!this.requirePersistence) {
+        const challenge = this.local.get(id);
+        return this.consumeLocal(id, challenge, actualHash, now);
       }
-      return this.evaluateAndPersist(transaction, ref, challenge, actualHash);
-    });
+      throw err;
+    }
   }
 
   async invalidate(id: string): Promise<void> {
@@ -111,12 +137,21 @@ export class AdminOtpChallengeStore {
       return;
     }
     const ref = db.collection('_admin_challenges').doc(id);
-    await db.runTransaction(async (transaction: any) => {
-      const snapshot = await transaction.get(ref);
-      if (!snapshot.exists) return;
-      const challenge = snapshot.data() as AdminOtpChallenge;
-      transaction.set(ref, { ...challenge, hash: null, status: 'delivery_failed' });
-    });
+    try {
+      await db.runTransaction(async (transaction: any) => {
+        const snapshot = await transaction.get(ref);
+        if (!snapshot.exists) return;
+        const challenge = snapshot.data() as AdminOtpChallenge;
+        transaction.set(ref, { ...challenge, hash: null, status: 'delivery_failed' });
+      });
+    } catch (err) {
+      if (!this.requirePersistence) {
+        const challenge = this.local.get(id);
+        if (challenge) this.local.set(id, { ...challenge, hash: null, status: 'delivery_failed' });
+        return;
+      }
+      throw err;
+    }
   }
 
   private enforceCooldown(previous: AdminOtpChallenge | null | undefined, now: number, cooldownMs: number) {
