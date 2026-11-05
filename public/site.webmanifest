@@ -1,31 +1,29 @@
 {
-  "name": "NEXORA - Student Technology & Innovation Community",
+  "name": "NEXORA",
   "short_name": "NEXORA",
-  "description": "Beyond a Club. The Beginning of a New Tech Era at Birla Vishvakarma Mahavidyalaya (BVM). Student innovation platform for competitions, hackathons, cybersecurity challenges, and technology festivals.",
+  "description": "Student Technology & Innovation Community at BVM Engineering College (Birla Vishvakarma Mahavidyalaya), Vallabh Vidyanagar, Gujarat.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#05010F",
+  "theme_color": "#05010F",
   "icons": [
     {
-      "src": "/android-chrome-192x192.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "/android-chrome-512x512.png",
+      "src": "/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "/favicon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/favicon-512x512.png",
+      "src": "/icon-maskable-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "maskable"
     }
-  ],
-  "theme_color": "#0B0613",
-  "background_color": "#0B0613",
-  "display": "standalone",
-  "start_url": "/"
+  ]
 }

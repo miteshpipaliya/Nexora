@@ -21,10 +21,13 @@ describe('Official Brand Favicon & Web Manifest Asset Verification', () => {
       'favicon-16x16.png',
       'favicon-32x32.png',
       'favicon-48x48.png',
+      'favicon-96x96.png',
+      'favicon-144x144.png',
       'apple-touch-icon.png',
-      'android-chrome-192x192.png',
-      'android-chrome-512x512.png',
-      'site.webmanifest'
+      'icon-192.png',
+      'icon-512.png',
+      'icon-maskable-512.png',
+      'manifest.webmanifest'
     ];
 
     for (const file of requiredFiles) {
@@ -39,9 +42,12 @@ describe('Official Brand Favicon & Web Manifest Asset Verification', () => {
       { file: 'favicon-16x16.png', expectedSize: 16 },
       { file: 'favicon-32x32.png', expectedSize: 32 },
       { file: 'favicon-48x48.png', expectedSize: 48 },
+      { file: 'favicon-96x96.png', expectedSize: 96 },
+      { file: 'favicon-144x144.png', expectedSize: 144 },
       { file: 'apple-touch-icon.png', expectedSize: 180 },
-      { file: 'android-chrome-192x192.png', expectedSize: 192 },
-      { file: 'android-chrome-512x512.png', expectedSize: 512 }
+      { file: 'icon-192.png', expectedSize: 192 },
+      { file: 'icon-512.png', expectedSize: 512 },
+      { file: 'icon-maskable-512.png', expectedSize: 512 }
     ];
 
     for (const spec of specs) {
@@ -65,27 +71,29 @@ describe('Official Brand Favicon & Web Manifest Asset Verification', () => {
   it('verifies index.html declares standard favicon tags and canonical domain', () => {
     const indexHtml = fs.readFileSync(path.resolve('index.html'), 'utf8');
 
-    expect(indexHtml).toContain('<link rel="icon" type="image/x-icon" href="/favicon.ico"');
-    expect(indexHtml).toContain('href="/favicon-16x16.png"');
-    expect(indexHtml).toContain('href="/favicon-32x32.png"');
-    expect(indexHtml).toContain('href="/favicon-48x48.png"');
-    expect(indexHtml).toContain('href="/apple-touch-icon.png"');
-    expect(indexHtml).toContain('href="/site.webmanifest"');
+    expect(indexHtml).toContain("href='/favicon.ico'");
+    expect(indexHtml).toContain("href='/favicon-48x48.png'");
+    expect(indexHtml).toContain("href='/favicon-96x96.png'");
+    expect(indexHtml).toContain("href='/favicon-32x32.png'");
+    expect(indexHtml).toContain("href='/favicon-16x16.png'");
+    expect(indexHtml).toContain("href='/apple-touch-icon.png'");
+    expect(indexHtml).toContain("href='/manifest.webmanifest'");
     expect(indexHtml).toContain('<link rel="canonical" href="https://www.nexora-bvm.online/" />');
-    expect(indexHtml).toContain('<meta name="theme-color" content="#0B0613" />');
+    expect(indexHtml).toContain("content='#05010F'");
   });
 
-  it('verifies site.webmanifest configures brand identity and icon paths', () => {
-    const manifestPath = path.join(publicDir, 'site.webmanifest');
+  it('verifies manifest.webmanifest configures brand identity and icon paths', () => {
+    const manifestPath = path.join(publicDir, 'manifest.webmanifest');
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
-    expect(manifest.name).toContain('NEXORA');
+    expect(manifest.name).toBe('NEXORA');
     expect(manifest.short_name).toBe('NEXORA');
-    expect(manifest.theme_color).toBe('#0B0613');
-    expect(manifest.background_color).toBe('#0B0613');
+    expect(manifest.theme_color).toBe('#05010F');
+    expect(manifest.background_color).toBe('#05010F');
 
     const iconSrcs = manifest.icons.map((i: any) => i.src);
-    expect(iconSrcs).toContain('/android-chrome-192x192.png');
-    expect(iconSrcs).toContain('/android-chrome-512x512.png');
+    expect(iconSrcs).toContain('/icon-192.png');
+    expect(iconSrcs).toContain('/icon-512.png');
+    expect(iconSrcs).toContain('/icon-maskable-512.png');
   });
 });

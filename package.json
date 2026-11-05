@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "rules:test": "vitest run tests/rules.test.ts",
     "admin:claim": "tsx scripts/set-admin-claim.ts",
-    "admin:password": "tsx scripts/admin-password-cli.ts"
+    "admin:password": "tsx scripts/admin-password-cli.ts",
+    "icons": "node scripts/generate-icons.mjs"
   },
   "engines": {
     "node": "24.x"
@@ -24,6 +25,7 @@
     "@hookform/resolvers": "^5.9.2",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query": "^5.104.4",
+    "@types/sharp": "^0.31.1",
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.1",
     "dotenv": "^17.2.3",
@@ -36,6 +38,7 @@
     "react-dom": "^19.0.1",
     "react-hook-form": "^7.90.0",
     "react-router-dom": "^7.18.4",
+    "sharp": "^0.35.5",
     "three": "^0.186.1",
     "vite": "^8.3.0",
     "zod": "^4.6.7"

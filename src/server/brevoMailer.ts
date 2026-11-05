@@ -424,3 +424,113 @@ export async function sendBrevoOtpEmail(
     clearTimeout(timeoutId);
   }
 }
+
+/**
+ * Dispatches a contact inquiry notification email to the community organizers
+ * with replyTo set to the visitor's email address.
+ */
+export async function sendBrevoContactNotification(
+  toEmail: string,
+  messageData: {
+    senderName: string;
+    senderEmail: string;
+    subject: string;
+    message: string;
+    messageId: string;
+    createdAt?: string;
+  }
+): Promise<void> {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(toEmail || '').trim())) {
+    throw new BrevoServiceError('A valid recipient organizer email address is required.', 'EMAIL_INVALID_RECIPIENT', 400);
+  }
+
+  const config = getBrevoConfig();
+  const requestId = `contact_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+  const subject = `[NEXORA Contact] ${messageData.subject || 'General Inquiry'} - from ${messageData.senderName}`;
+  const safeName = String(messageData.senderName || 'Visitor').replace(/[<>]/g, '');
+  const safeEmail = String(messageData.senderEmail || '').replace(/[<>]/g, '');
+  const safeSubject = String(messageData.subject || 'General Inquiry').replace(/[<>]/g, '');
+  const safeMessage = String(messageData.message || '').replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] || c));
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <title>${subject}</title>
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #08080D; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #F8FAFC;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="padding: 40px 16px;">
+          <tr>
+            <td align="center">
+              <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 540px; background-color: #11101B; border: 1px solid rgba(139, 92, 246, 0.35); border-radius: 16px; padding: 32px 24px;">
+                <tr>
+                  <td style="border-bottom: 1px solid rgba(139, 92, 246, 0.2); padding-bottom: 16px;">
+                    <div style="font-size: 22px; font-weight: 800; color: #FFFFFF;">NEXORA INQUIRY</div>
+                    <div style="font-size: 11px; color: #A78BFA; font-family: monospace;">STUDENT TECHNOLOGY &amp; INNOVATION COMMUNITY</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-top: 20px; font-size: 14px; line-height: 1.6; color: #CBD5E1;">
+                    <p style="margin: 0 0 8px;"><strong style="color: #FFFFFF;">From:</strong> ${safeName} (&lt;<a href="mailto:${safeEmail}" style="color: #A78BFA;">${safeEmail}</a>&gt;)</p>
+                    <p style="margin: 0 0 16px;"><strong style="color: #FFFFFF;">Subject:</strong> ${safeSubject}</p>
+                    <div style="padding: 16px; background-color: #08080D; border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 8px; font-size: 14px; color: #F8FAFC; white-space: pre-wrap;">
+${safeMessage}
+                    </div>
+                    <p style="margin: 20px 0 0; font-size: 12px; color: #94A3B8;">
+                      You can reply directly to this email to respond to ${safeName}.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `;
+
+  const textContent = `NEXORA Contact Message\n\nFrom: ${safeName} <${safeEmail}>\nSubject: ${safeSubject}\n\nMessage:\n${messageData.message}\n\n(Reply directly to this email to reach the visitor.)`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'api-key': config.apiKey,
+        'Content-Type': 'application/json',
+        accept: 'application/json'
+      },
+      body: JSON.stringify({
+        sender: { name: config.senderName, email: config.senderEmail },
+        to: [{ email: toEmail }],
+        replyTo: { email: messageData.senderEmail, name: messageData.senderName },
+        tags: ['contact-inquiry'],
+        subject,
+        htmlContent,
+        textContent
+      })
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      console.error(`[BREVO CONTACT FAILED] ${requestId} Status: ${response.status}`, errData);
+      throw new BrevoServiceError('Failed to dispatch contact notification email via Brevo.', 'EMAIL_PROVIDER_REJECTED', 502);
+    }
+  } catch (err: any) {
+    if (err.name === 'AbortError' || err.code === 'ABORT_ERR') {
+      console.error(`[BREVO CONTACT TIMEOUT] ${requestId}`);
+      throw new BrevoServiceError('Email service timed out while dispatching contact notification.', 'EMAIL_TIMEOUT', 504);
+    }
+    if (err instanceof BrevoServiceError) throw err;
+    console.error(`[BREVO CONTACT NETWORK FAILURE] ${requestId}:`, err.message || err);
+    throw new BrevoServiceError('Email service unreachable for contact notification.', 'EMAIL_PROVIDER_UNAVAILABLE', 502);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
