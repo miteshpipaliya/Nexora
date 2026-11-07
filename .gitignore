@@ -24,6 +24,10 @@ serviceAccountKey.json
 firebase-service-account*.json
 firebase-credentials*.json
 
+# Firebase client config files with embedded keys (do not commit)
+firebase-applet-config.json
+firebase-blueprint.json
+
 # Google AI Studio temporary artifacts
 .aistudio/
 .aistudio/artifacts/brain/

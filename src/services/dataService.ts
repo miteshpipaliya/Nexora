@@ -901,11 +901,7 @@ class NexoraDataService {
       body: JSON.stringify({ password })
     });
 
-    if (res.sessionToken && res.expiresAt) {
-      sessionStorage.setItem('nexora_elevated_admin_token', res.sessionToken);
-      sessionStorage.setItem('nexora_elevated_admin_expires', res.expiresAt.toString());
-    }
-
+    // Session token is now set as HttpOnly cookie by the server; no client-side storage needed.
     return res;
   }
 
@@ -982,8 +978,7 @@ class NexoraDataService {
       body: JSON.stringify({ passwordToken, otp })
     });
 
-    sessionStorage.setItem('nexora_elevated_admin_token', data.sessionToken);
-    sessionStorage.setItem('nexora_elevated_admin_expires', data.expiresAt.toString());
+    // Session token is now set as HttpOnly cookie by the server; no client-side storage needed.
     return data;
   }
 
@@ -993,19 +988,9 @@ class NexoraDataService {
   }
 
   public async checkElevatedAdminSession(): Promise<boolean> {
-    const token = sessionStorage.getItem('nexora_elevated_admin_token');
-    const expires = sessionStorage.getItem('nexora_elevated_admin_expires');
-
-    if (!token || !expires) return false;
-    if (Date.now() > Number(expires)) {
-      this.clearElevatedAdminSession();
-      return false;
-    }
-
     try {
-      const data = await safeApiFetch<{ authenticated: boolean }>('/api/admin/auth/session', {
-        headers: { 'x-admin-session': token }
-      });
+      // Cookie is sent automatically by the browser (HttpOnly, SameSite=Strict)
+      const data = await safeApiFetch<{ authenticated: boolean }>('/api/admin/auth/session');
       if (!data.authenticated) {
         this.clearElevatedAdminSession();
         return false;
@@ -1017,41 +1002,33 @@ class NexoraDataService {
   }
 
   public clearElevatedAdminSession() {
-    const token = sessionStorage.getItem('nexora_elevated_admin_token');
-    if (token) {
-      safeApiFetch('/api/admin/auth/lock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionToken: token })
-      }).catch(() => {});
-    }
-    sessionStorage.removeItem('nexora_elevated_admin_token');
-    sessionStorage.removeItem('nexora_elevated_admin_expires');
+    // Notify server to revoke session; do not ignore errors (P1-05 fix)
+    safeApiFetch('/api/admin/auth/lock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }).catch((err) => {
+      console.error('[ADMIN LOCK] Failed to revoke session server-side:', err);
+    });
+    // Cookie is cleared server-side via Set-Cookie; no client-side storage to clean
   }
 
   public sendPresenceHeartbeat = sendPresenceHeartbeat;
 
   public async getAdminStats(): Promise<any> {
-    const token = sessionStorage.getItem('nexora_elevated_admin_token') || '';
-    return safeApiFetch('/api/admin/stats', {
-      headers: { 'x-admin-session': token }
-    });
+    // Cookie is sent automatically by the browser (HttpOnly, SameSite=Strict)
+    return safeApiFetch('/api/admin/stats');
   }
 
   public async getAdminStudents(): Promise<any> {
-    const token = sessionStorage.getItem('nexora_elevated_admin_token') || '';
-    return safeApiFetch('/api/admin/students', {
-      headers: { 'x-admin-session': token }
-    });
+    // Cookie is sent automatically by the browser (HttpOnly, SameSite=Strict)
+    return safeApiFetch('/api/admin/students');
   }
 
   public async uploadAdminImage(imageBase64: string, filename?: string): Promise<{ success: boolean; url: string }> {
-    const token = sessionStorage.getItem('nexora_elevated_admin_token') || '';
     return safeApiFetch('/api/admin/upload-image', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-admin-session': token
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({ imageBase64, filename })
     });
@@ -1361,10 +1338,8 @@ class NexoraDataService {
       return logs.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     } catch {
       try {
-        const token = sessionStorage.getItem('nexora_elevated_admin_token') || '';
-        const res = await safeApiFetch<{ success: boolean; logs: any[] }>('/api/admin/audit-logs', {
-          headers: { 'x-admin-session': token }
-        });
+        // Cookie is sent automatically by the browser (HttpOnly, SameSite=Strict)
+        const res = await safeApiFetch<{ success: boolean; logs: any[] }>('/api/admin/audit-logs');
         return res?.logs || [];
       } catch {
         return [];
@@ -1372,12 +1347,10 @@ class NexoraDataService {
     }
   }
 
-  // Admin Session Header Helper
+  // Admin Session Header Helper (kept for backward compatibility; cookies are automatic)
   private getAdminHeaders(): Record<string, string> {
-    const token = sessionStorage.getItem('nexora_elevated_admin_token') || '';
     return {
-      'Content-Type': 'application/json',
-      'x-admin-session': token
+      'Content-Type': 'application/json'
     };
   }
 

@@ -204,7 +204,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const isAdmin = Boolean(isAdminClaim || user?.is_admin || dataService.isUserAdmin(user));
+  // Admin authorization determined exclusively via Firebase Custom Claims (server-side verified).
+  // Do not trust client-side role values (user?.is_admin, dataService.isUserAdmin).
+  const isAdmin = Boolean(isAdminClaim);
 
   return (
     <AuthContext.Provider

@@ -2,18 +2,33 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    match /{allPaths=**} {
-      // Public read of uploaded assets, images, and banners
+    // Allow public read ONLY for specific public asset paths
+    match /banners/{allPaths=**} {
       allow read: if true;
-
-      // Admin write only: admin custom claim + verified email, images only, max 5MB
       allow write: if request.auth != null &&
                       request.auth.token.admin == true &&
                       request.auth.token.email_verified == true &&
                       request.resource.size <= 5 * 1024 * 1024 &&
                       request.resource.contentType.matches('image/.*');
+    }
 
-      // Explicitly disallow directory listing
+    match /images/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null &&
+                      request.auth.token.admin == true &&
+                      request.auth.token.email_verified == true &&
+                      request.resource.size <= 5 * 1024 * 1024 &&
+                      request.resource.contentType.matches('image/.*');
+    }
+
+    // All other uploads require admin authentication (no public read)
+    match /{allPaths=**} {
+      allow read: if false;
+      allow write: if request.auth != null &&
+                      request.auth.token.admin == true &&
+                      request.auth.token.email_verified == true &&
+                      request.resource.size <= 5 * 1024 * 1024 &&
+                      request.resource.contentType.matches('image/.*');
       allow list: if false;
     }
   }

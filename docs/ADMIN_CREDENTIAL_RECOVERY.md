@@ -45,14 +45,12 @@ If the Admin Security Password is lost or forgotten:
 
 ---
 
-## 4. Recovery Scenario C: Emergency Server-Side Override
+## 4. Recovery Scenario C: Emergency Server-Side Override (REMOVED)
 
-In the event of an email dispatch failure or lock-out:
-1. Open the Vercel Dashboard for `nexora`.
-2. Navigate to **Settings** &rarr; **Environment Variables**.
-3. Set the temporary override variable:
-   - **Key:** `ADMIN_SECURITY_PASSWORD`
-   - **Value:** `EmergencyTempPassword2026!@#$` (or any strong 16+ character string)
-4. Redeploy the application.
-5. Log in at `/admin` using the temporary password.
-6. Navigate to the Admin Settings panel, establish a permanent database-backed password, and subsequently remove the `ADMIN_SECURITY_PASSWORD` environment variable in Vercel to return to standard Firestore security.
+The emergency `ADMIN_SECURITY_PASSWORD` environment variable override has been removed. It was a documented backdoor that bypassed MFA and presented a critical security risk (P0-03).
+
+**Secure recovery process:**
+- Use **Recovery Scenario B** (Forgot Admin Password) which uses verified identity via email OTP, short-lived challenge tokens, and appropriate authorization.
+- If email delivery fails, contact the platform administrator through an out-of-band channel.
+- Recovery tokens are single-use, short-lived (10 minutes), and cannot grant administrator access without prior admin authorization.
+- All recovery actions are audit-logged.

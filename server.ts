@@ -41,6 +41,88 @@ export const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '100kb' }));
 
+// ==========================================
+// CORS CONFIGURATION (P1-07 fix)
+// ==========================================
+const ALLOWED_ORIGINS = [
+  process.env.FRONTEND_URL,
+  process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+  process.env.VERCEL_ENV === 'production' ? 'https://www.nexora-bvm.online' : undefined,
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+].filter(Boolean) as string[];
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Admin-Session, X-XSRF-TOKEN');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  }
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+  next();
+});
+
+// ==========================================
+// CSRF / ORIGIN PROTECTION (P0-04, P4-9, P4-10)
+// ==========================================
+function isSameOriginRequest(req: express.Request): boolean {
+  const origin = req.headers.origin;
+  const referer = req.headers.referer;
+  if (!origin && !referer) return true;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) return true;
+  if (referer) {
+    try {
+      const refererUrl = new URL(referer);
+      if (ALLOWED_ORIGINS.includes(`${refererUrl.protocol}//${refererUrl.host}`)) return true;
+    } catch {}
+  }
+  return false;
+}
+
+app.use((req, res, next) => {
+  if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
+    const isAdminRoute = req.path.startsWith('/admin') || req.path.includes('/admin');
+    if (isAdminRoute) {
+      const csrfToken = req.headers['x-xsrf-token'];
+      const cookieCsrf = req.headers.cookie
+        ?.split(';')
+        .map(c => c.trim())
+        .find(c => c.startsWith('nexora_csrf='))
+        ?.split('=')[1];
+      if (!csrfToken || !cookieCsrf || csrfToken !== cookieCsrf) {
+        if (!isSameOriginRequest(req)) {
+          res.status(403).json({ error: 'CSRF token validation failed.' });
+          return;
+        }
+      }
+    }
+  }
+  next();
+});
+
+// Simple cookie parser middleware (no external dependency)
+app.use((req, res, next) => {
+  const cookies: Record<string, string> = {};
+  const header = req.headers.cookie || '';
+  for (const pair of header.split(';')) {
+    const eqIdx = pair.indexOf('=');
+    if (eqIdx > 0) {
+      const name = pair.slice(0, eqIdx).trim();
+      const value = pair.slice(eqIdx + 1).trim();
+      cookies[name] = value;
+    }
+  }
+  req.cookies = cookies;
+  next();
+});
+
 // Process-level crash prevention and structured logging (B-01)
 process.on('unhandledRejection', (reason: any) => {
   console.error('[PROCESS UNHANDLED REJECTION]', reason?.stack || reason?.message || reason);
@@ -75,15 +157,9 @@ function resolvePort(): number {
 
 const PORT = resolvePort();
 
-// Approved administrator accounts & founder identity
-export const FOUNDER_EMAIL = 'miteshpipaliya2202@gmail.com';
-export const FOUNDER_PHONE = '+91 8200243606';
-export const ADMIN_EMAILS = [
-  FOUNDER_EMAIL,
-  'mitesh.aiml@gmail.com',
-  'editwithvision@gmail.com'
-];
-export const ADMIN_PHONE = FOUNDER_PHONE;
+// Founder email from environment (NOT hardcoded in source — configure via Vercel env vars)
+export const FOUNDER_EMAIL = process.env.FOUNDER_EMAIL?.toLowerCase().trim() || '';
+export const FOUNDER_PHONE = process.env.FOUNDER_PHONE || '';
 
 const isServerless = Boolean(
   process.env.VERCEL || 
@@ -688,7 +764,7 @@ async function verifyAdminSecurityPasswordAsync(password: string): Promise<boole
   return false;
 }
 
-// In-memory security tokens and sessions
+// In-memory security tokens and sessions (fallback)
 const elevatedAdminSessions = new Map<string, { sessionId: string; founderEmail: string; expiresAt: number; createdAt: number }>();
 
 const consumedAdminResetTokenIds = new Set<string>();
@@ -714,7 +790,7 @@ const auditLogEntries: AuditLogEntry[] = [
   }
 ];
 
-function recordAudit(action: string, details: any, actor: string = FOUNDER_EMAIL) {
+function recordAudit(action: string, details: any, actor: string = FOUNDER_EMAIL || 'system') {
   const log: AuditLogEntry = {
     id: `log_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
     timestamp: Date.now(),
@@ -726,7 +802,137 @@ function recordAudit(action: string, details: any, actor: string = FOUNDER_EMAIL
   if (auditLogEntries.length > 200) auditLogEntries.pop();
 }
 
-// Middleware: Require 15-minute Elevated Admin Session
+// ==========================================
+// Firestore-backed Admin Authorization (replaces hardcoded ADMIN_EMAILS)
+// ==========================================
+
+interface AdminRecord {
+  email: string;
+  role: 'founder' | 'admin' | 'moderator';
+  createdAt: number;
+  createdBy: string;
+  revoked?: boolean;
+}
+
+async function isAdminAuthorized(email: string): Promise<boolean> {
+  if (!email) return false;
+  const normalizedEmail = email.toLowerCase().trim();
+  try {
+    const db = await getAdminFirestore();
+    if (db) {
+      const emailHash = crypto.createHash('sha256').update(normalizedEmail).digest('hex');
+      const snap = await db.collection('_admin_admins').doc(emailHash).get();
+      if (snap.exists) {
+        const data = snap.data() as AdminRecord;
+        return data.revoked !== true;
+      }
+    }
+  } catch {}
+  return false;
+}
+
+// ==========================================
+// Server-side Session Management (Firestore-backed, P0-04, P1-05)
+// ==========================================
+
+interface AdminSessionRecord {
+  sessionId: string;
+  email: string;
+  expiresAt: number;
+  createdAt: number;
+  revoked?: boolean;
+}
+
+async function createAdminSessionRecord(email: string, expiresAt: number): Promise<string> {
+  const sessionId = crypto.randomBytes(24).toString('hex');
+  const db = await getAdminFirestore();
+  if (db) {
+    await db.collection('_admin_sessions').doc(sessionId).set({
+      sessionId,
+      email: email.toLowerCase().trim(),
+      expiresAt,
+      createdAt: Date.now(),
+      revoked: false
+    });
+  }
+  return sessionId;
+}
+
+async function validateAdminSessionRecord(sessionId: string): Promise<{ valid: boolean; email?: string }> {
+  try {
+    const db = await getAdminFirestore();
+    if (db) {
+      const snap = await db.collection('_admin_sessions').doc(sessionId).get();
+      if (snap.exists) {
+        const data = snap.data() as AdminSessionRecord;
+        if (data.revoked) return { valid: false };
+        if (Date.now() > data.expiresAt) return { valid: false };
+        return { valid: true, email: data.email };
+      }
+    }
+  } catch {}
+  return { valid: false };
+}
+
+async function revokeAdminSession(sessionId: string): Promise<void> {
+  const db = await getAdminFirestore();
+  if (db) {
+    await db.collection('_admin_sessions').doc(sessionId).update({ revoked: true });
+  }
+}
+
+async function revokeAllAdminSessionsForEmail(email: string): Promise<void> {
+  const db = await getAdminFirestore();
+  if (!db) return;
+  const normalizedEmail = email.toLowerCase().trim();
+  const snap = await db.collection('_admin_sessions').where('email', '==', normalizedEmail).where('revoked', '==', false).get();
+  const batch = db.batch();
+  snap.docs.forEach((doc: any) => {
+    batch.update(doc.ref, { revoked: true, revokedAt: Date.now() });
+  });
+  await batch.commit();
+}
+
+async function isSessionRevoked(jti: string): Promise<boolean> {
+  try {
+    const db = await getAdminFirestore();
+    if (db) {
+      const snap = await db.collection('_revoked_sessions').doc(jti).get();
+      return snap.exists;
+    }
+  } catch {}
+  return false;
+}
+
+async function revokeJti(jti: string, reason: string): Promise<void> {
+  try {
+    const db = await getAdminFirestore();
+    if (db) {
+      await db.collection('_revoked_sessions').doc(jti).set({
+        jti,
+        revokedAt: Date.now(),
+        reason
+      });
+    }
+  } catch {}
+}
+
+// Helper to set HttpOnly, Secure, SameSite=Strict admin session cookie (no cookie-parser dependency)
+function setAdminSessionCookie(res: express.Response, token: string, expiresAt: number) {
+  const maxAge = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+  const secure = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
+  const adminCookie = `nexora_admin_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
+  const csrfCookie = `nexora_csrf=${crypto.randomBytes(16).toString('hex')}; Path=/; SameSite=Strict; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
+  res.setHeader('Set-Cookie', [adminCookie, csrfCookie]);
+}
+
+function clearAdminSessionCookie(res: express.Response) {
+  const adminCookie = 'nexora_admin_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0';
+  const csrfCookie = 'nexora_csrf=; Path=/; SameSite=Strict; Max-Age=0';
+  res.setHeader('Set-Cookie', [adminCookie, csrfCookie]);
+}
+
+// Middleware: Require 15-minute Elevated Admin Session (cookie-based)
 async function requireElevatedAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
   try {
     await getStoredAdminSecurityAsync();
@@ -735,18 +941,30 @@ async function requireElevatedAdmin(req: express.Request, res: express.Response,
     return;
   }
 
-  const token = (req.headers['x-admin-session'] as string) || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
+  const token = req.cookies?.['nexora_admin_session']
+    || (req.headers['x-admin-session'] as string)
+    || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
   if (!token) {
     res.status(401).json({ error: 'Elevated administrator session required. Please authenticate in the Admin Panel.' });
     return;
   }
 
-  // 1. Check stateless cryptographic token (resilient across Vercel serverless cold starts)
+  // 1. Check stateless cryptographic token
   const payload = verifySignedToken(token, 'admin-session');
   if (payload && payload.exp > Date.now()) {
+    const jti = (payload as any).jti;
     const tokenIat = (payload as any).iat || 0;
     if (sessionRevokedBeforeTimestamp && tokenIat && tokenIat < sessionRevokedBeforeTimestamp) {
       res.status(401).json({ error: 'Admin session revoked due to password update. Please log in again.' });
+      return;
+    }
+    if (jti && await isSessionRevoked(jti)) {
+      res.status(401).json({ error: 'Admin session revoked. Please log in again.' });
+      return;
+    }
+    const sessionValid = await validateAdminSessionRecord(jti || token);
+    if (!sessionValid.valid) {
+      res.status(401).json({ error: 'Admin session expired or revoked.' });
       return;
     }
     return next();
@@ -825,7 +1043,8 @@ apiRouter.post('/admin/auth/sync-claim', async (req, res) => {
       return;
     }
 
-    if (!ADMIN_EMAILS.includes(email)) {
+    const authorized = await isAdminAuthorized(email);
+    if (!authorized) {
       res.status(403).json({ success: false, admin: false, error: 'User email is not authorized as an administrator.' });
       return;
     }
@@ -949,7 +1168,7 @@ apiRouter.post(['/admin/auth/setup-password', '/admin/setup-password'], async (r
     await saveAdminSecurityAsync(newPassword);
     recordAudit('ADMIN_PASSWORD_INITIALIZED', 'Founder Admin Security Password created and persisted permanently in Firestore.');
 
-    // Automatically issue elevated session for immediate access
+    // Automatically issue elevated session for immediate access (HttpOnly cookie)
     const expiresAt = Date.now() + 15 * 60 * 1000;
     const sessionToken = createSignedToken({
       email: FOUNDER_EMAIL,
@@ -958,16 +1177,14 @@ apiRouter.post(['/admin/auth/setup-password', '/admin/setup-password'], async (r
       iat: Date.now()
     } as any);
 
-    elevatedAdminSessions.set(sessionToken, {
-      sessionId: sessionToken,
-      founderEmail: FOUNDER_EMAIL,
-      expiresAt,
-      createdAt: Date.now()
-    });
+    const jti = (JSON.parse(Buffer.from(sessionToken.split('.')[0], 'base64url').toString('utf8')) as any).jti;
+    await createAdminSessionRecord(FOUNDER_EMAIL, expiresAt);
+
+    setAdminSessionCookie(res, sessionToken, expiresAt);
+    recordAudit('ADMIN_SESSION_CREATED', 'Elevated admin session issued via HttpOnly cookie after password setup.');
 
     res.json({
       success: true,
-      sessionToken,
       expiresAt,
       message: 'Admin Security Password created permanently in database. Elevated admin session active.'
     });
@@ -1125,7 +1342,7 @@ apiRouter.post(['/admin/auth/verify-admin-otp', '/admin/auth/verify-otp', '/admi
       return;
     }
 
-    // Create 15-minute elevated session
+    // Create 15-minute elevated session (HttpOnly cookie)
     const expiresAt = Date.now() + 15 * 60 * 1000;
     const sessionToken = createSignedToken({
       email: FOUNDER_EMAIL,
@@ -1134,18 +1351,14 @@ apiRouter.post(['/admin/auth/verify-admin-otp', '/admin/auth/verify-otp', '/admi
       iat: Date.now()
     } as any);
 
-    elevatedAdminSessions.set(sessionToken, {
-      sessionId: sessionToken,
-      founderEmail: FOUNDER_EMAIL,
-      expiresAt,
-      createdAt: Date.now()
-    });
+    const jti = (JSON.parse(Buffer.from(sessionToken.split('.')[0], 'base64url').toString('utf8')) as any).jti;
+    await createAdminSessionRecord(FOUNDER_EMAIL, expiresAt);
 
-    recordAudit('ADMIN_ACCESS_GRANTED', 'Founder completed OTP verification. Elevated session issued (15 min).');
+    setAdminSessionCookie(res, sessionToken, expiresAt);
+    recordAudit('ADMIN_ACCESS_GRANTED', 'Founder completed OTP verification. Elevated session issued via HttpOnly cookie (15 min).');
 
     res.json({
       success: true,
-      sessionToken,
       expiresAt,
       durationMinutes: 15
     });
@@ -1293,10 +1506,11 @@ apiRouter.post(['/admin/auth/forgot-password/reset-password', '/admin/forgot-pas
     // Persist the password and consume this recovery authorization atomically.
     await saveAdminSecurityAsync(newPassword, true, verified.jti);
 
-    // Revoke all existing admin sessions immediately
+    // Revoke all existing admin sessions immediately (server-side, persistent)
+    await revokeAllAdminSessionsForEmail(FOUNDER_EMAIL);
     elevatedAdminSessions.clear();
 
-    recordAudit('ADMIN_PASSWORD_RESET_COMPLETED', 'Admin Security Password successfully updated via email OTP reset flow.');
+    recordAudit('ADMIN_PASSWORD_RESET_COMPLETED', 'Admin Security Password successfully updated via email OTP reset flow. All sessions revoked.');
 
     res.json({
       success: true,
@@ -1310,9 +1524,11 @@ apiRouter.post(['/admin/auth/forgot-password/reset-password', '/admin/forgot-pas
   }
 });
 
-// 8. Verify / Check Elevated Session
-apiRouter.all(['/admin/auth/session', '/admin/session'], (req, res) => {
-  const token = (req.headers['x-admin-session'] as string) || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
+// 8. Verify / Check Elevated Session (cookie-based)
+apiRouter.all(['/admin/auth/session', '/admin/session'], async (req, res) => {
+  const token = req.cookies?.['nexora_admin_session']
+    || (req.headers['x-admin-session'] as string)
+    || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
   if (!token) {
     res.json({ authenticated: false });
     return;
@@ -1321,9 +1537,19 @@ apiRouter.all(['/admin/auth/session', '/admin/session'], (req, res) => {
   // Check stateless cryptographic token
   const payload = verifySignedToken(token, 'admin-session');
   if (payload && payload.exp > Date.now()) {
+    const jti = (payload as any).jti;
     const tokenIat = (payload as any).iat || 0;
     if (sessionRevokedBeforeTimestamp && tokenIat && tokenIat < sessionRevokedBeforeTimestamp) {
       res.json({ authenticated: false, error: 'Session revoked' });
+      return;
+    }
+    if (jti && await isSessionRevoked(jti)) {
+      res.json({ authenticated: false, error: 'Session revoked' });
+      return;
+    }
+    const sessionValid = await validateAdminSessionRecord(jti || token);
+    if (!sessionValid.valid) {
+      res.json({ authenticated: false, error: 'Session expired or revoked' });
       return;
     }
     res.json({
@@ -1351,20 +1577,43 @@ apiRouter.all(['/admin/auth/session', '/admin/session'], (req, res) => {
   });
 });
 
-// 9. Lock Admin Panel (Revoke elevated session)
-apiRouter.post(['/admin/auth/lock', '/admin/lock'], (req, res) => {
-  const token = (req.body.sessionToken as string) || (req.headers['x-admin-session'] as string) || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
-  if (token && elevatedAdminSessions.has(token)) {
-    elevatedAdminSessions.delete(token);
+// 9. Lock Admin Panel (Revoke elevated session - server-side, persistent)
+apiRouter.post(['/admin/auth/lock', '/admin/lock'], async (req, res) => {
+  const token = req.cookies?.['nexora_admin_session']
+    || (req.body.sessionToken as string)
+    || (req.headers['x-admin-session'] as string)
+    || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
+  let revoked = false;
+  if (token) {
+    // Revoke from in-memory map
+    if (elevatedAdminSessions.has(token)) {
+      elevatedAdminSessions.delete(token);
+      revoked = true;
+    }
+    // Revoke from Firestore
+    const payload = verifySignedToken(token, 'admin-session');
+    if (payload?.jti) {
+      await revokeAdminSession(payload.jti).catch((err: any) => {
+        console.error('[ADMIN LOCK] Failed to revoke session from Firestore:', err);
+        revoked = false;
+      });
+      await revokeJti(payload.jti, 'admin_lock').catch((err: any) => {
+        console.error('[ADMIN LOCK] Failed to record revocation:', err);
+        revoked = false;
+      });
+    }
+    clearAdminSessionCookie(res);
   }
-  recordAudit('ADMIN_LOCKED', 'Elevated admin session was manually locked.');
-  res.json({ success: true, message: 'Admin session revoked.' });
+  recordAudit('ADMIN_LOCKED', 'Elevated admin session was manually locked. Server-side revocation: ' + revoked);
+  res.json({ success: true, message: 'Admin session revoked.', revoked });
 });
 
 // 9b. Brevo Email Diagnostics & Test Email (WP7)
 apiRouter.get('/admin/email-diagnostics', async (req, res) => {
   try {
-    const sessionToken = (req.headers['x-admin-session'] as string) || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
+    const sessionToken = req.cookies?.['nexora_admin_session']
+      || (req.headers['x-admin-session'] as string)
+      || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
     const isElevated = sessionToken && (
       Boolean(elevatedAdminSessions.get(sessionToken)) || 
       Boolean(verifySignedToken(sessionToken, 'admin-session'))
@@ -1443,7 +1692,9 @@ apiRouter.get('/admin/email-diagnostics', async (req, res) => {
 
 apiRouter.post('/admin/send-test-email', async (req, res) => {
   try {
-    const sessionToken = (req.headers['x-admin-session'] as string) || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
+    const sessionToken = req.cookies?.['nexora_admin_session']
+      || (req.headers['x-admin-session'] as string)
+      || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
     const isElevated = sessionToken && (
       Boolean(elevatedAdminSessions.get(sessionToken)) || 
       Boolean(verifySignedToken(sessionToken, 'admin-session'))
@@ -1634,23 +1885,43 @@ apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/c
 apiRouter.post('/admin/start-challenge', (req, res) => {
   res.redirect(307, '/admin/auth/status');
 });
-apiRouter.post('/admin/verify-session', (req, res) => {
-  const token = req.body?.sessionToken;
-  if (!token || !elevatedAdminSessions.has(token)) {
+apiRouter.post('/admin/verify-session', async (req, res) => {
+  const token = req.cookies?.['nexora_admin_session']
+    || req.body?.sessionToken
+    || (req.headers['x-admin-session'] as string);
+  if (!token) {
     res.json({ valid: false });
     return;
   }
-  const s = elevatedAdminSessions.get(token)!;
-  if (Date.now() > s.expiresAt) {
-    elevatedAdminSessions.delete(token);
+  const payload = verifySignedToken(token, 'admin-session');
+  if (!payload || payload.exp <= Date.now()) {
     res.json({ valid: false });
     return;
   }
-  res.json({ valid: true, expiresAt: s.expiresAt });
+  if (payload.jti && await isSessionRevoked(payload.jti)) {
+    res.json({ valid: false });
+    return;
+  }
+  const sessionValid = await validateAdminSessionRecord(payload.jti || token);
+  if (!sessionValid.valid) {
+    res.json({ valid: false });
+    return;
+  }
+  res.json({ valid: true, expiresAt: payload.exp });
 });
-apiRouter.post('/admin/logout-session', (req, res) => {
-  const token = req.body?.sessionToken;
-  if (token) elevatedAdminSessions.delete(token);
+apiRouter.post('/admin/logout-session', async (req, res) => {
+  const token = req.cookies?.['nexora_admin_session']
+    || req.body?.sessionToken
+    || (req.headers['x-admin-session'] as string);
+  if (token) {
+    elevatedAdminSessions.delete(token);
+    const payload = verifySignedToken(token, 'admin-session');
+    if (payload?.jti) {
+      await revokeAdminSession(payload.jti).catch(() => {});
+      await revokeJti(payload.jti, 'logout').catch(() => {});
+    }
+    clearAdminSessionCookie(res);
+  }
   res.json({ success: true });
 });
 
@@ -2067,6 +2338,7 @@ if (isServerless) {
 
 // Global Express Error Handler to guarantee JSON responses
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  // Generic error response - never expose err.message to clients
   console.error('[API ERROR]', err?.message || err);
   if (res.headersSent) {
     return next(err);
