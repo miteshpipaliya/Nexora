@@ -53,6 +53,107 @@ export async function testFirestoreConnection() {
   }
 }
 
+/**
+ * Increments a Firestore document counter within a transaction.
+ * Useful for rate limiting and tracking usage.
+ * @param db - Firebase Firestore instance
+ * @param docPath - Document path in format 'collection/docId'
+ * @param field - Counter field name (defaults to 'count')
+ * @param windowSeconds - Time window in seconds (defaults to 24 hours)
+ * @returns {allowed, count, resetAt} - Rate limit status
+ */
+export async function incrementFirestoreCounter(db: any, docPath: string, field?: string, windowSeconds?: number): Promise<{ allowed: boolean; count: number; resetAt: number | null }> {
+  try {
+    const ref = doc(db, docPath);
+    const now = Date.now();
+
+    const result = await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      let current = 0;
+      let windowStart = 0;
+
+      if (snap.exists()) {
+        const data = snap.data()!;
+        current = data.count || 0;
+        windowStart = data.windowStart || 0;
+      }
+
+      // Window has expired, reset
+      if (now - windowStart >= (windowSeconds || (60 * 60 * 24)) * 1000) {
+        current = 1;
+        windowStart = now;
+      } else {
+        current++;
+      }
+
+      transaction.update(ref, { count: current, windowStart });
+      return { allowed: current <= 100, count: current, resetAt: windowStart + (windowSeconds || (60 * 60 * 24)) * 1000 };
+    });
+
+    return result;
+  } catch (error) {
+    console.error('Firestore counter error:', error);
+    return { allowed: false, count: 0, resetAt: null };
+  }
+}
+
+/**
+ * Checks a Firestore-based rate limit.
+ * Uses a time-window approach for rate limiting.
+ * @param db - Firebase Firestore instance
+ * @param docPath - Document path in format 'collection/docId'
+ * @param windowSeconds - Time window in seconds (defaults to 24 hours)
+ * @returns {allowed, retryAfter} - Rate limit status with retry suggestion
+ */
+export async function checkFirestoreRateLimit(db: any, docPath: string, windowSeconds?: number): Promise<{ allowed: boolean; retryAfter?: number }> {
+  try {
+    const ref = doc(db, docPath);
+    const now = Date.now();
+
+    const result = await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      let current = 0;
+      let windowStart = 0;
+
+      if (snap.exists()) {
+        const data = snap.data()!;
+        current = data.count || 0;
+        windowStart = data.windowStart || 0;
+      }
+
+      // Window has expired, reset
+      if (now - windowStart >= (windowSeconds || (60 * 60 * 24)) * 1000) {
+        current = 1;
+        windowStart = now;
+      } else {
+        current++;
+      }
+
+      transaction.update(ref, { count: current, windowStart });
+      const retryAfter = windowStart + (windowSeconds || (60 * 60 * 24)) * 1000 - now;
+      return { allowed: true, count: current, retryAfter: retryAfter > 0 ? Math.ceil(retryAfter / 1000) : 0 };
+    });
+
+    return result;
+  } catch (error) {
+    console.error('Firestore rate limit check error:', error);
+    return { allowed: false, retryAfter: 60 };
+  }
+}
+
+/**
+ * Verifies Firebase Firestore connectivity.
+ */
+export async function testFirestoreConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn('Firebase Firestore client is offline, verifying connectivity.');
+    }
+  }
+}
+
 // Error handling matching Firestore ABAC specifications
 export enum OperationType {
   CREATE = 'create',

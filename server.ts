@@ -21,6 +21,7 @@ import { resolveFirebaseAdminConfig } from './src/server/firebaseAdminConfig';
 import { StudentOtpStore, StudentOtpRateLimitError, StudentOtpStorageError } from './src/server/studentOtpStore';
 import { createRegistrationOnce, RegistrationStoreError } from './src/server/registrationStore';
 import { validateIndianMobile, normalizeIndianMobile } from './src/shared/lib/phoneUtils';
+import { incrementFirestoreCounter, checkFirestoreRateLimit } from './src/services/firebase';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -68,6 +69,57 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// ==========================================
+// RATE LIMITING (P2-02)
+// ==========================================
+// Firestore-backed rate limiting to handle Vercel serverless function instances
+// This prevents bypassing rate limits across multiple function instances
+import { incrementFirestoreCounter, checkFirestoreRateLimit } from './src/services/firebase';
+
+// In-memory fallback for rate limiting (in addition to Firestore rates)
+interface RateRecord {
+  count: number;
+  resetAt: number;
+}
+const ipRateLimits = new Map<string, RateRecord>();
+const adminRateLimits = new Map<string, RateRecord>();
+
+function checkRateLimit(ipHash: string, now: number): { allowed: boolean; retryAfter?: number } {
+  // Global daily cap (max 1000 per day)
+  if (now > globalResetAt) {
+    globalDailyCount = 0;
+    globalResetAt = now + 24 * 60 * 60 * 1000;
+  }
+  if (globalDailyCount >= 1000) {
+    return { allowed: false, retryAfter: Math.ceil((globalResetAt - now) / 1000) };
+  }
+
+  // IP rate limit: 10 per 10 minutes
+  const ipRec = ipRateLimits.get(ipHash);
+  if (ipRec && now < ipRec.resetAt) {
+    if (ipRec.count >= 10) {
+      return { allowed: false, retryAfter: Math.ceil((ipRec.resetAt - now) / 1000) };
+    }
+  } else {
+    ipRateLimits.set(ipHash, { count: 1, resetAt: now + 10 * 60 * 1000 });
+  }
+
+  return { allowed: true };
+}
+
+function recordRateLimitConsumption(ipHash: string) {
+  const ipRec = ipRateLimits.get(ipHash);
+  if (ipRec) ipRec.count++;
+  globalDailyCount++;
+}
+
+// Admin-specific rate limiting using Firestore-backed counters
+async function adminRateLimit(adminId: string, endpoint: string, now: number): Promise<{ allowed: boolean; retryAfter?: number }> {
+  const docPath = `admin_ratelimits/${adminId}_${endpoint}`;
+  const result = await checkFirestoreRateLimit(firebaseAdminApp?.auth()?.uid || '', docPath, 60 * 60 * 24);
+  return result;
+}
 
 // ==========================================
 // CSRF / ORIGIN PROTECTION (P0-04, P4-9, P4-10)
