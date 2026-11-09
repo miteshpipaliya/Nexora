@@ -1,0 +1,120 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Student user profile information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Firebase user UID" },
+        "full_name": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 120 },
+        "college": { "type": "string", "maxLength": 100 },
+        "branch": { "type": "string", "maxLength": 100 },
+        "academic_year": { "type": "string", "maxLength": 50 },
+        "enrollment_number": { "type": "string", "maxLength": 50 },
+        "division": { "type": "string", "maxLength": 20 },
+        "phone_number": { "type": "string", "maxLength": 25 },
+        "avatar_url": { "type": "string", "maxLength": 500 },
+        "created_at": { "type": "string" },
+        "updated_at": { "type": "string" }
+      },
+      "required": ["id", "full_name", "email", "college", "branch", "academic_year", "enrollment_number"]
+    },
+    "Event": {
+      "title": "Competition Event",
+      "description": "Competition event detail record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "slug": { "type": "string", "enum": ["zerocode", "ctf", "hackathon", "coderush"] },
+        "title": { "type": "string", "maxLength": 100 },
+        "tagline": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "category": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "maxLength": 50 },
+        "registration_open": { "type": "boolean" },
+        "capacity": { "type": "number" },
+        "registered_count": { "type": "number" },
+        "fee_per_participant": { "type": "number" }
+      },
+      "required": ["id", "slug", "title", "registration_open", "capacity", "registered_count"]
+    },
+    "Registration": {
+      "title": "Event Registration",
+      "description": "Student registration for a competition",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "competition_id": { "type": "string", "maxLength": 20, "description": "Permanent Unique Competition ID e.g. ZC-A7K2" },
+        "user_id": { "type": "string" },
+        "event_slug": { "type": "string", "enum": ["zerocode", "ctf", "hackathon", "coderush"] },
+        "event_title": { "type": "string", "maxLength": 100 },
+        "full_name": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 120 },
+        "phone_number": { "type": "string", "maxLength": 25 },
+        "college": { "type": "string", "maxLength": 100 },
+        "branch": { "type": "string", "maxLength": 100 },
+        "academic_year": { "type": "string", "maxLength": 50 },
+        "enrollment_number": { "type": "string", "maxLength": 50 },
+        "division": { "type": "string", "maxLength": 20 },
+        "team_name": { "type": "string", "maxLength": 100 },
+        "participant_count": { "type": "number" },
+        "registration_status": { "type": "string", "maxLength": 50 },
+        "payment_status": { "type": "string", "maxLength": 50 },
+        "calculated_fee": { "type": "number" },
+        "created_at": { "type": "string" },
+        "updated_at": { "type": "string" }
+      },
+      "required": ["id", "competition_id", "user_id", "event_slug", "full_name", "email", "college", "branch", "academic_year", "enrollment_number", "registration_status"]
+    },
+    "ContactMessage": {
+      "title": "Contact Submission",
+      "description": "Inquiry message submitted through the footer contact form",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sender_name": { "type": "string", "maxLength": 100 },
+        "sender_email": { "type": "string", "maxLength": 120 },
+        "subject": { "type": "string", "maxLength": 200 },
+        "message": { "type": "string", "maxLength": 2000 },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "sender_name", "sender_email", "message"]
+    },
+    "AdminAuditLog": {
+      "title": "Admin Audit Log",
+      "description": "Security audit record for administrative sessions and actions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "admin_uid": { "type": "string" },
+        "event_type": { "type": "string", "maxLength": 100 },
+        "details": { "type": "string", "maxLength": 1000 },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "admin_uid", "event_type", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Individual student profile documents"
+    },
+    "/events/{eventId}": {
+      "schema": { "$ref": "#/entities/Event" },
+      "description": "Published competition events"
+    },
+    "/registrations/{registrationId}": {
+      "schema": { "$ref": "#/entities/Registration" },
+      "description": "Student competition registrations"
+    },
+    "/contactMessages/{messageId}": {
+      "schema": { "$ref": "#/entities/ContactMessage" },
+      "description": "Submitted contact inquiries"
+    },
+    "/adminAuditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AdminAuditLog" },
+      "description": "Administrative security audit logs"
+    }
+  }
+}
