@@ -3,10 +3,10 @@ import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
 import csurf from 'csurf';
 import bodyParser from 'body-parser';
 import z from 'zod';
+import { firestoreRateLimiter, RATE_LIMIT_CONFIGS, initializeRateLimitCounters, getTrustedIp } from './src/services/rateLimiter';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,38 +83,26 @@ app.use(helmet());
 const csrf = require('csurf')({ cookie: true });
 app.use(csrf());
 
-// Rate limiter configuration
-const rateLimit = require('express-rate-limit');
+// Initialize rate limit counters in Firestore for distributed limits
+initializeRateLimitCounters(ADMIN_EMAILS[0]);
 
-// General rate limiter - 100 requests per 15 minutes
-const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: { error: 'Too many requests from this IP, please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// Apply per-endpoint Firestore-backed rate limiters
+// More specific paths must come first in Express!
 
-// Stricter rate limiter for auth routes - 20 requests per 15 minutes
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  message: { error: 'Too many authentication attempts, please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// Admin routes - 5 requests per 15 minutes
+app.use('/api/admin/', firestoreRateLimiter(RATE_LIMIT_CONFIGS[5]));
 
-// Even stricter rate limiter for admin routes - 10 requests per 15 minutes
-const adminLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { error: 'Too many admin requests, please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// OTP verification - 10 requests per 15 minutes
+app.use('/api/auth/verify-', firestoreRateLimiter(RATE_LIMIT_CONFIGS[3]));
 
-// Apply general rate limiter to all routes
-app.use(generalLimiter);
+// Authentication routes - 10 requests per 15 minutes
+app.use('/api/auth/', firestoreRateLimiter(RATE_LIMIT_CONFIGS[1]));
+
+// Contact form - 3 requests per 15 minutes
+app.use('/api/contact', firestoreRateLimiter(RATE_LIMIT_CONFIGS[4]));
+
+// General API - 50 requests per 15 minutes (catch-all after specific paths)
+app.use('/api/', firestoreRateLimiter(RATE_LIMIT_CONFIGS[0]));
 
 // Admin authorization middleware
 function adminOnly(req: Request, res: Response, next: NextFunction) {

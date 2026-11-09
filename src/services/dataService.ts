@@ -930,6 +930,128 @@ class NexoraDataService {
       console.warn('Audit log write error:', err);
     }
   }
+
+  // --- AUDIT LOG INTEGRITY VERIFICATION ---
+
+  /**
+   * Verify the hash chain integrity of admin audit logs.
+   * 
+   * Hash chain structure (must match the creation algorithm exactly):
+   * - Each record contains: chain_hash (current) and previous_hash (link to prior)
+   * - First record (genesis) has previous_hash = 'genesis'
+   * - chain_hash = SHA-256(previous_hash + event_type + details + timestamp + admin_uid)
+   * - Uses deterministic serialization: `${previousHash}|${event_type}|${details}|${timestamp}|${adminUid}`
+   * 
+   * @returns Object with verification results including first invalid record index
+   */
+  public async verifyAuditLogChain(): Promise<{
+    valid: boolean;
+    totalRecords: number;
+    firstInvalidIndex: number;
+    lastInvalidIndex: number;
+    error?: string;
+  }> {
+    try {
+      const auditLogsSnap = await getDocs(collection(db, 'adminAuditLogs'));
+      const allDocs = auditLogsSnap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Array<{ 
+        id: string;
+        chain_hash: string;
+        previous_hash: string;
+        event_type: string;
+        details: string;
+        timestamp: string;
+        admin_uid: string | null;
+      }>;
+      
+      // Sort by timestamp to get the correct chain order
+      const sorted = allDocs.sort((a, b) => 
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+
+      if (sorted.length === 0) {
+        return { valid: true, totalRecords: 0, firstInvalidIndex: -1, lastInvalidIndex: -1 };
+      }
+
+      let previousHash = 'genesis';
+      let firstInvalidIndex = -1;
+      let lastInvalidIndex = -1;
+
+      for (let i = 0; i < sorted.length; i++) {
+        const record = sorted[i];
+
+        // Check previous_hash matches the expected value
+        if (i === 0) {
+          // First record should have previous_hash = 'genesis'
+          if (record.previous_hash !== 'genesis') {
+            firstInvalidIndex = i;
+            lastInvalidIndex = i;
+            return { 
+              valid: false, 
+              totalRecords: sorted.length, 
+              firstInvalidIndex: i, 
+              lastInvalidIndex: i,
+              error: 'First record does not have genesis previous_hash' 
+            };
+          }
+        } else {
+          // Subsequent records should have previous_hash = prior record's chain_hash
+          if (record.previous_hash !== previousHash) {
+            firstInvalidIndex = i;
+            lastInvalidIndex = i;
+            return { 
+              valid: false, 
+              totalRecords: sorted.length, 
+              firstInvalidIndex: i, 
+              lastInvalidIndex: i,
+              error: `Chain broken at record ${i}: expected previous_hash "${previousHash}", got "${record.previous_hash}"` 
+            };
+          }
+        }
+
+        // Compute expected hash using deterministic serialization
+        const timestampMs = new Date(record.timestamp).getTime();
+        const encoder = new TextEncoder();
+        const dataToHash = `${record.previous_hash}|${record.event_type}|${record.details}|${timestampMs}|${record.admin_uid || 'system'}`;
+        const expectedHash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(dataToHash))))
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+
+        // Verify chain_hash matches computed hash
+        if (record.chain_hash !== expectedHash) {
+          firstInvalidIndex = i;
+          lastInvalidIndex = i;
+          return { 
+            valid: false, 
+            totalRecords: sorted.length, 
+            firstInvalidIndex: i, 
+            lastInvalidIndex: i,
+            error: `Hash mismatch at record ${i}: expected "${expectedHash}", got "${record.chain_hash}"` 
+          };
+        }
+
+        // Update previousHash for next iteration
+        previousHash = record.chain_hash;
+      }
+
+      return { 
+        valid: true, 
+        totalRecords: sorted.length, 
+        firstInvalidIndex: -1, 
+        lastInvalidIndex: -1 
+      };
+    } catch (err) {
+      return { 
+        valid: false, 
+        totalRecords: 0, 
+        firstInvalidIndex: -1, 
+        lastInvalidIndex: -1,
+        error: err instanceof Error ? err.message : 'Unknown error' 
+      };
+    }
+  }
 }
 
 export const dataService = new NexoraDataService();

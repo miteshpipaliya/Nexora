@@ -61,9 +61,14 @@ service cloud.firestore {
     }
 
     // Contact Submissions
+    // IMPORTANT: Direct client writes to contactMessages are denied.
+    // All contact form submissions MUST go through the protected /api/contact endpoint
+    // which performs server-side validation, honeypot/bot detection, and content sanitization.
+    // The Firestore rule below prevents bypassing the server-side security controls.
     match /contactMessages/{messageId} {
-      allow create: if isValidId(messageId);
-      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin(); // Only admins can create via Firestore (e.g., admin tools)
+      allow read: if isAdmin();   // Only admins can read submissions
+      allow update, delete: if false; // No one can modify/delete via client
     }
 
     // Administrative Security Audit Logs
