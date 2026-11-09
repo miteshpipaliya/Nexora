@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Shield } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { NexoraLogo } from '../ui/NexoraLogo';
+import { NotificationBell } from '../ui/NotificationBell';
 
 export const Navbar: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -28,17 +29,12 @@ export const Navbar: React.FC = () => {
     { label: 'About', path: '/about' },
     { label: 'Competitions', path: '/competitions' },
     { label: 'Team', path: '/team' },
+    { label: 'Store', path: '/store' },
     { label: 'Profile', path: '/profile' }
   ];
 
-  // Strictly enforce: Admin navigation is completely HIDDEN by default.
-  // Visible ONLY to the authenticated, verified founder administrator: miteshpipaliya2202@gmail.com
-  const isFounderAdmin = Boolean(
-    user && 
-    user.email && 
-    user.email.toLowerCase().trim() === 'miteshpipaliya2202@gmail.com' &&
-    isAdmin
-  );
+  // Strictly enforce: Admin navigation visible when authenticated user has verified admin custom claim
+  const isFounderAdmin = Boolean(user && isAdmin);
 
   if (isFounderAdmin) {
     navLinks.push({ label: 'Admin', path: '/admin' });
@@ -51,16 +47,6 @@ export const Navbar: React.FC = () => {
 
   return (
     <header className="sticky top-0 z-40 w-full bg-[#08080D]/80 backdrop-blur-md border-b border-violet-500/15">
-      {/* Top Banner Ribbon */}
-      <div className="w-full bg-[#11101B]/80 border-b border-violet-500/10 px-4 py-1 text-center text-[11px] text-slate-400 flex items-center justify-center gap-2 select-none">
-        <span className="text-violet-400 font-medium">BVM Initiative:</span>
-        <span>Student Technology Community · Birla Vishvakarma Mahavidyalaya</span>
-        <span className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.2 text-[10px] bg-violet-950/70 text-violet-300 border border-violet-500/20 rounded">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          Firebase Cloud Connected
-        </span>
-      </div>
-
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between gap-8 h-16">
           
@@ -96,8 +82,11 @@ export const Navbar: React.FC = () => {
             ))}
           </nav>
 
-          {/* User Status / Join NEXORA */}
+          {/* User Status / Notification Bell / Join NEXORA */}
           <div className="hidden md:flex items-center gap-3 shrink-0">
+            {/* Real-time Broadcast Notification Bell */}
+            <NotificationBell />
+
             {user ? (
               <Link
                 to="/profile"
@@ -119,8 +108,9 @@ export const Navbar: React.FC = () => {
             )}
           </div>
 
-          {/* Mobile Menu Hamburger Button */}
-          <div className="flex md:hidden items-center">
+          {/* Mobile Right Bar: Notification Bell & Hamburger Button */}
+          <div className="flex md:hidden items-center gap-2">
+            <NotificationBell />
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

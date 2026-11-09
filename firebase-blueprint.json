@@ -93,6 +93,18 @@
         "timestamp": { "type": "string" }
       },
       "required": ["id", "admin_uid", "event_type", "timestamp"]
+    },
+    "PresenceSession": {
+      "title": "Presence Session",
+      "description": "Short-lived active tab presence lease document",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Authenticated user UID" },
+        "startedAt": { "type": "string" },
+        "lastSeen": { "type": "string" },
+        "expireAt": { "type": "string" }
+      },
+      "required": ["uid", "startedAt", "lastSeen", "expireAt"]
     }
   },
   "firestore": {
@@ -111,6 +123,10 @@
     "/contactMessages/{messageId}": {
       "schema": { "$ref": "#/entities/ContactMessage" },
       "description": "Submitted contact inquiries"
+    },
+    "/presenceSessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/PresenceSession" },
+      "description": "Active student presence tab session leases"
     },
     "/adminAuditLogs/{logId}": {
       "schema": { "$ref": "#/entities/AdminAuditLog" },

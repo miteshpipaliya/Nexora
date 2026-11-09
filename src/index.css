@@ -29,7 +29,12 @@
   }
 }
 
-/* Content Protection Discipline (Part 13) */
+/* Content Copy Deterrent (WP8 / R8) */
+body:not(.admin-route) {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .user-select-none,
 .brand-display,
 .hero-heading,
@@ -41,7 +46,7 @@
 }
 
 /* Allow selection explicitly on interactive & readable components */
-input, textarea, select, .selectable-content, pre, code, .prose-rules, .privacy-text {
+input, textarea, select, [contenteditable="true"], .allow-select, .selectable-content, pre, code, .prose-rules, .privacy-text {
   user-select: text !important;
   -webkit-user-select: text !important;
 }

@@ -1,0 +1,1288 @@
+# NEXORA — COMPLETE PRODUCTION REPAIR, BREVO OTP FIX, PREMIUM 3D REDESIGN AND FOUNDER ADMIN MANAGEMENT SYSTEM
+
+You are the lead full-stack engineer, senior UI/UX designer, Firebase security architect, Three.js graphics developer, and production deployment engineer for my existing NEXORA web application.
+
+Your job is to inspect, repair, improve, and complete my existing project without destroying working functionality.
+
+## PROJECT DETAILS
+
+Project name: NEXORA
+
+Repository: https://github.com/miteshpipaliya/Nexora
+
+Branch: main
+
+Live website: https://nexora-lime-tau.vercel.app/
+
+Frontend:
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- Three.js
+
+Backend:
+- Express / Vercel-compatible serverless APIs
+
+Authentication:
+- Firebase Authentication
+
+Database:
+- Cloud Firestore
+
+Email:
+- Brevo Transactional Email API
+
+Hosting:
+- Vercel
+
+NEXORA is a proposed student-led technology and innovation initiative at Birla Vishvakarma Mahavidyalaya.
+
+Always describe it as proposed unless formal college approval has actually been granted.
+
+IMPORTANT: This is an EXISTING project. Do not rebuild it from scratch. Do not delete existing working features, student accounts, registrations, database records, designs, or GitHub history.
+
+The four screenshots I supplied are the visual and functional references for this task.
+
+---
+
+# PRIORITY 1 — FIX THE LIVE BREVO OTP ERROR
+
+## 1.1 CURRENT ERROR
+
+On the live Vercel signup page:
+
+https://nexora-lime-tau.vercel.app/signup
+
+At Step 2 of 11, the email verification screen displays:
+
+"Unexpected token 'A', 'A server e'... is not valid JSON"
+
+This occurs while trying to send or verify a six-digit email OTP.
+
+This is a critical production bug.
+
+It suggests that a frontend API request expects JSON but is receiving an unexpected text or HTML error response.
+
+Do not assume the exact cause without investigating.
+
+Possible causes include:
+
+- Missing or incorrectly deployed Vercel API function.
+- Express routes not correctly exported.
+- Incorrect frontend API base URL.
+- Backend runtime exception.
+- Missing Brevo environment variables.
+- Brevo API authorization failure.
+- Invalid Brevo sender configuration.
+- Vercel function crash.
+- Firebase Admin initialization failure.
+- API response body not being valid JSON.
+- Wrong serverless routing or rewrite configuration.
+- Frontend/backend endpoint mismatch.
+
+## 1.2 INVESTIGATE THE ROOT CAUSE
+
+Inspect:
+
+- server.ts
+- api/index.ts or equivalent serverless entrypoint
+- vercel.json
+- vite.config.ts
+- package.json
+- Firebase configuration
+- Firebase Admin SDK initialization
+- Brevo email service
+- SignupPage.tsx
+- ForgotPasswordPage.tsx
+- Shared API request utilities
+- Environment variable usage
+
+Trace the complete request:
+
+Signup email entry → frontend API call → Vercel API route → OTP generation → Brevo API → JSON response → frontend UI.
+
+Find the actual failing endpoint and reason.
+
+Do not simply hide the error message.
+
+## 1.3 IMPLEMENT RELIABLE API RESPONSES
+
+All API routes must return consistent JSON.
+
+For example, successful responses may use:
+
+{
+  "success": true,
+  "message": "Verification code request accepted"
+}
+
+Failed responses may use:
+
+{
+  "success": false,
+  "code": "EMAIL_DELIVERY_FAILED",
+  "message": "We could not send your verification code. Please try again."
+}
+
+Implement a robust frontend API client that:
+
+- Checks HTTP status.
+- Checks Content-Type.
+- Parses JSON safely.
+- Handles empty responses.
+- Detects HTML or plain-text server errors.
+- Displays understandable messages.
+- Does not expose stack traces or provider secrets to users.
+- Preserves useful diagnostic details in server-side logs.
+
+Do not let malformed responses cause unhandled promise rejections.
+
+## 1.4 REAL BREVO EMAIL OTP
+
+Use Brevo Transactional Email.
+
+Use the existing verified sender configuration.
+
+Required environment variables:
+
+BREVO_API_KEY
+BREVO_SENDER_EMAIL
+BREVO_SENDER_NAME
+OTP_HMAC_SECRET
+
+Never hardcode secrets.
+
+OTP requirements:
+
+- Exactly six digits.
+- Cryptographically secure generation.
+- Three-minute expiry.
+- Single-use.
+- Thirty-second resend cooldown.
+- Maximum five incorrect attempts.
+- Server-side rate limiting.
+- OTP stored using a keyed cryptographic digest.
+- Persistent backend challenge storage.
+- No plaintext OTP logs.
+- No OTP exposure through debugging endpoints.
+- No fake local OTP fallback.
+
+Use Firestore or another appropriate shared persistent storage solution for production challenges.
+
+Do not rely on process-local Maps in Vercel serverless functions.
+
+Make OTP verification atomic to prevent replay.
+
+Only display "Email Verified" after successful server-side verification.
+
+Brevo accepting an email request is not proof that it reached the inbox.
+
+If the sender, API key, account restrictions, IP authorization or provider configuration blocks delivery, report the exact server-side diagnostic category without exposing secrets.
+
+## 1.5 COMPLETE STUDENT SIGNUP
+
+Preserve the existing 11-step signup wizard.
+
+Ensure:
+
+- Email OTP works.
+- All inputs validate correctly.
+- Navigation between steps works.
+- Final account creation works.
+- Firebase Authentication is configured correctly.
+- Firestore profile creation works.
+- Duplicate emails are handled.
+- Account creation errors are displayed accurately.
+- No user is told their account was created unless it really exists.
+
+Use the correct Firebase project in development and production.
+
+Ensure backend OTP verification cannot be bypassed by directly calling the account-creation endpoint.
+
+Test the entire signup journey on the actual deployed environment.
+
+---
+
+# PRIORITY 2 — REPAIR ALL COMPETITION IMAGES
+
+## 2.1 CURRENT PROBLEM
+
+The competition cards show broken or placeholder-style visuals.
+
+The affected competitions include:
+
+- ZeroCode
+- CTF — Capture The Flag
+- NEXORA Hackathon
+- CodeRush
+
+The same type of image problem exists in the Team section.
+
+I want real, professional-looking images that load reliably.
+
+## 2.2 COMPETITION IMAGE REQUIREMENTS
+
+Each competition should have a distinct visual identity.
+
+ZeroCode:
+AI-assisted development, creative coding, futuristic software-building imagery.
+
+CTF:
+Cybersecurity, digital forensics, secure networks and hacker-themed technology imagery.
+
+NEXORA Hackathon:
+Innovation, collaborative engineering, student teamwork and prototypes.
+
+CodeRush:
+Competitive programming, algorithms, coding challenges and developer-focused imagery.
+
+Use images that are appropriately licensed or original assets.
+
+Prefer images stored in a reliable project-controlled location, such as Firebase Storage or bundled static assets.
+
+Do not depend on fragile third-party image links.
+
+Do not use random placeholder URLs that may break.
+
+Implement:
+
+- Proper image loading.
+- Consistent aspect ratios.
+- Responsive image containers.
+- Lazy loading where appropriate.
+- Meaningful alt text.
+- Loading placeholders.
+- Error fallbacks.
+- No stretched or distorted images.
+
+Keep the existing premium dark purple card styling.
+
+## 2.3 MAKE THE ENTIRE COMPETITION CARD CLICKABLE
+
+Currently users may need to click a small Explore button.
+
+Change this behavior.
+
+Clicking anywhere inside a competition card should navigate to that competition's Explore page.
+
+This includes:
+
+- Image area.
+- Competition title.
+- Description.
+- Card background.
+- Prize information.
+- Available card space.
+
+Use semantic accessible navigation.
+
+Support keyboard Enter activation and visible focus indicators.
+
+Avoid nested links or conflicting click handlers.
+
+The Register button must remain independently functional.
+
+Clicking Register should open the correct registration flow, without accidentally triggering the card's Explore navigation.
+
+## 2.4 COMPETITION EXPLORE PAGE
+
+Each competition must have a working detail page showing its actual configured information.
+
+Support:
+
+- Competition title.
+- Cover image.
+- Category.
+- Description.
+- Rules.
+- Eligibility.
+- Participation format.
+- Registration fees.
+- Prize information.
+- Venue.
+- Event date and time.
+- Registration deadline.
+- Maximum capacity.
+- Available seats where applicable.
+- Registration status.
+- Register button.
+
+Display "To Be Announced" for genuinely unknown details.
+
+Do not invent event dates or falsely claim proposed events are confirmed.
+
+Use stable competition IDs and routes.
+
+Do not break existing registrations or registration IDs.
+
+---
+
+# PRIORITY 3 — FIX THE TEAM SECTION
+
+Inspect the complete Team page and all associated components.
+
+Repair broken team member images.
+
+Create a professional team presentation.
+
+Each team member card should support:
+
+- Profile photo.
+- Full name.
+- Position.
+- Department.
+- Academic year where relevant.
+- Short biography.
+- Skills or responsibilities.
+- LinkedIn URL.
+- GitHub URL.
+- Optional other approved social links.
+
+Do not invent real team members or their credentials.
+
+If an image is missing, display a clean initials-based avatar.
+
+Do not display broken image icons.
+
+Make the Team section responsive and consistent with NEXORA branding.
+
+Team content must later be editable through the founder Admin Panel.
+
+---
+
+# PRIORITY 4 — REMOVE THE ENTIRE TOP FIREBASE BANNER
+
+In the screenshot, the header contains a ribbon displaying:
+
+"BVM Initiative: Student Technology Community · Birla Vishvakarma Mahavidyalaya"
+
+and:
+
+"Firebase Cloud Connected"
+
+REMOVE THIS ENTIRE TOP RIBBON COMPLETELY.
+
+Do not just hide the Firebase badge.
+
+Remove the whole extra header strip.
+
+Keep only the main NEXORA navigation bar.
+
+Preserve:
+
+- NEXORA logo.
+- Home.
+- About.
+- Competitions.
+- Team.
+- Profile.
+- Sign In / Join.
+- Founder-only Admin link.
+
+After removal:
+
+- No empty gap at the top.
+- No extra border.
+- No layout shift.
+- No broken sticky positioning.
+- Correct mobile spacing.
+
+The website may still explain its proposed relationship to BVM in the homepage About content.
+
+Do not show an unverified "Firebase Cloud Connected" status anywhere in the header.
+
+---
+
+# PRIORITY 5 — PREMIUM REALISTIC 3D HERO OBJECT
+
+## 5.1 CURRENT PROBLEM
+
+The rotating purple object on the homepage looks too small and insufficiently realistic.
+
+I want a substantially more professional, realistic, visually impressive 3D object.
+
+It must remain an actual animated Three.js scene.
+
+Do not replace it with a static image, GIF or flat SVG.
+
+## 5.2 VISUAL DESIGN
+
+Create a premium futuristic orbital object with:
+
+- Large central violet sphere.
+- Deep purple glossy material.
+- Physically plausible lighting.
+- Metallic highlights.
+- Subtle luminous core.
+- Multiple independent orbital rings.
+- Fine orbital particles.
+- Real depth and perspective.
+- Soft rim lighting.
+- Refined reflections or carefully simulated reflections.
+- Subtle atmospheric glow.
+- Elegant rotation.
+- Smooth pointer-responsive parallax.
+
+The design should feel suitable for a premium technology and innovation platform.
+
+Avoid a cartoon-like appearance.
+
+Avoid excessively bright neon that makes details hard to see.
+
+## 5.3 SIZE AND POSITION
+
+Increase the total visual size substantially.
+
+Target:
+
+- Approximately 85–92% of the usable right-side hero container.
+- Centered vertically and horizontally.
+- Preserve a small visual safety margin.
+- Do not overlap the headline or CTA buttons.
+- Do not clip the outer rings.
+- Do not overflow the viewport.
+
+The entire orbital system should appear larger, not just the central sphere.
+
+Maintain harmonious proportions between the sphere, rings and particles.
+
+## 5.4 ANIMATION
+
+Use:
+
+- Smooth independent ring rotations.
+- Slow core sphere movement.
+- Subtle particle motion.
+- Pointer parallax.
+- Time-based animation.
+- Frame-rate-independent movement.
+
+Avoid:
+
+- Jitter.
+- Sudden jumps.
+- Excessive CPU usage.
+- Memory leaks.
+- Animation continuing after unmount.
+- Duplicate WebGL renderers.
+- Deprecated Three.js APIs.
+
+Respect reduced-motion preferences.
+
+Add a visually consistent fallback for browsers without WebGL.
+
+## 5.5 PERFORMANCE
+
+Optimize geometry and material usage.
+
+Use a reasonable device pixel ratio cap.
+
+Dispose of all WebGL resources properly.
+
+Handle resize and browser tab visibility.
+
+Prevent ResizeObserver loops.
+
+Keep performance acceptable on mid-range laptops and mobile devices.
+
+Do not add unnecessarily large 3D libraries or high-resolution textures.
+
+Preserve the homepage's existing text, buttons and galaxy background.
+
+---
+
+# PRIORITY 6 — FOUNDER-ONLY ADMIN PANEL
+
+## 6.1 FOUNDER DETAILS
+
+Founder account email:
+
+miteshpipaliya2202@gmail.com
+
+Founder phone:
+
++91 8200243606
+
+These are the only founder contact details that should be displayed in the administrator verification interface.
+
+The mobile number is for identity display/contact information only.
+
+DO NOT SEND SMS OTP.
+
+DO NOT require Twilio, Fast2SMS, MSG91 or Firebase Phone Authentication.
+
+The administrator must be identified using a trusted provisioned Firebase UID and server-side authorization.
+
+Matching an email address or phone number alone must never grant administrator access.
+
+## 6.2 ADMIN NAVIGATION VISIBILITY
+
+Only the authorized founder account should see the Admin Panel navigation button.
+
+Ordinary students must not see it.
+
+However, hiding the navigation button is not sufficient security.
+
+Protect:
+
+- /admin
+- All admin API endpoints.
+- All privileged database operations.
+- Image uploads.
+- Competition management.
+- Team management.
+- User management.
+- Administrator security settings.
+
+## 6.3 EXACT ADMIN LOGIN FLOW
+
+I want the following order.
+
+### STEP 1 — NORMAL NEXORA LOGIN
+
+The founder signs in using the ordinary NEXORA account password.
+
+This password is managed by Firebase Authentication.
+
+### STEP 2 — CLICK ADMIN PANEL
+
+The founder clicks Admin Panel.
+
+Show a premium security verification page.
+
+Display:
+
+NEXORA ADMINISTRATOR ACCESS
+
+Authorized founder email:
+miteshpipaliya2202@gmail.com
+
+Registered mobile:
++91 8200243606
+
+The phone number is informational only.
+
+### STEP 3 — ADMIN SECURITY PASSWORD
+
+First ask for the separate Admin Security Password.
+
+This is NOT the normal NEXORA login password.
+
+On the founder's first authorized Admin Panel visit, if no Admin Security Password exists, show:
+
+"Create Your Admin Security Password"
+
+Require:
+
+- Verified founder Firebase identity.
+- Fresh Firebase reauthentication.
+- Trusted server-side authorization.
+- A fresh Brevo Gmail OTP to authorize initial setup.
+- New Admin Security Password.
+- Confirm Admin Security Password.
+
+The initial setup must be a separate protected enrollment process, not an unverified self-service privilege assignment.
+
+Require a strong, unique password of at least 16 characters.
+
+Never store the password in plaintext.
+
+Use an appropriate password hashing algorithm such as Argon2id.
+
+Once the password exists, show:
+
+"Enter Admin Security Password"
+
+Only a correct password allows proceeding to the next phase.
+
+### STEP 4 — BREVO GMAIL OTP
+
+After the correct Admin Security Password is verified, send a fresh six-digit OTP through Brevo to:
+
+miteshpipaliya2202@gmail.com
+
+Show:
+
+"Verify Your Administrator Email"
+
+Display six OTP input boxes.
+
+Use:
+
+- Three-minute expiry.
+- Thirty-second resend cooldown.
+- Maximum five attempts.
+- Secure server-side challenge storage.
+- Single-use verification.
+- Rate limiting.
+
+Never expose the OTP in frontend code or logs.
+
+### STEP 5 — ADMIN ACCESS GRANTED
+
+Only after successful completion of both phases should the backend create a short-lived elevated administrator session.
+
+Use secure HttpOnly cookies and appropriate CSRF protection.
+
+Suggested elevated session duration:
+
+15 minutes.
+
+Validate this session on every privileged backend operation.
+
+Do not rely on React state or localStorage as administrator proof.
+
+Add:
+
+"Lock Admin Panel"
+
+This button must revoke the elevated session.
+
+Never grant access if the backend is unavailable.
+
+## 6.4 TWO DIFFERENT PASSWORDS
+
+There must be two separate passwords:
+
+PASSWORD A:
+NEXORA Account Password.
+
+PASSWORD B:
+NEXORA Admin Security Password.
+
+Changing one must not change the other.
+
+Provide separate settings:
+
+- Change Account Password.
+- Forgot Account Password.
+- Change Admin Password.
+- Forgot Admin Password.
+
+Normal account password reset should use Firebase Authentication securely, with Brevo Gmail OTP where a fully validated server-side recovery mechanism exists.
+
+Admin password reset should require verified founder authorization, a fresh Gmail OTP, and an additional trusted recovery safeguard such as an enrolled authenticator or passkey.
+
+If the independent recovery safeguard is not yet configured, require a documented secure manual recovery procedure instead of allowing Gmail alone to reset all administrator protections.
+
+Revoke existing privileged sessions after password changes.
+
+---
+
+# PRIORITY 7 — COMPLETE ADMIN WEBSITE MANAGEMENT CONSOLE
+
+I want the founder Admin Panel to manage the entire NEXORA website through a graphical dashboard.
+
+Do not require manually editing React files for routine content changes.
+
+Use Firestore-backed structured content and secure backend APIs.
+
+Keep the design consistent with the premium black-and-purple NEXORA theme.
+
+## 7.1 ADMIN DASHBOARD
+
+Create a professional overview showing:
+
+- Total registered students.
+- New registrations.
+- Total competitions.
+- Active competitions.
+- Upcoming competitions.
+- Total competition registrations.
+- Team members.
+- Recent administrative activity.
+
+Use actual database data.
+
+Do not show fake statistics.
+
+## 7.2 STUDENT MANAGEMENT
+
+Create a searchable student directory.
+
+Show authorized profile fields such as:
+
+- Full name.
+- Email.
+- College.
+- Branch.
+- Academic year.
+- Enrollment number.
+- Registration date.
+- Competition registrations.
+- Account status.
+
+Allow searching and filtering.
+
+Support pagination.
+
+Protect personal data.
+
+Do not expose password hashes, OTPs or authentication tokens.
+
+## 7.3 ONLINE / OFFLINE USER STATUS
+
+I want to see which users are active and offline.
+
+Implement an honest presence system.
+
+Requirements:
+
+- Track recent authenticated activity.
+- Display "Online", "Recently Active", or "Offline" based on defined criteria.
+- Show last-seen timestamps.
+- Handle disconnected browsers and expired sessions.
+- Avoid pretending that a closed browser can always report logout.
+- Use a suitable heartbeat and timeout system or Firebase Realtime Database presence if properly configured.
+
+If only Firestore is available, implement an approximate recent-activity indicator and label it accurately.
+
+Do not claim exact real-time online status unless a reliable presence backend has been implemented.
+
+Avoid invasive tracking.
+
+Do not collect precise locations, keystrokes or unnecessary behavioral information.
+
+## 7.4 COMPETITION MANAGEMENT
+
+This is one of the most important Admin Panel features.
+
+Create a complete Competition Management section.
+
+I want to:
+
+- View all competitions.
+- Add a new competition.
+- Edit an existing competition.
+- Delete or archive a competition.
+- Upload a competition cover image.
+- Change the competition image.
+- Edit title.
+- Edit description.
+- Edit category.
+- Edit rules.
+- Edit eligibility.
+- Edit entry fee.
+- Edit prize amount.
+- Edit capacity.
+- Edit registration deadline.
+- Edit event date.
+- Edit venue.
+- Open or close registration.
+- Mark an event as Proposed, Confirmed, Open, Closed, Completed or Cancelled, as appropriate.
+- Preview changes before publishing.
+- Save as draft.
+- Publish updates.
+- Review registered participants.
+
+Changes must persist in the database.
+
+Changes should appear on the public website after publication without rebuilding the application.
+
+Do not overwrite existing competition registration records.
+
+Use stable IDs.
+
+Preserve the existing competitions:
+
+- ZeroCode.
+- CTF — Capture The Flag.
+- NEXORA Hackathon.
+- CodeRush.
+
+## 7.5 ADD NEW COMPETITION
+
+Provide a button:
+
+"+ Add New Competition"
+
+Open a form containing:
+
+- Competition name.
+- Category.
+- Short tagline.
+- Full description.
+- Rules.
+- Eligibility.
+- Individual/team participation.
+- Team size where applicable.
+- Entry fee.
+- Prize details.
+- Maximum participants.
+- Venue.
+- Event date and time.
+- Registration deadline.
+- Competition image upload.
+- Registration status.
+- Draft or Publish.
+
+Validate all fields.
+
+After publication:
+
+- The competition appears automatically on the public Competitions page.
+- Its image displays correctly.
+- Its card is clickable.
+- Its Explore page works.
+- Its registration flow works when registration is enabled.
+
+## 7.6 IMAGE UPLOAD SYSTEM
+
+Implement secure image uploads using Firebase Storage or another configured persistent image service.
+
+Support:
+
+- JPEG.
+- PNG.
+- WebP.
+
+Validate actual file content, file size and image dimensions.
+
+Apply reasonable upload limits.
+
+Use unique object paths.
+
+Restrict uploads to the authenticated founder with an active elevated administrator session.
+
+Do not trust client-provided file types or filenames.
+
+Prefer uploads through a backend-authorized flow.
+
+Store image references in Firestore.
+
+Avoid orphaned files.
+
+Provide image previews.
+
+Allow image replacement and removal.
+
+Provide fallbacks when an image is missing.
+
+Ensure the uploaded image works on the production website.
+
+## 7.7 TEAM MANAGEMENT
+
+Create a Team Management page.
+
+I want to:
+
+- Add a team member.
+- Edit a team member.
+- Remove or archive a team member.
+- Upload a profile photo.
+- Change the member's role.
+- Edit department.
+- Edit academic year.
+- Edit biography.
+- Edit responsibilities.
+- Add LinkedIn and GitHub links.
+- Change display order.
+- Mark a member as active or former.
+- Preview before publishing.
+
+All changes must update the public Team page.
+
+Do not invent team members.
+
+## 7.8 WEBSITE CONTENT MANAGEMENT
+
+Create a Website Content section.
+
+Allow editing appropriate public-facing content:
+
+- Homepage tagline.
+- Homepage description.
+- About section.
+- Mission.
+- Vision.
+- Community highlights.
+- Public announcements.
+- Contact information.
+- Selected homepage sections.
+
+Provide:
+
+- Draft.
+- Preview.
+- Publish.
+- Revision history where feasible.
+
+Do not allow arbitrary HTML, JavaScript or unrestricted code execution through the admin editor.
+
+Sanitize rich content.
+
+Preserve the layout and animations.
+
+Keep application source code, authentication settings and backend secrets outside the content-management editor.
+
+## 7.9 REGISTRATION MANAGEMENT
+
+Allow the founder to:
+
+- View competition registrations.
+- Filter by competition.
+- Search participants.
+- View registration timestamps.
+- Review status.
+- Export permitted registration data to CSV.
+- Manage capacity.
+- Close registration.
+- Mark registrations as confirmed, pending or cancelled where applicable.
+
+Do not change existing registration IDs unnecessarily.
+
+Prevent unauthorized users from accessing other students' private registration data.
+
+## 7.10 ADMIN AUDIT LOG
+
+Maintain an administrative audit log for:
+
+- Competition creation.
+- Competition edits.
+- Competition deletion or archival.
+- Team member changes.
+- Image uploads.
+- Content publication.
+- Account security changes.
+- Administrator login attempts.
+- Privileged session creation and revocation.
+
+Store timestamps, action types and trusted actor identity.
+
+Never log passwords, OTP values, tokens or private secrets.
+
+---
+
+# PRIORITY 8 — DATABASE AND ACCESS CONTROL
+
+Audit Firestore rules and backend authorization.
+
+Ensure:
+
+- Students can read appropriate public content.
+- Students can update only their permitted profile fields.
+- Students cannot modify other students' private information.
+- Students cannot edit competitions.
+- Students cannot edit team members.
+- Students cannot upload administrative images.
+- Students cannot modify site content.
+- Students cannot grant themselves administrator privileges.
+
+Administrator mutations must require trusted founder identity and an active elevated administrator session.
+
+A Firebase custom claim alone must not bypass the Admin Security Password and OTP requirement.
+
+Use secure server-side APIs for privileged mutations.
+
+Review all existing collections before changing their schemas.
+
+Do not delete or reset production data.
+
+Create backward-compatible migrations where needed.
+
+---
+
+# PRIORITY 9 — COMPLETE WEBSITE BUG AUDIT
+
+Audit the entire application, not just the four screenshots.
+
+Review:
+
+- Home.
+- About.
+- Competitions.
+- Competition detail pages.
+- Team.
+- Login.
+- Signup.
+- Forgot Password.
+- Profile.
+- Admin Panel.
+- Admin password setup.
+- Admin OTP verification.
+- Competition registration.
+- Image uploads.
+- Database operations.
+- API endpoints.
+- Vercel deployment.
+
+Identify and fix actual issues including:
+
+- Broken navigation.
+- Invalid routes.
+- Broken images.
+- Missing imports.
+- TypeScript errors.
+- React warnings.
+- Duplicate event listeners.
+- Unhandled promises.
+- Invalid JSON responses.
+- API timeouts.
+- Serverless routing problems.
+- Authentication state inconsistencies.
+- Stale admin sessions.
+- Firestore permission errors.
+- Duplicate submissions.
+- Broken responsive layouts.
+- Missing loading states.
+- Misleading success messages.
+- Console errors caused by application code.
+- Memory leaks.
+- Accessibility problems.
+
+Do not hide console errors or replace failed backend calls with fake success.
+
+Fix root causes.
+
+---
+
+# PRIORITY 10 — VERCEL PRODUCTION DEPLOYMENT
+
+Verify that the website works in production, not just in Google AI Studio preview.
+
+Inspect:
+
+- Vercel project configuration.
+- Build command.
+- Output directory.
+- Node.js runtime compatibility.
+- Serverless API entrypoint.
+- API rewrites.
+- Firebase credentials.
+- Brevo environment variables.
+- Firebase Admin SDK configuration.
+- CORS.
+- Cookies.
+- CSRF protections.
+- HTTPS.
+- Firestore rules.
+- Firebase Storage rules.
+
+Check that:
+
+- `/api/health` returns valid JSON.
+- OTP endpoints return valid JSON.
+- Admin endpoints reject unauthorized requests.
+- API failures do not return unexpected HTML.
+- SPA routes work after browser refresh.
+- Production environment variables are configured.
+- No secret is exposed through `VITE_` variables.
+- No service-account credentials are committed to GitHub.
+
+Do not assume preview success means production success.
+
+If a Vercel setting or Firebase configuration must be changed manually, give exact instructions.
+
+---
+
+# PRIORITY 11 — GITHUB CONFLICT RESOLUTION
+
+The Google AI Studio project is connected to:
+
+miteshpipaliya/Nexora
+
+The repository may contain changes that differ from Google AI Studio.
+
+Previously conflicting files include:
+
+- CosmicHeroObject.tsx
+- Navbar.tsx
+- HomePage.tsx
+- SignupPage.tsx
+- ForgotPasswordPage.tsx
+- server.ts
+
+Preserve the latest intended changes while reconciling conflicts.
+
+Do not blindly overwrite GitHub.
+
+Do not force-push.
+
+Do not delete Git history.
+
+Do not discard working functionality.
+
+After code changes, tell me:
+
+- Which files changed.
+- Which files need synchronization.
+- Whether GitHub conflicts remain.
+- Which version should be kept if a conflict dialog appears.
+- Whether a safe push is possible.
+
+Do not claim GitHub is synchronized until the push actually succeeds.
+
+---
+
+# PRIORITY 12 — MANDATORY TESTS
+
+Perform every test supported by the environment.
+
+## STUDENT AUTHENTICATION
+
+1. Request real Brevo signup OTP.
+2. Reject incorrect OTP.
+3. Reject expired OTP.
+4. Reject reused OTP.
+5. Complete Firebase signup.
+6. Sign in with the new account.
+7. Reset the account password.
+8. Sign in using the new password.
+9. Confirm Google Sign-In still works.
+
+## ADMIN AUTHENTICATION
+
+10. Verify ordinary students cannot access admin routes.
+11. Verify founder-only authorization.
+12. Complete first-time Admin Security Password setup.
+13. Reject incorrect Admin Security Password.
+14. Accept correct Admin Security Password.
+15. Send real Brevo admin OTP.
+16. Reject incorrect admin OTP.
+17. Reject expired admin OTP.
+18. Accept valid admin OTP.
+19. Unlock Admin Panel only after both checks.
+20. Verify admin session expiry.
+21. Verify Lock Admin Panel revokes access.
+22. Verify Admin Password recovery protection.
+
+## COMPETITIONS
+
+23. Load every competition image.
+24. Click every competition card.
+25. Open each Explore page.
+26. Verify Register buttons.
+27. Create a draft competition.
+28. Publish a competition.
+29. Upload a cover image.
+30. Edit an existing competition.
+31. Confirm changes appear publicly.
+32. Verify ordinary students cannot edit competitions.
+
+## TEAM
+
+33. Load all team member images.
+34. Add a team member.
+35. Upload a profile image.
+36. Edit a team member.
+37. Verify changes appear publicly.
+
+## HOMEPAGE
+
+38. Verify the top ribbon is removed.
+39. Verify the larger Three.js object renders.
+40. Verify rings rotate smoothly.
+41. Verify mobile layout.
+42. Verify no visual clipping.
+43. Verify WebGL cleanup and reduced-motion fallback.
+
+## DEPLOYMENT
+
+44. Run TypeScript checks.
+45. Run the production build.
+46. Verify Vercel API routing.
+47. Verify Firebase connectivity.
+48. Verify Firestore permissions.
+49. Verify Storage permissions.
+50. Check for unhandled application errors.
+
+Do not claim an external test passed without actually executing it.
+
+For every test, report:
+
+- PASSED.
+- FAILED.
+- NOT TESTED.
+- BLOCKED BY CONFIGURATION.
+
+---
+
+# PRIORITY 13 — IMPLEMENTATION ORDER
+
+Work systematically.
+
+PHASE A:
+Inspect the complete existing codebase and identify root causes.
+
+PHASE B:
+Repair Vercel API routing and the Brevo signup OTP error.
+
+PHASE C:
+Repair Firebase signup and password recovery.
+
+PHASE D:
+Remove the complete top Firebase banner.
+
+PHASE E:
+Repair competition and team images.
+
+PHASE F:
+Make competition cards clickable and repair Explore routes.
+
+PHASE G:
+Improve the Three.js orbital sphere and responsive behavior.
+
+PHASE H:
+Implement secure founder-only administrator authentication.
+
+PHASE I:
+Build competition, team, user, image and website-content management.
+
+PHASE J:
+Harden Firestore rules, Firebase Storage and privileged APIs.
+
+PHASE K:
+Run available tests and fix confirmed bugs.
+
+PHASE L:
+Prepare the code for GitHub synchronization and Vercel deployment.
+
+Do not claim the entire task is finished if critical phases remain incomplete.
+
+If the implementation exceeds one response or editing session, complete the highest-priority phases first, save the changes, and provide a precise continuation checklist.
+
+---
+
+# FINAL REPORT REQUIRED
+
+When finished, provide a structured report containing:
+
+1. Root cause of the signup OTP JSON error.
+2. Brevo email integration status.
+3. Firebase signup status.
+4. Competition image fixes.
+5. Team image fixes.
+6. Clickable competition card status.
+7. Top banner removal confirmation.
+8. Three.js sphere improvements.
+9. Founder-only Admin Password implementation.
+10. Admin Gmail OTP implementation.
+11. Admin Panel functionality.
+12. Competition editing functionality.
+13. Team editing functionality.
+14. Image upload functionality.
+15. User presence tracking implementation.
+16. Website content editing functionality.
+17. Firestore and Storage security review.
+18. TypeScript and build results.
+19. Vercel production deployment status.
+20. GitHub synchronization status.
+21. Remaining environment variables and manual configuration.
+22. Remaining bugs or untested features.
+
+Do not write "everything works perfectly" without evidence.
+
+Do not simulate OTP delivery, Firebase password changes, image uploads, admin access or database writes.
+
+FINAL GOAL:
+
+NEXORA should become a functional, premium, responsive student technology platform with reliable Brevo email verification, working competitions and images, a realistic animated Three.js homepage, and a secure founder-only management console.
+
+The founder must first enter a separate Admin Security Password, then verify a real Gmail OTP, and only then receive administrator access.
+
+All important website content should be manageable through the Admin Panel without editing source code.
+
+Preserve existing working functionality and production data.
+
+START BY INVESTIGATING THE LIVE SIGNUP OTP ERROR, THEN IMPLEMENT THE REMAINING PHASES IN ORDER.

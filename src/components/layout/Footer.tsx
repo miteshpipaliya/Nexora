@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, MapPin, Building, Send, CheckCircle2, AlertCircle } from 'lucide-react';
+import { dataService } from '../../services/dataService';
 import { NexoraLogo } from '../ui/NexoraLogo';
-import { useNavigate } from 'react-router-dom';
+import { CompetitionEvent } from '../../types';
 
 export const Footer: React.FC = () => {
+  const [liveCompetitions, setLiveCompetitions] = useState<CompetitionEvent[]>([]);
   const [contactSubject, setContactSubject] = useState('');
   const [contactMessage, setContactMessage] = useState('');
   const [senderName, setSenderName] = useState('');
@@ -12,56 +14,52 @@ export const Footer: React.FC = () => {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [honeypot, setHoneypot] = useState('');
+  const [currentSubmissionId, setCurrentSubmissionId] = useState<string>(() => {
+    return (typeof crypto !== 'undefined' && crypto.randomUUID) 
+      ? crypto.randomUUID() 
+      : 'c0000000-0000-4000-8000-' + Date.now().toString(16).padStart(12, '0');
+  });
 
-  // Fetch CSRF token on component mount
   useEffect(() => {
-    fetch('/api/csrf-token', {
-      method: 'GET',
-      credentials: 'include'
-    }).then(res => res.json()).then(data => {
-      // CSRF token will be sent with cookies
-    }).catch(err => {
-      console.error('Failed to fetch CSRF token:', err);
+    const unsub = dataService.subscribeEvents((events: CompetitionEvent[]) => {
+      const active = events.filter(
+        (e) => (e.status === 'Published' || e.status === 'Open') && !e.isComingSoon
+      );
+      setLiveCompetitions(active);
     });
+    return () => unsub();
   }, []);
 
   const handleQuickContact = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return; // Prevent double-clicks
     if (!senderName.trim() || !senderEmail.trim() || !contactMessage.trim()) return;
 
     setSubmitting(true);
     setErrorMsg(null);
-
     try {
-      const response = await fetch('/api/contact', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          sender_name: senderName.trim(),
-          sender_email: senderEmail.trim(),
-          subject: contactSubject.trim() || 'NEXORA General Inquiry',
-          message: contactMessage.trim(),
-          honeypot: ''
-        })
+      await dataService.submitContactMessage({
+        sender_name: senderName.trim(),
+        sender_email: senderEmail.trim(),
+        subject: contactSubject.trim() || 'NEXORA General Inquiry',
+        message: contactMessage.trim(),
+        submissionId: currentSubmissionId,
+        honeypot: honeypot.trim()
       });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        setSubmitted(true);
-        setSenderName('');
-        setSenderEmail('');
-        setContactSubject('');
-        setContactMessage('');
-        setTimeout(() => setSubmitted(false), 5000);
-      } else {
-        setErrorMsg(result.error || 'Unable to dispatch message at this time.');
-      }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Unable to dispatch message at this time.');
+      setSubmitted(true);
+      setSenderName('');
+      setSenderEmail('');
+      setContactSubject('');
+      setContactMessage('');
+      setHoneypot('');
+      // Generate fresh UUID for next potential submission
+      setCurrentSubmissionId((typeof crypto !== 'undefined' && crypto.randomUUID) 
+        ? crypto.randomUUID() 
+        : 'c0000000-0000-4000-8000-' + Date.now().toString(16).padStart(12, '0'));
+    } catch {
+      // User-friendly error message, never raw error or stack trace
+      setErrorMsg('We could not send your message right now. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -94,17 +92,17 @@ export const Footer: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Mail className="w-3.5 h-3.5 text-violet-400 shrink-0" />
                 <a
-                  href="mailto:miteshpipaliya2202@gmail.com"
+                  href="mailto:nexora.bvm@gmail.com"
                   className="hover:text-violet-300 transition-colors selectable-content select-text text-slate-200"
                 >
-                  miteshpipaliya2202@gmail.com
+                  nexora.bvm@gmail.com
                 </a>
               </div>
             </div>
 
             <div className="pt-3">
               <a
-                href="mailto:miteshpipaliya2202@gmail.com?subject=NEXORA%20Student%20Innovation%20Inquiry"
+                href="mailto:nexora.bvm@gmail.com?subject=NEXORA%20Student%20Innovation%20Inquiry"
                 className="inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium text-violet-200 bg-violet-950/60 border border-violet-500/25 rounded-lg hover:bg-violet-900/60 transition-colors"
               >
                 <Mail className="w-3.5 h-3.5" />
@@ -113,7 +111,7 @@ export const Footer: React.FC = () => {
             </div>
           </div>
 
-          {/* Navigation Links (Store removed) */}
+          {/* Navigation Links */}
           <div className="space-y-3">
             <h4 className="text-xs font-semibold text-slate-200 uppercase tracking-wider font-mono user-select-none">
               Platform
@@ -132,35 +130,44 @@ export const Footer: React.FC = () => {
                 <Link to="/team" className="hover:text-white transition-colors">Founding Team</Link>
               </li>
               <li>
+                <Link to="/store" className="hover:text-white transition-colors">NEXORA Store</Link>
+              </li>
+              <li>
                 <Link to="/profile" className="hover:text-white transition-colors">Student Profile</Link>
+              </li>
+              <li>
+                <Link to="/privacy" className="hover:text-white transition-colors text-xs text-slate-400">Privacy Policy</Link>
+              </li>
+              <li>
+                <Link to="/terms" className="hover:text-white transition-colors text-xs text-slate-400">Terms of Participation</Link>
               </li>
             </ul>
           </div>
 
-          {/* Competitions */}
+          {/* Live Competitions (Dynamically rendered from real database) */}
           <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-slate-200 uppercase tracking-wider font-mono user-select-none">
-              Competitions
+            <h4 className="text-xs font-semibold text-slate-200 uppercase tracking-wider font-mono user-select-none flex items-center gap-2">
+              <span>Live Competitions</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             </h4>
             <ul className="space-y-2 text-sm user-select-none">
-              <li>
-                <Link to="/competitions/zerocode" className="hover:text-white transition-colors">ZeroCode Challenge</Link>
-              </li>
-              <li>
-                <Link to="/competitions/ctf" className="hover:text-white transition-colors">Capture The Flag (CTF)</Link>
-              </li>
-              <li>
-                <Link to="/competitions/hackathon" className="hover:text-white transition-colors">NEXORA Hackathon</Link>
-              </li>
-              <li>
-                <Link to="/competitions/coderush" className="hover:text-white transition-colors">CodeRush Algorithmic</Link>
-              </li>
-              <li>
-                <Link to="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
-              </li>
-              <li>
-                <Link to="/terms" className="hover:text-white transition-colors">Terms of Participation</Link>
-              </li>
+              {liveCompetitions.length > 0 ? (
+                liveCompetitions.map((ev) => (
+                  <li key={ev.slug}>
+                    <Link
+                      to={`/competitions/${ev.slug}`}
+                      className="hover:text-white transition-colors block truncate max-w-[200px]"
+                      title={ev.title}
+                    >
+                      {ev.title}
+                    </Link>
+                  </li>
+                ))
+              ) : (
+                <li className="text-xs text-slate-500 font-mono italic">
+                  Competitions Announcing Soon
+                </li>
+              )}
             </ul>
           </div>
 
@@ -172,7 +179,7 @@ export const Footer: React.FC = () => {
             {submitted ? (
               <div className="p-3 bg-violet-950/40 border border-violet-500/30 rounded-lg text-xs text-violet-200 flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
-                <span>Thank you. Your message has been saved for review by the student founder.</span>
+                <span>Your message has been received. The NEXORA team will review it.</span>
               </div>
             ) : (
               <form onSubmit={handleQuickContact} className="space-y-2">
@@ -182,13 +189,25 @@ export const Footer: React.FC = () => {
                     <span>{errorMsg}</span>
                   </div>
                 )}
+                {/* Hidden Honeypot Field */}
+                <input
+                  type="text"
+                  name="website"
+                  value={honeypot}
+                  onChange={(e) => setHoneypot(e.target.value)}
+                  tabIndex={-1}
+                  autoComplete="off"
+                  className="hidden"
+                  aria-hidden="true"
+                />
                 <input
                   type="text"
                   placeholder="Your Name"
                   value={senderName}
                   onChange={(e) => setSenderName(e.target.value)}
                   required
-                  className="w-full px-2.5 py-1.5 text-xs bg-[#11101B] border border-violet-500/20 rounded-md text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 select-text"
+                  disabled={submitting}
+                  className="w-full px-2.5 py-1.5 text-xs bg-[#11101B] border border-violet-500/20 rounded-md text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 select-text disabled:opacity-50"
                 />
                 <input
                   type="email"
@@ -196,7 +215,8 @@ export const Footer: React.FC = () => {
                   value={senderEmail}
                   onChange={(e) => setSenderEmail(e.target.value)}
                   required
-                  className="w-full px-2.5 py-1.5 text-xs bg-[#11101B] border border-violet-500/20 rounded-md text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 select-text"
+                  disabled={submitting}
+                  className="w-full px-2.5 py-1.5 text-xs bg-[#11101B] border border-violet-500/20 rounded-md text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 select-text disabled:opacity-50"
                 />
                 <textarea
                   placeholder="Your thoughts, questions, or faculty inquiry..."
@@ -204,12 +224,13 @@ export const Footer: React.FC = () => {
                   value={contactMessage}
                   onChange={(e) => setContactMessage(e.target.value)}
                   required
-                  className="w-full px-2.5 py-1.5 text-xs bg-[#11101B] border border-violet-500/20 rounded-md text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 select-text"
+                  disabled={submitting}
+                  className="w-full px-2.5 py-1.5 text-xs bg-[#11101B] border border-violet-500/20 rounded-md text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 select-text disabled:opacity-50"
                 />
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full py-1.5 text-xs font-medium text-white bg-violet-600 rounded-md hover:bg-violet-500 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60 cursor-pointer"
+                  className="w-full py-1.5 text-xs font-medium text-white bg-violet-600 rounded-md hover:bg-violet-500 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60 cursor-pointer disabled:cursor-not-allowed"
                 >
                   <Send className="w-3 h-3" />
                   <span>{submitting ? 'Sending...' : 'Send Message'}</span>

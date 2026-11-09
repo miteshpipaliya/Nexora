@@ -92,8 +92,8 @@ export const PrivacyPage: React.FC = () => {
             For privacy inquiries or institutional validation:
           </p>
           <div className="text-xs font-mono text-violet-300">
-            Organizer: Mitesh Pipaliya (Founder, NEXORA)<br />
-            Email: <a href="mailto:miteshpipaliya2202@gmail.com" className="underline">miteshpipaliya2202@gmail.com</a><br />
+            Organizer: NEXORA Organizing Desk<br />
+            Email: <a href="mailto:nexora.bvm@gmail.com" className="underline">nexora.bvm@gmail.com</a><br />
             Institution: Birla Vishvakarma Mahavidyalaya (BVM), Vallabh Vidyanagar, Gujarat, India
           </div>
         </section>

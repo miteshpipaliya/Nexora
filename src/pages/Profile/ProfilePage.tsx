@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   User, 
@@ -13,11 +13,19 @@ import {
   AlertCircle, 
   ExternalLink,
   Shield,
-  Layers
+  Layers,
+  Lock,
+  Phone
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import { RegistrationRecord, UserProfile } from '../../types';
+import { IndianPhoneInput } from '../../components/common/IndianPhoneInput';
+import {
+  validateIndianMobile,
+  normalizeIndianMobile,
+  formatIndianMobileDisplay
+} from '../../shared/lib/phoneUtils';
 
 export const ProfilePage: React.FC = () => {
   const { user, logout, updateProfile, isAdmin, sendVerificationEmail } = useAuth();
@@ -25,6 +33,7 @@ export const ProfilePage: React.FC = () => {
 
   const [registrations, setRegistrations] = useState<RegistrationRecord[]>([]);
   const [loadingRegs, setLoadingRegs] = useState(true);
+  const [registrationsError, setRegistrationsError] = useState<string | null>(null);
   const [emailVerificationSent, setEmailVerificationSent] = useState(false);
 
   // Edit Mode states
@@ -40,6 +49,20 @@ export const ProfilePage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const loadRegistrations = useCallback(async (userId: string) => {
+    setLoadingRegs(true);
+    setRegistrationsError(null);
+    try {
+      setRegistrations(await dataService.getUserRegistrations(userId));
+    } catch (error) {
+      console.error('Could not load My Competitions:', error);
+      setRegistrations([]);
+      setRegistrationsError('Your registrations could not be loaded. Check your connection and retry.');
+    } finally {
+      setLoadingRegs(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -57,13 +80,8 @@ export const ProfilePage: React.FC = () => {
     setEditPhone(user.phone_number || '');
 
     // Fetch user's registrations
-    dataService.getUserRegistrations(user.id)
-      .then((regs) => {
-        setRegistrations(regs);
-      })
-      .catch((err) => console.error(err))
-      .finally(() => setLoadingRegs(false));
-  }, [user, navigate]);
+    void loadRegistrations(user.id);
+  }, [user, navigate, loadRegistrations]);
 
   if (!user) return null;
 
@@ -77,6 +95,13 @@ export const ProfilePage: React.FC = () => {
       if (!editFullName.trim()) throw new Error('Full name cannot be empty.');
       if (!editEnrollment.trim()) throw new Error('Enrollment number is required.');
 
+      if (editPhone.trim()) {
+        const phoneVal = validateIndianMobile(editPhone);
+        if (!phoneVal.valid) {
+          throw new Error(phoneVal.error || 'Please enter a valid 10-digit Indian mobile number.');
+        }
+      }
+
       await updateProfile({
         full_name: editFullName.trim(),
         college: editCollege.trim(),
@@ -84,7 +109,7 @@ export const ProfilePage: React.FC = () => {
         academic_year: editYear,
         enrollment_number: editEnrollment.trim().toUpperCase(),
         division: editDivision.trim(),
-        phone_number: editPhone.trim()
+        phone_number: editPhone.trim() ? normalizeIndianMobile(editPhone) : ''
       });
 
       setSaveSuccess(true);
@@ -236,6 +261,16 @@ export const ProfilePage: React.FC = () => {
               <span className="text-slate-200">{user.academic_year}</span>
             </div>
 
+            {user.phone_number && (
+              <div className="flex items-center justify-between py-1 border-b border-violet-500/10">
+                <span className="text-slate-500 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-violet-400" />
+                  <span>Mobile:</span>
+                </span>
+                <span className="text-slate-200 font-mono text-xs">{formatIndianMobileDisplay(user.phone_number)}</span>
+              </div>
+            )}
+
             <div className="flex items-center justify-between py-1">
               <span className="text-slate-500 flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-violet-400" />
@@ -362,6 +397,17 @@ export const ProfilePage: React.FC = () => {
                       className="w-full px-3 py-2 text-xs bg-[#171426] border border-violet-500/20 rounded-lg text-white focus:outline-none focus:border-violet-400 selectable-content"
                     />
                   </div>
+
+                  <div className="sm:col-span-2">
+                    <IndianPhoneInput
+                      id="profile-phone"
+                      label="Indian Mobile Number (Optional)"
+                      value={editPhone}
+                      onChange={(canonical) => setEditPhone(canonical)}
+                      placeholder="Enter 10-digit mobile number"
+                      helperText="Optional 10-digit Indian mobile number for competition notices."
+                    />
+                  </div>
                 </div>
 
                 <div className="pt-4 flex justify-end gap-3">
@@ -405,6 +451,85 @@ export const ProfilePage: React.FC = () => {
         </div>
       </div>
 
+      {/* Security & Passwords Management Section */}
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <Lock className="w-5 h-5 text-violet-400" />
+            <span>Security &amp; Passwords</span>
+          </h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Manage your separate account credentials and security authentication factors.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* CARD 1: NEXORA Account Password */}
+          <div className="p-6 rounded-2xl bg-[#171426] border border-violet-500/20 space-y-4 flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-xs font-mono text-violet-400">
+                <User className="w-4 h-4" />
+                <span className="font-semibold uppercase tracking-wider">Credential A</span>
+              </div>
+              <h3 className="text-lg font-bold text-white">
+                NEXORA Account Password
+              </h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Your password for signing in to your NEXORA account. Managed by Firebase Authentication.
+              </p>
+            </div>
+
+            <div className="pt-3 border-t border-violet-500/10 flex flex-wrap gap-2">
+              <Link
+                to="/forgot-password"
+                className="px-3.5 py-2 text-xs font-semibold text-white bg-violet-600/40 border border-violet-500/30 rounded-lg hover:bg-violet-600 transition-colors"
+              >
+                Change Account Password
+              </Link>
+              <Link
+                to="/forgot-password"
+                className="px-3.5 py-2 text-xs text-slate-300 hover:text-white bg-white/5 rounded-lg border border-white/10 transition-colors"
+              >
+                Forgot Account Password?
+              </Link>
+            </div>
+          </div>
+
+          {/* CARD 2: Admin Security Password (Admin Access) */}
+          {user && isAdmin && (
+            <div className="p-6 rounded-2xl bg-[#171426] border border-violet-500/30 shadow-[0_0_20px_-5px_rgba(139,92,246,0.2)] space-y-4 flex flex-col justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs font-mono text-emerald-400">
+                  <Shield className="w-4 h-4" />
+                  <span className="font-semibold uppercase tracking-wider">Credential B — Founder Only</span>
+                </div>
+                <h3 className="text-lg font-bold text-white">
+                  Admin Security Password
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Your separate security password for accessing the NEXORA Management Console. Protected with salted PBKDF2 cryptography.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-violet-500/10 flex flex-wrap gap-2">
+                <Link
+                  to="/admin"
+                  className="px-3.5 py-2 text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-indigo-600 rounded-lg hover:from-violet-500 hover:to-indigo-500 transition-all shadow-sm"
+                >
+                  Change Admin Password
+                </Link>
+                <Link
+                  to="/admin"
+                  className="px-3.5 py-2 text-xs text-slate-300 hover:text-white bg-white/5 rounded-lg border border-white/10 transition-colors"
+                >
+                  Forgot Admin Password?
+                </Link>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Registered Competitions Dashboard */}
       <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -428,6 +553,18 @@ export const ProfilePage: React.FC = () => {
         {loadingRegs ? (
           <div className="p-12 text-center text-xs font-mono text-slate-500">
             Loading registrations...
+          </div>
+        ) : registrationsError ? (
+          <div role="alert" className="p-8 rounded-2xl bg-[#11101B] border border-red-500/25 text-center space-y-4">
+            <AlertCircle className="w-9 h-9 text-red-400 mx-auto" />
+            <p className="text-sm text-red-200">{registrationsError}</p>
+            <button
+              type="button"
+              onClick={() => void loadRegistrations(user.id)}
+              className="px-5 py-2.5 text-xs font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-500"
+            >
+              Retry
+            </button>
           </div>
         ) : registrations.length === 0 ? (
           <div className="p-12 rounded-2xl bg-[#11101B] border border-violet-500/20 text-center space-y-4">

@@ -18,6 +18,8 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { NexoraLogo } from '../../components/ui/NexoraLogo';
 import { AcademicYear } from '../../types';
+import { IndianPhoneInput } from '../../components/common/IndianPhoneInput';
+import { validateIndianMobile, normalizeIndianMobile } from '../../shared/lib/phoneUtils';
 
 interface ErrorDetails {
   message: string;
@@ -122,6 +124,17 @@ export const LoginPage: React.FC = () => {
       });
       return;
     }
+
+    if (academicData.phone_number?.trim()) {
+      const phoneVal = validateIndianMobile(academicData.phone_number);
+      if (!phoneVal.valid) {
+        setErrorDetails({
+          message: phoneVal.error || 'Please enter a valid 10-digit Indian mobile number.'
+        });
+        return;
+      }
+    }
+
     setSavingProfile(true);
     try {
       await updateProfile({
@@ -130,7 +143,7 @@ export const LoginPage: React.FC = () => {
         academic_year: academicData.academic_year,
         enrollment_number: academicData.enrollment_number.trim().toUpperCase(),
         division: academicData.division.trim(),
-        phone_number: academicData.phone_number.trim(),
+        phone_number: academicData.phone_number?.trim() ? normalizeIndianMobile(academicData.phone_number) : '',
         is_profile_complete: true
       });
       setShowProfileCompleteModal(false);
@@ -313,7 +326,7 @@ export const LoginPage: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="student@bvmengineering.ac.in"
+                  placeholder="Enter your email address"
                   className="w-full bg-[#08080D]/70 border border-violet-500/25 rounded-xl px-3.5 py-2.5 pl-10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 focus:ring-1 focus:ring-violet-400 transition-colors"
                 />
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3 pointer-events-none" />
@@ -415,18 +428,18 @@ export const LoginPage: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">Branch</label>
+                  <label className="block text-xs text-slate-300 mb-1">Branch / Discipline *</label>
                   <input
                     type="text"
                     required
                     value={academicData.branch}
                     onChange={(e) => setAcademicData({ ...academicData, branch: e.target.value })}
-                    placeholder="Information Technology"
+                    placeholder="Enter branch or discipline"
                     className="w-full bg-[#08080D] border border-violet-500/25 rounded-xl p-2.5 text-xs text-white"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">Academic Year</label>
+                  <label className="block text-xs text-slate-300 mb-1">Academic Year *</label>
                   <select
                     value={academicData.academic_year}
                     onChange={(e) => setAcademicData({ ...academicData, academic_year: e.target.value as AcademicYear })}
@@ -449,7 +462,7 @@ export const LoginPage: React.FC = () => {
                     required
                     value={academicData.enrollment_number}
                     onChange={(e) => setAcademicData({ ...academicData, enrollment_number: e.target.value })}
-                    placeholder="23IT401"
+                    placeholder="Enter enrollment number"
                     className="w-full bg-[#08080D] border border-violet-500/25 rounded-xl p-2.5 text-xs text-white"
                   />
                 </div>
@@ -459,20 +472,20 @@ export const LoginPage: React.FC = () => {
                     type="text"
                     value={academicData.division}
                     onChange={(e) => setAcademicData({ ...academicData, division: e.target.value })}
-                    placeholder="A / B"
+                    placeholder="Enter division"
                     className="w-full bg-[#08080D] border border-violet-500/25 rounded-xl p-2.5 text-xs text-white"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs text-slate-300 mb-1">Mobile Number (For WhatsApp / Event Updates)</label>
-                <input
-                  type="tel"
+                <IndianPhoneInput
+                  id="login-academic-phone"
+                  label="Mobile Number (Optional)"
                   value={academicData.phone_number}
-                  onChange={(e) => setAcademicData({ ...academicData, phone_number: e.target.value })}
-                  placeholder="+91 9876543210"
-                  className="w-full bg-[#08080D] border border-violet-500/25 rounded-xl p-2.5 text-xs text-white"
+                  onChange={(canonical) => setAcademicData({ ...academicData, phone_number: canonical })}
+                  placeholder="Enter 10-digit mobile number"
+                  helperText="Optional for collegiate and event notices."
                 />
               </div>
 

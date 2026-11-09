@@ -236,11 +236,12 @@ export const TshirtViewer3D: React.FC<TshirtViewer3DProps> = ({
     window.addEventListener('resize', handleResize);
 
     let animId: number;
-    let clock = new THREE.Clock();
+    const timer = new THREE.Timer();
 
     const animate = () => {
       animId = requestAnimationFrame(animate);
-      const delta = clock.getDelta();
+      timer.update();
+      const delta = timer.getDelta();
 
       if (viewAngle === 'spin' && !isDragging) {
         targetAngleYRef.current += 0.5 * delta;

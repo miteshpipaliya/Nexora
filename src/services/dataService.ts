@@ -5,16 +5,29 @@ import {
   ContactMessage, 
   RegistrationStatus, 
   PaymentStatus,
+  EventStatus,
   TeamMemberDetail,
-  AcademicYear
+  AcademicYear,
+  InAppNotification,
+  SiteContent,
+  RealDashboardStats,
+  ImageLibraryItem,
+  TeamRole,
+  AcademicBranch,
+  TeamDivision,
+  TeamDepartment,
+  TeamMember
 } from '../types';
+import { UserPresenceRecord, startPresenceHeartbeat, stopPresenceHeartbeat } from './presenceService';
 import { 
   auth, 
   db, 
+  storage,
   googleProvider, 
   signInWithPopup, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
+  deleteUser,
   sendEmailVerification, 
   sendPasswordResetEmail, 
   signOut,
@@ -22,6 +35,7 @@ import {
   OperationType,
   testFirestoreConnection
 } from './firebase';
+export { db, auth, storage } from './firebase';
 import { 
   doc, 
   getDoc, 
@@ -34,31 +48,54 @@ import {
   where, 
   orderBy, 
   serverTimestamp,
-  writeBatch
+  writeBatch,
+  onSnapshot
 } from 'firebase/firestore';
+import {
+  ref as storageRef,
+  uploadBytesResumable,
+  getDownloadURL
+} from 'firebase/storage';
 import { 
   INITIAL_EVENTS, 
   INITIAL_DEMO_USER, 
   INITIAL_REGISTRATIONS 
 } from './mockData';
+import { safeApiFetch } from './apiClient';
+import { toFiniteNumber } from '../shared/lib/numberUtils';
 
-// Administrator emails
-export const ADMIN_EMAILS = [
-  'miteshpipaliya2202@gmail.com',
-  'editwithvision@gmail.com'
-];
-export const ADMIN_PHONE = '+91 8200243606';
+/**
+ * Safely strips any undefined properties from Firestore payloads.
+ * Firestore strictly rejects undefined field values.
+ */
+export function cleanFirestoreData<T extends Record<string, any>>(data: T): Partial<T> {
+  const result: any = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined) {
+      if (value !== null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+        result[key] = cleanFirestoreData(value);
+      } else {
+        result[key] = value;
+      }
+    }
+  }
+  return result;
+}
 
-// Cryptographically secure competition ID generator (Format: ZC-XXXX, CTF-XXXX, HN-XXXX, CR-XXXX)
-export function generateCompetitionId(eventSlug: 'zerocode' | 'ctf' | 'hackathon' | 'coderush'): string {
-  const prefixMap = {
+// Administrator authorization is determined exclusively via Firebase Custom Claims (admin == true) per C-01.
+
+// Cryptographically secure competition ID generator (Format: ZC-XXXX, CTF-XXXX, HN-XXXX, CR-XXXX, or custom)
+export function generateCompetitionId(eventSlug: string): string {
+  const prefixMap: Record<string, string> = {
     zerocode: 'ZC-',
     ctf: 'CTF-',
     hackathon: 'HN-',
     coderush: 'CR-'
   };
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const prefix = prefixMap[eventSlug] || 'NXR-';
+  const cleanSlug = (eventSlug || '').toLowerCase().trim();
+  const defaultPrefix = cleanSlug.replace(/[^a-z]/g, '').slice(0, 3).toUpperCase();
+  const prefix = prefixMap[cleanSlug] || (defaultPrefix ? `${defaultPrefix}-` : 'NXR-');
 
   const randomValues = new Uint32Array(4);
   if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
@@ -104,6 +141,13 @@ interface LocalChallenge {
 
 const localAdminChallenges = new Map<string, LocalChallenge>();
 
+export async function sendPresenceHeartbeat(): Promise<void> {
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    startPresenceHeartbeat(uid);
+  }
+}
+
 class NexoraDataService {
   private listeners: Set<() => void> = new Set();
   private authInitialized: boolean = false;
@@ -114,12 +158,14 @@ class NexoraDataService {
     // Listen to Firebase auth state changes
     auth.onAuthStateChanged(async (fbUser) => {
       if (fbUser) {
+        startPresenceHeartbeat(fbUser.uid);
         try {
           this.currentUserCache = await this.fetchUserProfile(fbUser.uid, fbUser);
         } catch {
           this.currentUserCache = this.buildFallbackProfile(fbUser);
         }
       } else {
+        stopPresenceHeartbeat();
         this.currentUserCache = null;
       }
       this.authInitialized = true;
@@ -136,15 +182,27 @@ class NexoraDataService {
     this.listeners.forEach((listener) => listener());
   }
 
+  public async checkAdminClaim(fbUser: any): Promise<boolean> {
+    if (!fbUser) return false;
+    try {
+      const tokenResult = await fbUser.getIdTokenResult(false);
+      return Boolean(tokenResult?.claims?.admin === true && tokenResult?.claims?.email_verified === true);
+    } catch {
+      return false;
+    }
+  }
+
   public isUserAdmin(emailOrUser?: string | UserProfile | null): boolean {
     if (!emailOrUser) {
-      if (!this.currentUserCache) return false;
-      return ADMIN_EMAILS.includes(this.currentUserCache.email.toLowerCase().trim());
+      return Boolean(this.currentUserCache?.is_admin);
     }
     if (typeof emailOrUser === 'string') {
-      return ADMIN_EMAILS.includes(emailOrUser.toLowerCase().trim());
+      if (this.currentUserCache && this.currentUserCache.email.toLowerCase().trim() === emailOrUser.toLowerCase().trim()) {
+        return Boolean(this.currentUserCache.is_admin);
+      }
+      return false;
     }
-    return Boolean(emailOrUser.is_admin || ADMIN_EMAILS.includes(emailOrUser.email.toLowerCase().trim()));
+    return Boolean(emailOrUser.is_admin);
   }
 
   // --- AUTHENTICATION METHODS ---
@@ -170,7 +228,7 @@ class NexoraDataService {
       const snap = await getDoc(userDocRef);
       if (snap.exists()) {
         const data = snap.data();
-        const isAdmin = ADMIN_EMAILS.includes((fbUser.email || '').toLowerCase().trim());
+        const isAdmin = await this.checkAdminClaim(fbUser);
         return {
           id: uid,
           full_name: data.full_name || fbUser.displayName || 'NEXORA Member',
@@ -196,7 +254,6 @@ class NexoraDataService {
   }
 
   private buildFallbackProfile(fbUser: any): UserProfile {
-    const isAdmin = ADMIN_EMAILS.includes((fbUser.email || '').toLowerCase().trim());
     return {
       id: fbUser.uid,
       full_name: fbUser.displayName || (fbUser.email ? fbUser.email.split('@')[0] : 'NEXORA Member'),
@@ -210,7 +267,7 @@ class NexoraDataService {
       avatar_url: fbUser.photoURL || '',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      is_admin: isAdmin,
+      is_admin: false,
       email_verified: fbUser.emailVerified,
       is_profile_complete: false
     };
@@ -226,7 +283,7 @@ class NexoraDataService {
       const userDocRef = doc(db, 'users', user.uid);
       const snap = await getDoc(userDocRef);
 
-      const isAdmin = ADMIN_EMAILS.includes((user.email || '').toLowerCase().trim());
+      const isAdmin = await this.checkAdminClaim(user);
 
       let profile: UserProfile;
 
@@ -357,19 +414,39 @@ class NexoraDataService {
     enrollment_number: string;
     division?: string;
     phone_number?: string;
+    verificationToken?: string;
   }): Promise<UserProfile> {
     try {
+      if (!data.verificationToken) {
+        throw new Error('Email verification is mandatory. Please verify your email before creating the account.');
+      }
       const result = await createUserWithEmailAndPassword(auth, data.email.trim().toLowerCase(), data.password);
       const user = result.user;
 
-      // Send Firebase Email Verification
+      let emailVerified = false;
       try {
-        await sendEmailVerification(user);
-      } catch (evErr) {
-        console.warn('Email verification send warning:', evErr);
+        const idToken = await user.getIdToken();
+        const confirmRes = await fetch('/api/auth/confirm-verified-signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: data.email.trim().toLowerCase(),
+            verificationToken: data.verificationToken,
+            idToken
+          })
+        });
+        const confirmation = await confirmRes.json().catch(() => ({}));
+        if (!confirmRes.ok || confirmation.emailVerifiedInAuth !== true) {
+          await deleteUser(user).catch(() => {});
+          throw new Error(confirmation.error || 'Email verification could not be confirmed. Please request a new code and try again.');
+        }
+        emailVerified = true;
+      } catch (error) {
+        await deleteUser(user).catch(() => {});
+        throw error;
       }
 
-      const isAdmin = ADMIN_EMAILS.includes(data.email.trim().toLowerCase());
+      const isAdmin = false;
 
       const profilePayload: UserProfile = {
         id: user.uid,
@@ -384,7 +461,7 @@ class NexoraDataService {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         is_admin: isAdmin,
-        email_verified: false,
+        email_verified: emailVerified,
         is_profile_complete: true
       };
 
@@ -400,6 +477,7 @@ class NexoraDataService {
           enrollment_number: profilePayload.enrollment_number,
           division: profilePayload.division,
           phone_number: profilePayload.phone_number,
+          email_verified: profilePayload.email_verified,
           created_at: profilePayload.created_at,
           updated_at: profilePayload.updated_at
         });
@@ -428,7 +506,7 @@ class NexoraDataService {
     await sendEmailVerification(user);
   }
 
-  // 5. Password Reset Email
+  // 5. Password Reset Email (Standard Firebase link)
   public async sendPasswordReset(email: string): Promise<void> {
     try {
       await sendPasswordResetEmail(auth, email.trim().toLowerCase());
@@ -441,8 +519,73 @@ class NexoraDataService {
     }
   }
 
+  // 5a. Send 6-digit Email OTP via Brevo backend
+  public async sendEmailOtp(email: string, purpose: 'signup' | 'reset-password' = 'signup'): Promise<{
+    maskedEmail: string;
+    expiresInSeconds: number;
+    resendCooldown: number;
+  }> {
+    const cleanEmail = email.trim().toLowerCase();
+    const data = await safeApiFetch<{
+      success: boolean;
+      maskedEmail?: string;
+      expiresInSeconds?: number;
+      resendCooldown?: number;
+      error?: string;
+    }>('/api/auth/send-email-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, purpose })
+    });
+
+    return {
+      maskedEmail: data.maskedEmail || maskEmail(cleanEmail),
+      expiresInSeconds: data.expiresInSeconds || 180,
+      resendCooldown: data.resendCooldown || 30
+    };
+  }
+
+  // 5b. Verify 6-digit Email OTP
+  public async verifyEmailOtp(email: string, otp: string, purpose: 'signup' | 'reset-password' = 'signup'): Promise<{
+    verificationToken: string;
+    expiresAt: number;
+  }> {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanOtp = otp.trim();
+
+    const data = await safeApiFetch<{
+      success: boolean;
+      verificationToken: string;
+      expiresAt: number;
+      error?: string;
+    }>('/api/auth/verify-email-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, otp: cleanOtp, purpose })
+    });
+
+    return {
+      verificationToken: data.verificationToken,
+      expiresAt: data.expiresAt
+    };
+  }
+
+  // 5c. Complete Password Reset using Verified OTP Token
+  public async resetPasswordWithOtp(email: string, verificationToken: string, newPassword: string): Promise<void> {
+    const cleanEmail = email.trim().toLowerCase();
+
+    await safeApiFetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, verificationToken, newPassword })
+    });
+
+  }
+
+
   // 6. Sign Out
   public async logout(): Promise<void> {
+    stopPresenceHeartbeat();
     await signOut(auth);
     this.currentUserCache = null;
     this.notify();
@@ -517,21 +660,17 @@ class NexoraDataService {
 
   // --- REGISTRATIONS ---
   public async getUserRegistrations(userId: string): Promise<RegistrationRecord[]> {
-    try {
-      const q = query(
-        collection(db, 'registrations'),
-        where('user_id', '==', userId)
-      );
-      const snap = await getDocs(q);
-      const results: RegistrationRecord[] = [];
-      snap.forEach((docSnap) => {
-        results.push(docSnap.data() as RegistrationRecord);
-      });
-      return results.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    } catch (err) {
-      console.warn('Could not fetch registrations from Firestore:', err);
-      return [];
-    }
+    const q = query(
+      collection(db, 'registrations'),
+      where('user_id', '==', userId)
+    );
+    const snap = await getDocs(q);
+    const results: RegistrationRecord[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as RegistrationRecord;
+      results.push({ ...data, id: data.id || docSnap.id });
+    });
+    return results.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }
 
   public async getAllRegistrations(): Promise<RegistrationRecord[]> {
@@ -554,7 +693,7 @@ class NexoraDataService {
   }
 
   public async createRegistration(data: {
-    event_slug: 'zerocode' | 'ctf' | 'hackathon' | 'coderush';
+    event_slug: string;
     full_name: string;
     email: string;
     phone_number: string;
@@ -570,317 +709,329 @@ class NexoraDataService {
     const user = auth.currentUser;
     if (!user) throw new Error('Authentication required to register for competitions.');
 
-    // Duplicate check
-    const alreadyRegistered = await this.isUserRegisteredForEvent(user.uid, data.event_slug);
-    if (alreadyRegistered) {
-      throw new Error('You are already registered for this competition.');
+    let idToken = '';
+    try {
+      idToken = await user.getIdToken();
+    } catch {
+      // ignore
     }
 
-    const event = await this.getEventBySlug(data.event_slug);
-    if (!event) throw new Error('Event not found.');
-
-    if (!event.registration_open) {
-      throw new Error('Registration for this competition is currently closed.');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (idToken) {
+      headers['Authorization'] = `Bearer ${idToken}`;
     }
 
-    if (event.registered_count >= event.capacity) {
-      throw new Error('Competition capacity has been reached. Please contact NEXORA organizing desk.');
-    }
-
-    // Generate unique permanent competition ID e.g. ZC-A7K2
-    const competitionId = generateCompetitionId(data.event_slug);
-
-    // Uniform ₹50 fee calculation
-    const participantCount = data.team_members && data.team_members.length > 0 
-      ? data.team_members.length 
-      : 1;
-    const totalFee = participantCount * 50;
-
-    const regId = `reg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-
-    const newRecord: RegistrationRecord = {
-      id: regId,
-      competition_id: competitionId,
-      reference_id: competitionId,
-      user_id: user.uid,
+    const payload = {
       event_slug: data.event_slug,
-      event_title: event.title,
-      full_name: data.full_name.trim(),
-      email: data.email.trim().toLowerCase(),
-      phone_number: data.phone_number.trim(),
-      college: data.college.trim(),
-      branch: data.branch.trim(),
+      full_name: data.full_name?.trim(),
+      email: data.email?.trim().toLowerCase(),
+      phone_number: data.phone_number?.trim(),
+      college: data.college?.trim(),
+      branch: data.branch?.trim(),
       academic_year: data.academic_year,
-      enrollment_number: data.enrollment_number.trim().toUpperCase(),
+      enrollment_number: data.enrollment_number?.trim().toUpperCase(),
       division: data.division?.trim() || '',
       team_name: data.team_name?.trim() || '',
-      team_members: data.team_members?.filter(Boolean) || [],
-      team_member_details: data.team_member_details || [],
-      participant_count: participantCount,
-      registration_status: 'Confirmed',
-      payment_status: 'Unpaid',
-      calculated_fee: totalFee,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      team_members: data.team_members || [],
+      team_member_details: data.team_member_details || []
     };
 
+    let res: Response;
     try {
-      const regRef = doc(db, 'registrations', regId);
-      await setDoc(regRef, newRecord);
+      res = await fetch('/api/registrations/create', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      });
+    } catch {
+      throw new Error('Registration service is unavailable. Nothing was saved. Please try again.');
+    }
 
-      // Increment registered_count on event
-      try {
-        const evRef = doc(db, 'events', data.event_slug);
-        await updateDoc(evRef, {
-          registered_count: (event.registered_count || 0) + 1
-        });
-      } catch (evErr) {
-        console.warn('Event count update note:', evErr);
+    let json: any = null;
+    try {
+      json = await res.json();
+    } catch {
+      json = null;
+    }
+
+    if (!res.ok) {
+      if (json && typeof json.error === 'string') {
+        throw new Error(json.error);
       }
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `registrations/${regId}`);
+      throw new Error('Registration service is unavailable. Nothing was saved. Please try again.');
+    }
+
+    if (!json || !json.registration) {
+      throw new Error('Registration service is unavailable. Nothing was saved. Please try again.');
     }
 
     this.notify();
-    return newRecord;
+    return json.registration;
   }
 
-  // --- CONTACT INQUIRIES ---
+  // --- CONTACT INQUIRIES (PROMPT 1) ---
   public async submitContactMessage(data: {
     sender_name: string;
     sender_email: string;
     subject?: string;
     message: string;
-  }): Promise<ContactMessage> {
-    const msgId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const newMsg: ContactMessage = {
-      id: msgId,
+    submissionId?: string;
+    honeypot?: string;
+  }): Promise<{ success: boolean; id: string; message: string }> {
+    const payload = {
       sender_name: data.sender_name.trim(),
       sender_email: data.sender_email.trim().toLowerCase(),
-      subject: data.subject?.trim() || 'General Inquiry',
+      subject: data.subject?.trim() || 'NEXORA General Inquiry',
       message: data.message.trim(),
-      created_at: new Date().toISOString()
+      submissionId: data.submissionId,
+      honeypot: data.honeypot
     };
 
-    try {
-      const msgRef = doc(db, 'contactMessages', msgId);
-      await setDoc(msgRef, newMsg);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `contactMessages/${msgId}`);
-    }
-
-    return newMsg;
-  }
-
-  // --- DUAL-OTP ADMIN SECURITY ENDPOINTS ---
-  public async startAdminChallenge(adminEmail: string): Promise<{
-    challengeId: string;
-    maskedEmail: string;
-    maskedPhone: string;
-    expiresInSeconds: number;
-    devCodes?: { emailOtp: string; smsOtp: string };
-  }> {
-    const normalizedEmail = adminEmail.toLowerCase().trim();
-    if (!ADMIN_EMAILS.includes(normalizedEmail)) {
-      throw new Error('Access denied: User does not have administrative privileges.');
-    }
-
-    // Try server endpoint first
-    try {
-      const response = await fetch('/api/admin/start-challenge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail })
-      });
-
-      const contentType = response.headers.get('content-type') || '';
-      if (response.ok && contentType.includes('application/json')) {
-        const data = await response.json();
-        return data;
-      }
-    } catch {
-      // Backend not running or static deployment (Vercel)
-    }
-
-    // Cryptographic fallback for environments without active Node.js server
-    const generateOtpDigits = (): string => {
-      if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
-        const arr = new Uint32Array(1);
-        window.crypto.getRandomValues(arr);
-        return (100000 + (arr[0] % 900000)).toString();
-      }
-      return Math.floor(100000 + Math.random() * 900000).toString();
-    };
-
-    const emailOtp = generateOtpDigits();
-    const smsOtp = generateOtpDigits();
-    const challengeId = `ch_sec_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    const expiresAt = Date.now() + 5 * 60 * 1000;
-
-    localAdminChallenges.set(challengeId, {
-      challengeId,
-      adminEmail: normalizedEmail,
-      adminPhone: ADMIN_PHONE,
-      emailOtp,
-      smsOtp,
-      expiresAt,
-      attempts: 0,
-      verified: false
+    const res = await safeApiFetch<{ success: boolean; id?: string; messageId?: string; message?: string }>('/api/contact/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
 
-    // Clean expired challenges
-    for (const [id, c] of localAdminChallenges.entries()) {
-      if (Date.now() > c.expiresAt) localAdminChallenges.delete(id);
-    }
-
-    console.info(`[NEXORA ADMIN SECURITY] Dual-OTP Challenge generated for ${normalizedEmail}`);
-    console.info(`[NEXORA ADMIN SECURITY] -> Email OTP [${maskEmail(normalizedEmail)}]: ${emailOtp}`);
-    console.info(`[NEXORA ADMIN SECURITY] -> Mobile SMS OTP [${maskPhone(ADMIN_PHONE)}]: ${smsOtp}`);
-
     return {
-      challengeId,
-      maskedEmail: maskEmail(normalizedEmail),
-      maskedPhone: maskPhone(ADMIN_PHONE),
-      expiresInSeconds: 300,
-      devCodes: { emailOtp, smsOtp }
+      success: true,
+      id: res.id || res.messageId || data.submissionId || `msg_${Date.now()}`,
+      message: res.message || 'Your message has been received. The NEXORA team will review it.'
     };
   }
 
-  public async verifyAdminDualOtp(
-    challengeId: string, 
-    emailOtp: string, 
-    smsOtp: string
-  ): Promise<{ sessionToken: string; expiresAt: number }> {
-    const cleanEmailOtp = emailOtp.trim();
-    const cleanSmsOtp = smsOtp.trim();
+  public async retryContactEmail(id: string): Promise<{ success: boolean; message: string }> {
+    return safeApiFetch<{ success: boolean; message: string }>(`/api/admin/contact-messages/${id}/retry-email`, {
+      method: 'POST',
+      headers: this.getAdminHeaders()
+    });
+  }
 
-    if (!cleanEmailOtp || !cleanSmsOtp) {
-      throw new Error('Both 6-digit Email OTP and 6-digit Mobile SMS OTP are required.');
-    }
+  // --- FOUNDER ADMIN SECURITY & CONSOLE METHODS ---
+  public async getAdminStatus(): Promise<{
+    initialized: boolean;
+  }> {
+    try {
+      const res = await safeApiFetch<{
+        initialized: boolean;
+      }>('/api/admin/auth/status', { method: 'POST' });
 
-    // If server challenge (not ch_sec_), try server endpoint first
-    if (!challengeId.startsWith('ch_sec_')) {
-      try {
-        const response = await fetch('/api/admin/verify-dual-otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ challengeId, emailOtp: cleanEmailOtp, smsOtp: cleanSmsOtp })
-        });
-
-        const contentType = response.headers.get('content-type') || '';
-        if (response.ok && contentType.includes('application/json')) {
-          const data = await response.json();
-          sessionStorage.setItem('nexora_elevated_admin_token', data.sessionToken);
-          sessionStorage.setItem('nexora_elevated_admin_expires', data.expiresAt.toString());
-          try {
-            await this.recordAdminAuditLog({
-              event_type: 'ADMIN_SESSION_ELEVATED',
-              details: 'Founder Dual-OTP (Email + SMS) verification succeeded'
-            });
-          } catch (auditErr) {
-            console.warn('Audit log write notice:', auditErr);
+      // If server returned false, check authoritative Firestore directly
+      if (!res.initialized) {
+        try {
+          const confSnap = await getDoc(doc(db, 'systemConfig', 'status'));
+          if (confSnap.exists() && confSnap.data()?.initialized) {
+            safeApiFetch('/api/admin/auth/status', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ clientConfirmedInitialized: true })
+            }).catch(() => {});
+            return { initialized: true };
           }
-          return data;
-        } else if (!response.ok && contentType.includes('application/json')) {
-          const errData = await response.json();
-          throw new Error(errData.error || 'Verification failed. Please check the entered codes.');
-        }
-      } catch (err: any) {
-        if (err.message && !err.message.includes('fetch')) {
-          throw err;
+        } catch (clientFsErr) {
+          console.warn('[ADMIN STATUS] Firestore client check fallback:', clientFsErr);
         }
       }
+      return { initialized: Boolean(res.initialized) };
+    } catch (apiErr) {
+      try {
+        const confSnap = await getDoc(doc(db, 'systemConfig', 'status'));
+        const initialized = confSnap.exists() && confSnap.data()?.initialized === true;
+        return { initialized };
+      } catch {
+        return { initialized: true };
+      }
     }
+  }
 
-    // Verify against local challenge map
-    const challenge = localAdminChallenges.get(challengeId);
-    if (!challenge) {
-      throw new Error('Verification challenge expired or invalid. Please request fresh codes.');
-    }
+  public async requestAdminSetupOtp(): Promise<{
+    success: boolean;
+    maskedEmail: string;
+    expiresInSeconds: number;
+    resendCooldown: number;
+  }> {
+    return safeApiFetch('/api/admin/auth/request-setup-otp', { method: 'POST' });
+  }
 
-    if (Date.now() > challenge.expiresAt) {
-      localAdminChallenges.delete(challengeId);
-      throw new Error('Verification challenge has expired (5-minute limit). Please request fresh codes.');
-    }
+  public async generateAdminPassword(): Promise<{ success: boolean; password: string }> {
+    return safeApiFetch('/api/admin/auth/generate-password', { method: 'GET' });
+  }
 
-    if (challenge.attempts >= 5) {
-      localAdminChallenges.delete(challengeId);
-      throw new Error('Maximum verification attempts exceeded (5 limit). Please request a new challenge.');
-    }
-
-    challenge.attempts++;
-
-    if (challenge.emailOtp !== cleanEmailOtp || challenge.smsOtp !== cleanSmsOtp) {
-      const remaining = 5 - challenge.attempts;
-      throw new Error(`Invalid verification codes. Please check both Email and SMS OTPs. (${remaining} attempts remaining)`);
-    }
-
-    challenge.verified = true;
-    localAdminChallenges.delete(challengeId);
-
-    const sessionToken = `adm_sess_${Date.now()}_${Math.random().toString(36).substring(2, 12)}`;
-    const expiresAt = Date.now() + 30 * 60 * 1000;
-
-    sessionStorage.setItem('nexora_elevated_admin_token', sessionToken);
-    sessionStorage.setItem('nexora_elevated_admin_expires', expiresAt.toString());
-
+  public async setupAdminPassword(setupOtp: string, newPassword: string, confirmPassword: string): Promise<{ success: boolean; message: string }> {
+    const res = await safeApiFetch<{ success: boolean; message: string }>('/api/admin/auth/setup-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ setupOtp, newPassword, confirmPassword })
+    });
     try {
-      await this.recordAdminAuditLog({
-        event_type: 'ADMIN_SESSION_ELEVATED',
-        details: 'Founder Dual-OTP (Email + SMS) verification succeeded'
-      });
-    } catch (auditErr) {
-      console.warn('Audit log write notice:', auditErr);
+      await setDoc(doc(db, 'systemConfig', 'status'), {
+        initialized: true,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    } catch (fsErr) {
+      console.warn('[ADMIN SETUP] Client Firestore sync notice:', fsErr);
     }
+    return res;
+  }
 
-    return { sessionToken, expiresAt };
+  public async verifyAdminPassword(password: string): Promise<{
+    success: boolean;
+    sessionToken?: string;
+    passwordToken?: string;
+    maskedEmail?: string;
+    expiresAt?: number;
+    durationMinutes?: number;
+    expiresInSeconds?: number;
+    resendCooldown?: number;
+  }> {
+    const res = await safeApiFetch<{
+      success: boolean;
+      sessionToken?: string;
+      passwordToken?: string;
+      maskedEmail?: string;
+      expiresAt?: number;
+      durationMinutes?: number;
+      expiresInSeconds?: number;
+      resendCooldown?: number;
+    }>('/api/admin/auth/verify-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+
+    // Session token is now set as HttpOnly cookie by the server; no client-side storage needed.
+    return res;
+  }
+
+  // --- FORGOT PASSWORD FLOW (PHASE 5) ---
+  public async requestAdminPasswordResetOtp(email?: string): Promise<{
+    success: boolean;
+    maskedEmail: string;
+    expiresInSeconds: number;
+    resendCooldown: number;
+  }> {
+    return safeApiFetch('/api/admin/auth/forgot-password/request-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+  }
+
+  public async verifyAdminPasswordResetOtp(otp: string): Promise<{
+    success: boolean;
+    resetToken: string;
+    expiresInSeconds: number;
+  }> {
+    return safeApiFetch('/api/admin/auth/forgot-password/verify-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ otp })
+    });
+  }
+
+  public async resetAdminPassword(resetToken: string, newPassword: string, confirmPassword: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    const res = await safeApiFetch<{ success: boolean; message: string }>('/api/admin/auth/forgot-password/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resetToken, newPassword, confirmPassword })
+    });
+    try {
+      await setDoc(doc(db, 'systemConfig', 'status'), {
+        initialized: true,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    } catch {}
+    return res;
+  }
+
+  public async resendAdminOtp(passwordToken: string): Promise<{
+    success: boolean;
+    expiresInSeconds: number;
+    resendCooldown: number;
+  }> {
+    return safeApiFetch('/api/admin/auth/resend-admin-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passwordToken })
+    });
+  }
+
+  public async verifyAdminOtp(passwordToken: string, otp: string): Promise<{
+    success: boolean;
+    sessionToken: string;
+    expiresAt: number;
+    durationMinutes: number;
+  }> {
+    const data = await safeApiFetch<{
+      success: boolean;
+      sessionToken: string;
+      expiresAt: number;
+      durationMinutes: number;
+    }>('/api/admin/auth/verify-admin-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passwordToken, otp })
+    });
+
+    // Session token is now set as HttpOnly cookie by the server; no client-side storage needed.
+    return data;
+  }
+
+  // Backward compatibility alias for any existing caller
+  public async startAdminChallenge(adminEmail: string) {
+    return this.getAdminStatus();
   }
 
   public async checkElevatedAdminSession(): Promise<boolean> {
-    const token = sessionStorage.getItem('nexora_elevated_admin_token');
-    const expires = sessionStorage.getItem('nexora_elevated_admin_expires');
-
-    if (!token || !expires) return false;
-    if (Date.now() > Number(expires)) {
-      this.clearElevatedAdminSession();
+    try {
+      // Cookie is sent automatically by the browser (HttpOnly, SameSite=Strict)
+      const data = await safeApiFetch<{ authenticated: boolean }>('/api/admin/auth/session');
+      if (!data.authenticated) {
+        this.clearElevatedAdminSession();
+        return false;
+      }
+      return true;
+    } catch {
       return false;
     }
-
-    if (!token.startsWith('adm_sess_')) {
-      try {
-        const response = await fetch('/api/admin/verify-session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionToken: token })
-        });
-        const contentType = response.headers.get('content-type') || '';
-        if (response.ok && contentType.includes('application/json')) {
-          const data = await response.json();
-          if (!data.valid) {
-            this.clearElevatedAdminSession();
-            return false;
-          }
-          return true;
-        }
-      } catch {
-        // Fall back to timestamp
-      }
-    }
-
-    return Date.now() < Number(expires);
   }
 
   public clearElevatedAdminSession() {
-    const token = sessionStorage.getItem('nexora_elevated_admin_token');
-    if (token && !token.startsWith('adm_sess_')) {
-      fetch('/api/admin/logout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionToken: token })
-      }).catch(() => {});
-    }
-    sessionStorage.removeItem('nexora_elevated_admin_token');
-    sessionStorage.removeItem('nexora_elevated_admin_expires');
+    // Notify server to revoke session; do not ignore errors (P1-05 fix)
+    safeApiFetch('/api/admin/auth/lock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }).catch((err) => {
+      console.error('[ADMIN LOCK] Failed to revoke session server-side:', err);
+    });
+    // Cookie is cleared server-side via Set-Cookie; no client-side storage to clean
+  }
+
+  public sendPresenceHeartbeat = sendPresenceHeartbeat;
+
+  public async getAdminStats(): Promise<any> {
+    // Cookie is sent automatically by the browser (HttpOnly, SameSite=Strict)
+    return safeApiFetch('/api/admin/stats');
+  }
+
+  public async getAdminStudents(): Promise<any> {
+    // Cookie is sent automatically by the browser (HttpOnly, SameSite=Strict)
+    return safeApiFetch('/api/admin/students');
+  }
+
+  public async uploadAdminImage(imageBase64: string, filename?: string): Promise<{ success: boolean; url: string }> {
+    return safeApiFetch('/api/admin/upload-image', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ imageBase64, filename })
+    });
   }
 
   public async recordAdminAuditLog(entry: {
@@ -888,41 +1039,13 @@ class NexoraDataService {
     details: string;
   }): Promise<void> {
     const user = auth.currentUser;
-    const currentTime = new Date().getTime();
-    
-    // Get the latest audit log to compute hash chain
-    let previousHash = 'genesis';
-    try {
-      const auditLogsSnap = await getDocs(query(
-        collection(db, 'adminAuditLogs'),
-        orderBy('timestamp', 'desc'),
-        limit(1)
-      ));
-      if (!auditLogsSnap.empty) {
-        const latest = auditLogsSnap.docs[0].data();
-        previousHash = latest.chain_hash || 'genesis';
-      }
-    } catch (err) {
-      console.warn('Could not fetch latest audit log for hash chain:', err);
-    }
-    
-    // Compute hash chain using crypto (Node.js/Web Crypto API)
-    const encoder = new TextEncoder();
-    const dataToHash = `${previousHash}|${entry.event_type}|${entry.details}|${currentTime}|${user?.uid || 'system'}`;
-    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(dataToHash));
-    const chainHash = Array.from(new Uint8Array(hashBuffer))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
-    
-    const logId = `log_${currentTime}_${Math.random().toString(36).substring(2, 7)}`;
+    const logId = `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const logDoc = {
       id: logId,
       admin_uid: user?.uid || 'system',
       event_type: entry.event_type,
       details: entry.details,
-      timestamp: new Date().toISOString(),
-      chain_hash: chainHash,
-      previous_hash: previousHash
+      timestamp: new Date().toISOString()
     };
     try {
       await setDoc(doc(db, 'adminAuditLogs', logId), logDoc);
@@ -931,126 +1054,920 @@ class NexoraDataService {
     }
   }
 
-  // --- AUDIT LOG INTEGRITY VERIFICATION ---
+  // --- REAL-TIME FIRESTORE SUBSCRIPTIONS ---
+  public subscribeEvents(callback: (events: CompetitionEvent[]) => void): () => void {
+    try {
+      const q = collection(db, 'events');
+      const unsubscribe = onSnapshot(q, (snap) => {
+        if (!snap.empty) {
+          const events = snap.docs.map(d => d.data() as CompetitionEvent);
+          callback(events);
+        } else {
+          callback(INITIAL_EVENTS);
+        }
+      }, (err) => {
+        console.warn('Events subscription error:', err);
+        callback(INITIAL_EVENTS);
+      });
+      return unsubscribe;
+    } catch {
+      callback(INITIAL_EVENTS);
+      return () => {};
+    }
+  }
 
-  /**
-   * Verify the hash chain integrity of admin audit logs.
-   * 
-   * Hash chain structure (must match the creation algorithm exactly):
-   * - Each record contains: chain_hash (current) and previous_hash (link to prior)
-   * - First record (genesis) has previous_hash = 'genesis'
-   * - chain_hash = SHA-256(previous_hash + event_type + details + timestamp + admin_uid)
-   * - Uses deterministic serialization: `${previousHash}|${event_type}|${details}|${timestamp}|${adminUid}`
-   * 
-   * @returns Object with verification results including first invalid record index
-   */
-  public async verifyAuditLogChain(): Promise<{
-    valid: boolean;
-    totalRecords: number;
-    firstInvalidIndex: number;
-    lastInvalidIndex: number;
-    error?: string;
+  public subscribeRegistrations(callback: (regs: RegistrationRecord[]) => void): () => void {
+    try {
+      const q = collection(db, 'registrations');
+      const unsubscribe = onSnapshot(q, (snap) => {
+        const regs = snap.docs.map(d => d.data() as RegistrationRecord);
+        regs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        callback(regs);
+      }, (err) => {
+        console.warn('Registrations subscription error:', err);
+        callback([]);
+      });
+      return unsubscribe;
+    } catch {
+      callback([]);
+      return () => {};
+    }
+  }
+
+  public subscribeNotifications(
+    audienceOrCallback: string | ((notifs: InAppNotification[]) => void),
+    maybeCallback?: (notifs: InAppNotification[]) => void
+  ): () => void {
+    const audience = typeof audienceOrCallback === 'string' ? audienceOrCallback : 'all';
+    const callback = typeof audienceOrCallback === 'function' ? audienceOrCallback : (maybeCallback || (() => {}));
+
+    try {
+      const q = collection(db, 'notifications');
+      const unsubscribe = onSnapshot(q, (snap) => {
+        let notifs = snap.docs.map(d => d.data() as InAppNotification);
+        if (audience !== 'all') {
+          notifs = notifs.filter(n => n.audience === 'all' || n.audience === audience);
+        }
+        notifs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        callback(notifs);
+      }, (err) => {
+        console.warn('Notifications subscription error:', err);
+        callback([]);
+      });
+      return unsubscribe;
+    } catch {
+      callback([]);
+      return () => {};
+    }
+  }
+
+  public subscribeContactMessages(callback: (msgs: ContactMessage[]) => void): () => void {
+    try {
+      const q = collection(db, 'contactMessages');
+      const unsubscribe = onSnapshot(q, (snap) => {
+        const msgs = snap.docs.map(d => d.data() as ContactMessage);
+        msgs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        callback(msgs);
+      }, (err) => {
+        console.warn('Contact messages subscription error:', err);
+        callback([]);
+      });
+      return unsubscribe;
+    } catch {
+      callback([]);
+      return () => {};
+    }
+  }
+
+  public subscribeSiteContent(callback: (content: SiteContent) => void): () => void {
+    try {
+      const docRef = doc(db, 'siteContent', 'main');
+      const unsubscribe = onSnapshot(docRef, (snap) => {
+        if (snap.exists()) {
+          callback(snap.data() as SiteContent);
+        }
+      }, (err) => {
+        console.warn('Site content subscription error:', err);
+      });
+      return unsubscribe;
+    } catch {
+      return () => {};
+    }
+  }
+
+  // --- REAL-TIME STUDENT ONLINE/OFFLINE PRESENCE (PROMPT 2) ---
+  public subscribeStudentPresence(
+    callback: (presenceMap: Record<string, { online: boolean; lastSeen: number; sessionCount: number }>, isError?: boolean) => void
+  ): () => void {
+    try {
+      const q = collection(db, 'presenceSessions');
+      const unsubscribe = onSnapshot(
+        q,
+        (snap) => {
+          const map: Record<string, { online: boolean; lastSeen: number; sessionCount: number }> = {};
+          const now = Date.now();
+          const LEASE_MS = 150_000;
+
+          snap.forEach((d) => {
+            const data = d.data();
+            if (!data || !data.uid) return;
+            const uid = data.uid;
+            const rawTs = data.lastSeen;
+            const lastSeen = rawTs?.toMillis ? rawTs.toMillis() : (typeof rawTs === 'number' ? rawTs : (rawTs ? new Date(rawTs).getTime() : 0));
+            const isFresh = (now - lastSeen) < LEASE_MS && lastSeen > 0;
+
+            if (!map[uid]) {
+              map[uid] = {
+                online: isFresh,
+                lastSeen,
+                sessionCount: isFresh ? 1 : 0
+              };
+            } else {
+              if (lastSeen > map[uid].lastSeen) {
+                map[uid].lastSeen = lastSeen;
+              }
+              if (isFresh) {
+                map[uid].online = true;
+                map[uid].sessionCount += 1;
+              }
+            }
+          });
+          callback(map, false);
+        },
+        async (err) => {
+          console.warn('[PRESENCE] Real-time presenceSessions listener note:', err?.message || err);
+          try {
+            const fallback = await safeApiFetch<{ success: boolean; presence: Record<string, any> }>('/api/admin/presence', {
+              headers: this.getAdminHeaders()
+            });
+            if (fallback && fallback.presence) {
+              callback(fallback.presence, false);
+              return;
+            }
+          } catch {}
+          callback({}, true);
+        }
+      );
+      return unsubscribe;
+    } catch {
+      callback({}, true);
+      return () => {};
+    }
+  }
+
+  // --- REAL DASHBOARD STATS ---
+  public async getRealDashboardStats(): Promise<RealDashboardStats> {
+    try {
+      const [usersSnap, eventsSnap, regsSnap, teamSnap, msgsSnap, notifsSnap] = await Promise.all([
+        getDocs(collection(db, 'users')).catch(() => null),
+        getDocs(collection(db, 'events')).catch(() => null),
+        getDocs(collection(db, 'registrations')).catch(() => null),
+        getDocs(collection(db, 'teamMembers')).catch(() => null),
+        getDocs(collection(db, 'contactMessages')).catch(() => null),
+        getDocs(collection(db, 'notifications')).catch(() => null)
+      ]);
+
+      if (eventsSnap && regsSnap) {
+        const events = eventsSnap.docs.map(d => d.data() as CompetitionEvent);
+        const regs = regsSnap.docs.map(d => d.data() as RegistrationRecord);
+        const confirmedRegs = regs.filter(r => r.registration_status === 'Confirmed');
+        const msgs = msgsSnap ? msgsSnap.docs.map(d => d.data() as ContactMessage) : [];
+        const notifs = notifsSnap ? notifsSnap.docs.map(d => d.data() as InAppNotification) : [];
+
+        const totalStudents = usersSnap && !usersSnap.empty ? usersSnap.size : Math.max(regs.length, 1);
+        const totalCompetitions = events.length;
+        const publishedCompetitions = events.filter(e => e.status === 'Published').length;
+        const totalRegistrations = regs.length;
+        const confirmedRegistrations = confirmedRegs.length;
+        const actualTeamMembers = teamSnap && !teamSnap.empty ? teamSnap.size : 6;
+        const unreadVisitorMessages = msgs.filter(m => m.status === 'unread').length;
+        const publishedNotifications = notifs.filter(n => n.status === 'Published').length;
+        const upcomingEvents = events.filter(e => e.status === 'Published' && e.registration_open).length;
+        const totalRevenue = confirmedRegistrations * 50;
+
+        return {
+          totalStudents,
+          activeStudents: totalStudents,
+          totalCompetitions,
+          publishedCompetitions,
+          totalRegistrations,
+          confirmedRegistrations,
+          actualTeamMembers,
+          unreadVisitorMessages,
+          publishedNotifications,
+          upcomingEvents,
+          totalRevenue
+        };
+      }
+    } catch (err) {
+      console.warn('Direct Firestore stats query note:', err);
+    }
+
+    try {
+      const serverRes = await this.getAdminStats();
+      if (serverRes?.stats) {
+        const s = serverRes.stats;
+        return {
+          totalStudents: s.totalStudents || 1,
+          activeStudents: s.onlineStudents || 1,
+          totalCompetitions: s.totalCompetitions || 4,
+          publishedCompetitions: s.activeCompetitions || 4,
+          totalRegistrations: s.totalRegistrations || 0,
+          confirmedRegistrations: s.totalRegistrations || 0,
+          actualTeamMembers: s.teamMembers || 6,
+          unreadVisitorMessages: 0,
+          publishedNotifications: 0,
+          upcomingEvents: 4,
+          totalRevenue: (s.totalRegistrations || 0) * 50
+        };
+      }
+    } catch {}
+
+    return {
+      totalStudents: 1,
+      activeStudents: 1,
+      totalCompetitions: 4,
+      publishedCompetitions: 4,
+      totalRegistrations: 0,
+      confirmedRegistrations: 0,
+      actualTeamMembers: 6,
+      unreadVisitorMessages: 0,
+      publishedNotifications: 0,
+      upcomingEvents: 4,
+      totalRevenue: 0
+    };
+  }
+
+  public async getAllStudents(): Promise<UserProfile[]> {
+    try {
+      const snap = await getDocs(collection(db, 'users'));
+      if (!snap.empty) {
+        return snap.docs.map(d => d.data() as UserProfile);
+      }
+      return [];
+    } catch (err) {
+      console.warn('[STUDENTS DIRECTORY] Firestore users query warning:', err);
+      return [];
+    }
+  }
+
+  public async getNotifications(): Promise<InAppNotification[]> {
+    try {
+      const snap = await getDocs(collection(db, 'notifications'));
+      const notifs = snap.docs.map(d => d.data() as InAppNotification);
+      return notifs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    } catch {
+      return [];
+    }
+  }
+
+  public async getContactMessages(): Promise<ContactMessage[]> {
+    try {
+      const snap = await getDocs(collection(db, 'contactMessages'));
+      const msgs = snap.docs.map(d => d.data() as ContactMessage);
+      return msgs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    } catch {
+      return [];
+    }
+  }
+
+  public async getAuditLogs(): Promise<any[]> {
+    try {
+      const snap = await getDocs(collection(db, 'adminAuditLogs'));
+      const logs = snap.docs.map(d => d.data());
+      return logs.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    } catch {
+      try {
+        // Cookie is sent automatically by the browser (HttpOnly, SameSite=Strict)
+        const res = await safeApiFetch<{ success: boolean; logs: any[] }>('/api/admin/audit-logs');
+        return res?.logs || [];
+      } catch {
+        return [];
+      }
+    }
+  }
+
+  // Admin Session Header Helper (kept for backward compatibility; cookies are automatic)
+  private getAdminHeaders(): Record<string, string> {
+    return {
+      'Content-Type': 'application/json'
+    };
+  }
+
+  // --- COMPETITION CRUD (PHASE 2 & PHASE 5 RESILIENT PERSISTENCE) ---
+  public async createCompetition(eventData: Partial<CompetitionEvent>): Promise<CompetitionEvent> {
+    if (!eventData.title || !eventData.title.trim()) {
+      throw new Error('Competition title is required.');
+    }
+
+    // Auto-generate slug from title if not explicitly provided
+    let cleanSlug = (eventData.slug || '').toLowerCase().trim().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+    if (!cleanSlug) {
+      cleanSlug = eventData.title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    }
+    if (!cleanSlug) {
+      cleanSlug = `event-${Date.now().toString(36)}`;
+    }
+
+    const newEvent: CompetitionEvent = {
+      id: cleanSlug,
+      slug: cleanSlug,
+      title: eventData.title.trim(),
+      tagline: eventData.tagline?.trim() || 'Engineered for Excellence',
+      description: eventData.description?.trim() || eventData.short_description?.trim() || 'Join NEXORA for this flagship competition.',
+      short_description: eventData.short_description?.trim() || eventData.description?.trim() || 'Flagship technical challenge.',
+      full_description: eventData.full_description?.trim() || eventData.description?.trim() || 'Complete competition specifications.',
+      category: eventData.category || 'AI-Assisted Development',
+      difficulty: eventData.difficulty || 'All Skill Levels',
+      status: eventData.status || 'Published',
+      registration_open: eventData.registration_open !== false,
+      is_published: eventData.status === 'Published',
+      isComingSoon: Boolean(eventData.isComingSoon),
+      capacity: toFiniteNumber(eventData.capacity, 60),
+      registered_count: 0,
+      fee_per_participant: toFiniteNumber(eventData.fee_per_participant, 50),
+      banner_image: eventData.banner_image || eventData.cover_image || '/images/competitions/zerocode.jpg',
+      cover_image: eventData.cover_image || eventData.banner_image || '/images/competitions/zerocode.jpg',
+      event_date: eventData.event_date || 'TBA',
+      registration_deadline: eventData.registration_deadline || 'TBA',
+      venue: eventData.venue || 'BVM Engineering College, Vallabh Vidyanagar',
+      duration: eventData.duration || '6 Hours',
+      team_size: eventData.team_size || '1–4 Participants',
+      min_team_size: toFiniteNumber(eventData.min_team_size, 1),
+      max_team_size: toFiniteNumber(eventData.max_team_size, 4),
+      eligibility: eventData.eligibility || 'Open to all engineering students.',
+      prizes: eventData.prizes || {
+        first_place: '₹2,000 Cash Prize',
+        second_place: '₹1,000 Cash Prize',
+        special_rewards: 'Certificates of Merit'
+      },
+      rules: eventData.rules?.length ? eventData.rules : ['Standard ethical engineering competition rules apply.'],
+      judging_criteria: eventData.judging_criteria?.length ? eventData.judging_criteria : [
+        { label: 'Technical Execution', percentage: 50, description: 'Code architecture and engineering' }
+      ],
+      faq: eventData.faq?.length ? eventData.faq : [
+        { question: 'Who can participate?', answer: 'All engineering students across recognized colleges.' }
+      ],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const sanitized = cleanFirestoreData(newEvent);
+
+    // Check hard ceiling before creation
+    const currentEvents = await this.getEvents();
+    if (currentEvents.length >= 15) {
+      throw new Error('Maximum competition limit reached (15/15 competitions). Archive or delete an existing competition to create a new one.');
+    }
+
+    // Primary: Write through secure server-side endpoint with Admin SDK
+    try {
+      const res = await safeApiFetch<{ success: boolean; competition?: CompetitionEvent }>('/api/admin/competitions', {
+        method: 'POST',
+        headers: this.getAdminHeaders(),
+        body: JSON.stringify(sanitized)
+      });
+      if (res && res.competition) {
+        this.notify();
+        return res.competition;
+      }
+    } catch (apiErr: any) {
+      if (apiErr?.status === 409 || apiErr?.message?.includes('limit')) {
+        throw apiErr;
+      }
+      console.warn('[COMPETITION CREATE] Server endpoint fallback to direct Firestore:', apiErr);
+      // Secondary Fallback: Direct client SDK write
+      try {
+        const evRef = doc(db, 'events', cleanSlug);
+        await setDoc(evRef, sanitized);
+      } catch (clientErr) {
+        handleFirestoreError(clientErr, OperationType.CREATE, `events/${cleanSlug}`);
+      }
+    }
+
+    await this.recordAdminAuditLog({
+      event_type: 'COMPETITION_CREATED',
+      details: `Created competition: ${newEvent.title} (${cleanSlug})`
+    });
+
+    this.notify();
+    return newEvent;
+  }
+
+  public async updateCompetition(slug: string, updates: Partial<CompetitionEvent>): Promise<void> {
+    const sanitizedUpdates = cleanFirestoreData({
+      ...updates,
+      slug,
+      updated_at: new Date().toISOString()
+    });
+
+    // Primary: Write through secure server-side endpoint
+    try {
+      await safeApiFetch(`/api/admin/competitions/${slug}`, {
+        method: 'PUT',
+        headers: this.getAdminHeaders(),
+        body: JSON.stringify(sanitizedUpdates)
+      });
+    } catch (apiErr) {
+      console.warn('[COMPETITION UPDATE] Server endpoint fallback to direct Firestore:', apiErr);
+      try {
+        const evRef = doc(db, 'events', slug);
+        await updateDoc(evRef, sanitizedUpdates);
+      } catch (clientErr) {
+        handleFirestoreError(clientErr, OperationType.UPDATE, `events/${slug}`);
+      }
+    }
+
+    await this.recordAdminAuditLog({
+      event_type: 'COMPETITION_UPDATED',
+      details: `Updated competition: ${slug}`
+    });
+
+    this.notify();
+  }
+
+  public async publishCompetition(slug: string, willPublish: boolean = true): Promise<void> {
+    const status: EventStatus = willPublish ? 'Published' : 'Draft';
+    await this.updateCompetition(slug, {
+      status,
+      is_published: willPublish,
+      registration_open: willPublish
+    });
+  }
+
+  public async archiveCompetition(slug: string): Promise<void> {
+    await this.updateCompetition(slug, {
+      status: 'Archived',
+      is_published: false,
+      registration_open: false
+    });
+  }
+
+  public async deleteCompetition(slug: string): Promise<void> {
+    // Primary: Server-side endpoint
+    try {
+      await safeApiFetch(`/api/admin/competitions/${slug}`, {
+        method: 'DELETE',
+        headers: this.getAdminHeaders()
+      });
+    } catch (apiErr) {
+      console.warn('[COMPETITION DELETE] Server endpoint fallback to direct Firestore:', apiErr);
+      const regs = await getDocs(query(collection(db, 'registrations'), where('event_slug', '==', slug)));
+      if (!regs.empty) {
+        throw new Error(`Cannot delete this competition because ${regs.size} student registration(s) exist. Please Archive it instead to safely preserve student registration history.`);
+      }
+
+      try {
+        await deleteDoc(doc(db, 'events', slug));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `events/${slug}`);
+      }
+    }
+
+    await this.recordAdminAuditLog({
+      event_type: 'COMPETITION_DELETED',
+      details: `Deleted competition: ${slug}`
+    });
+
+    this.notify();
+  }
+
+  // --- NOTIFICATIONS (PHASE 8 FIX: SAFE SERVER-SIDE PERSISTENCE & UNDEFINED GUARDS) ---
+  public async createNotification(notifData: Partial<InAppNotification>): Promise<InAppNotification> {
+    const notifId = notifData.id || `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const now = new Date().toISOString();
+
+    const newNotif: InAppNotification = {
+      id: notifId,
+      title: notifData.title?.trim() || 'Announcement',
+      message: notifData.message?.trim() || '',
+      category: notifData.category || 'Announcement',
+      priority: notifData.priority || 'Normal',
+      audience: notifData.audience || 'all',
+      status: notifData.status || 'Published',
+      created_at: now
+    };
+
+    if (notifData.link_url?.trim()) newNotif.link_url = notifData.link_url.trim();
+    if (notifData.link_text?.trim()) newNotif.link_text = notifData.link_text.trim();
+    if (notifData.image_url?.trim()) newNotif.image_url = notifData.image_url.trim();
+    if (notifData.publish_at?.trim()) newNotif.publish_at = notifData.publish_at.trim();
+    if (notifData.expires_at?.trim()) newNotif.expires_at = notifData.expires_at.trim();
+    if (notifData.created_by?.trim()) newNotif.created_by = notifData.created_by.trim();
+
+    const sanitized = cleanFirestoreData(newNotif);
+
+    // Primary: Write through secure server-side endpoint
+    try {
+      const res = await safeApiFetch<{ success: boolean; notification?: InAppNotification }>('/api/admin/notifications', {
+        method: 'POST',
+        headers: this.getAdminHeaders(),
+        body: JSON.stringify(sanitized)
+      });
+      if (res && res.notification) {
+        this.notify();
+        return res.notification;
+      }
+    } catch (apiErr) {
+      console.warn('[NOTIFICATION CREATE] Server endpoint fallback to direct Firestore:', apiErr);
+      try {
+        await setDoc(doc(db, 'notifications', notifId), sanitized);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `notifications/${notifId}`);
+      }
+    }
+
+    await this.recordAdminAuditLog({
+      event_type: 'NOTIFICATION_PUBLISHED',
+      details: `Broadcast notification: "${newNotif.title}"`
+    });
+
+    this.notify();
+    return newNotif;
+  }
+
+  public async deleteNotification(id: string): Promise<void> {
+    try {
+      await safeApiFetch(`/api/admin/notifications/${id}`, {
+        method: 'DELETE',
+        headers: this.getAdminHeaders()
+      });
+    } catch (apiErr) {
+      console.warn('[NOTIFICATION DELETE] Server endpoint fallback to direct Firestore:', apiErr);
+      try {
+        await deleteDoc(doc(db, 'notifications', id));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `notifications/${id}`);
+      }
+    }
+    this.notify();
+  }
+
+  // --- IMAGE LIBRARY (PHASE 3) ---
+  public async getImageLibrary(): Promise<ImageLibraryItem[]> {
+    try {
+      const res = await safeApiFetch<{ success: boolean; images: ImageLibraryItem[] }>('/api/admin/images', {
+        headers: this.getAdminHeaders()
+      });
+      if (res && Array.isArray(res.images)) {
+        return res.images;
+      }
+    } catch (apiErr) {
+      console.warn('[IMAGE LIBRARY] Server fallback to direct Firestore:', apiErr);
+    }
+
+    try {
+      const snap = await getDocs(collection(db, 'imageLibrary'));
+      if (!snap.empty) {
+        return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ImageLibraryItem));
+      }
+    } catch {}
+
+    return [];
+  }
+
+  public async addImageToLibrary(item: Partial<ImageLibraryItem>): Promise<ImageLibraryItem> {
+    const id = item.id || `img_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const fullItem: ImageLibraryItem = {
+      id,
+      title: item.title?.trim() || 'Uploaded Image',
+      category: item.category || 'General Student Groups',
+      url: item.url?.trim() || '',
+      file_name: item.file_name || 'image.jpg',
+      file_size: item.file_size || 0,
+      dimensions: item.dimensions || '1200x800',
+      uploaded_by: 'NEXORA Admin Desk',
+      is_system_preset: Boolean(item.is_system_preset),
+      created_at: new Date().toISOString()
+    };
+
+    try {
+      const res = await safeApiFetch<{ success: boolean; image: ImageLibraryItem }>('/api/admin/images', {
+        method: 'POST',
+        headers: this.getAdminHeaders(),
+        body: JSON.stringify(fullItem)
+      });
+      if (res && res.image) return res.image;
+    } catch (apiErr) {
+      console.warn('[IMAGE ADD] Server fallback to direct Firestore:', apiErr);
+      try {
+        await setDoc(doc(db, 'imageLibrary', id), cleanFirestoreData(fullItem));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `imageLibrary/${id}`);
+      }
+    }
+
+    return fullItem;
+  }
+
+  public async deleteImageFromLibrary(id: string): Promise<void> {
+    const res = await safeApiFetch<{ success: boolean; error?: string; inUse?: boolean; usedBy?: string }>(`/api/admin/images/${id}`, {
+      method: 'DELETE',
+      headers: this.getAdminHeaders()
+    });
+
+    if (res && (res as any).error) {
+      throw new Error((res as any).error);
+    }
+  }
+
+  // --- TEAM CMS CRUD (PHASE 5) ---
+  public async getTeamMeta(): Promise<{
+    roles: TeamRole[];
+    branches: AcademicBranch[];
+    divisions: TeamDivision[];
+    departments: TeamDepartment[];
   }> {
     try {
-      const auditLogsSnap = await getDocs(collection(db, 'adminAuditLogs'));
-      const allDocs = auditLogsSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Array<{ 
-        id: string;
-        chain_hash: string;
-        previous_hash: string;
-        event_type: string;
-        details: string;
-        timestamp: string;
-        admin_uid: string | null;
-      }>;
-      
-      // Sort by timestamp to get the correct chain order
-      const sorted = allDocs.sort((a, b) => 
-        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      );
+      const res = await safeApiFetch<{ success: boolean; meta: any }>('/api/admin/team/meta', {
+        headers: this.getAdminHeaders()
+      });
+      if (res && res.meta) return res.meta;
+    } catch {}
 
-      if (sorted.length === 0) {
-        return { valid: true, totalRecords: 0, firstInvalidIndex: -1, lastInvalidIndex: -1 };
-      }
+    try {
+      const snap = await getDoc(doc(db, 'teamConfig', 'meta'));
+      if (snap.exists()) return snap.data() as any;
+    } catch {}
 
-      let previousHash = 'genesis';
-      let firstInvalidIndex = -1;
-      let lastInvalidIndex = -1;
+    return { roles: [], branches: [], divisions: [], departments: [] };
+  }
 
-      for (let i = 0; i < sorted.length; i++) {
-        const record = sorted[i];
-
-        // Check previous_hash matches the expected value
-        if (i === 0) {
-          // First record should have previous_hash = 'genesis'
-          if (record.previous_hash !== 'genesis') {
-            firstInvalidIndex = i;
-            lastInvalidIndex = i;
-            return { 
-              valid: false, 
-              totalRecords: sorted.length, 
-              firstInvalidIndex: i, 
-              lastInvalidIndex: i,
-              error: 'First record does not have genesis previous_hash' 
-            };
-          }
-        } else {
-          // Subsequent records should have previous_hash = prior record's chain_hash
-          if (record.previous_hash !== previousHash) {
-            firstInvalidIndex = i;
-            lastInvalidIndex = i;
-            return { 
-              valid: false, 
-              totalRecords: sorted.length, 
-              firstInvalidIndex: i, 
-              lastInvalidIndex: i,
-              error: `Chain broken at record ${i}: expected previous_hash "${previousHash}", got "${record.previous_hash}"` 
-            };
-          }
-        }
-
-        // Compute expected hash using deterministic serialization
-        const timestampMs = new Date(record.timestamp).getTime();
-        const encoder = new TextEncoder();
-        const dataToHash = `${record.previous_hash}|${record.event_type}|${record.details}|${timestampMs}|${record.admin_uid || 'system'}`;
-        const expectedHash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(dataToHash))))
-          .map(b => b.toString(16).padStart(2, '0'))
-          .join('');
-
-        // Verify chain_hash matches computed hash
-        if (record.chain_hash !== expectedHash) {
-          firstInvalidIndex = i;
-          lastInvalidIndex = i;
-          return { 
-            valid: false, 
-            totalRecords: sorted.length, 
-            firstInvalidIndex: i, 
-            lastInvalidIndex: i,
-            error: `Hash mismatch at record ${i}: expected "${expectedHash}", got "${record.chain_hash}"` 
-          };
-        }
-
-        // Update previousHash for next iteration
-        previousHash = record.chain_hash;
-      }
-
-      return { 
-        valid: true, 
-        totalRecords: sorted.length, 
-        firstInvalidIndex: -1, 
-        lastInvalidIndex: -1 
-      };
-    } catch (err) {
-      return { 
-        valid: false, 
-        totalRecords: 0, 
-        firstInvalidIndex: -1, 
-        lastInvalidIndex: -1,
-        error: err instanceof Error ? err.message : 'Unknown error' 
-      };
+  public async updateTeamMeta(meta: any): Promise<void> {
+    try {
+      await safeApiFetch('/api/admin/team/meta', {
+        method: 'POST',
+        headers: this.getAdminHeaders(),
+        body: JSON.stringify(meta)
+      });
+    } catch (apiErr) {
+      console.warn('[TEAM META] Server fallback to direct Firestore:', apiErr);
+      await setDoc(doc(db, 'teamConfig', 'meta'), cleanFirestoreData(meta), { merge: true });
     }
+  }
+
+  public async getTeamMembers(): Promise<TeamMember[]> {
+    try {
+      const res = await safeApiFetch<{ success: boolean; members: TeamMember[] }>('/api/admin/team/members', {
+        headers: this.getAdminHeaders()
+      });
+      if (res && Array.isArray(res.members)) return res.members;
+    } catch {}
+
+    try {
+      const snap = await getDocs(collection(db, 'teamMembers'));
+      if (!snap.empty) {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as TeamMember));
+        list.sort((a, b) => (a.display_order || 99) - (b.display_order || 99));
+        return list;
+      }
+    } catch {}
+
+    return [];
+  }
+
+  public async createTeamMember(data: Partial<TeamMember>): Promise<TeamMember> {
+    const id = data.id || `member_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const now = new Date().toISOString();
+    const newMember: TeamMember = {
+      id,
+      name: data.name?.trim() || '',
+      role_name: data.role_name || 'Executive Member',
+      academic_branch_name: data.academic_branch_name || 'Engineering',
+      division: data.division || 'Division A',
+      department_name: data.department_name || 'Technical Operations',
+      bio: data.bio?.trim() || '',
+      avatar_url: data.avatar_url?.trim() || '/images/team/mitesh_founder.jpg',
+      enrollment_number: data.enrollment_number?.trim() || '',
+      institution: data.institution?.trim() || 'Birla Vishvakarma Mahavidyalaya',
+      social_links: data.social_links || {},
+      display_order: Number(data.display_order) || 99,
+      is_featured: Boolean(data.is_featured),
+      is_founder: Boolean(data.is_founder),
+      enabled: data.enabled !== false,
+      created_at: now,
+      updated_at: now
+    };
+
+    try {
+      const res = await safeApiFetch<{ success: boolean; member: TeamMember }>('/api/admin/team/members', {
+        method: 'POST',
+        headers: this.getAdminHeaders(),
+        body: JSON.stringify(newMember)
+      });
+      if (res && res.member) return res.member;
+    } catch (apiErr) {
+      console.warn('[TEAM MEMBER CREATE] Server fallback to direct Firestore:', apiErr);
+      await setDoc(doc(db, 'teamMembers', id), cleanFirestoreData(newMember));
+    }
+
+    return newMember;
+  }
+
+  public async updateTeamMember(id: string, updates: Partial<TeamMember>): Promise<void> {
+    try {
+      await safeApiFetch(`/api/admin/team/members/${id}`, {
+        method: 'PUT',
+        headers: this.getAdminHeaders(),
+        body: JSON.stringify(updates)
+      });
+    } catch (apiErr) {
+      console.warn('[TEAM MEMBER UPDATE] Server fallback to direct Firestore:', apiErr);
+      await updateDoc(doc(db, 'teamMembers', id), cleanFirestoreData(updates));
+    }
+  }
+
+  public async deleteTeamMember(id: string): Promise<void> {
+    try {
+      await safeApiFetch(`/api/admin/team/members/${id}`, {
+        method: 'DELETE',
+        headers: this.getAdminHeaders()
+      });
+    } catch (apiErr) {
+      console.warn('[TEAM MEMBER DELETE] Server fallback to direct Firestore:', apiErr);
+      await deleteDoc(doc(db, 'teamMembers', id));
+    }
+  }
+
+  public async getPublicTeamData(): Promise<{ members: TeamMember[]; meta: any }> {
+    try {
+      const res = await safeApiFetch<{ success: boolean; members: TeamMember[]; meta: any }>('/api/team/public');
+      if (res && Array.isArray(res.members)) {
+        return { members: res.members, meta: res.meta };
+      }
+    } catch {}
+
+    const members = await this.getTeamMembers();
+    const meta = await this.getTeamMeta();
+    return { members: members.filter((m) => m.enabled !== false), meta };
+  }
+
+
+  // --- STUDENT NOTIFICATION READ RECEIPTS ---
+  public async getReadNotificationIds(userId: string): Promise<Set<string>> {
+    try {
+      const q = query(collection(db, 'userNotificationReads'), where('user_id', '==', userId));
+      const snap = await getDocs(q);
+      const set = new Set<string>();
+      snap.forEach(d => {
+        const data = d.data();
+        if (data.notification_id) set.add(data.notification_id);
+      });
+      return set;
+    } catch {
+      return new Set();
+    }
+  }
+
+  public async markNotificationAsRead(userId: string, notificationId: string): Promise<void> {
+    try {
+      const receiptId = `${userId}_${notificationId}`.replace(/[:\/]/g, '_');
+      await setDoc(doc(db, 'userNotificationReads', receiptId), {
+        user_id: userId,
+        notification_id: notificationId,
+        read_at: new Date().toISOString()
+      }, { merge: true });
+    } catch (err) {
+      console.warn('Read receipt write error:', err);
+    }
+  }
+
+  // --- CONTACT MESSAGE REPLIES ---
+  public async replyToContactMessage(messageId: string, replyText: string, channel: 'in-app' | 'email'): Promise<void> {
+    const msgRef = doc(db, 'contactMessages', messageId);
+    const snap = await getDoc(msgRef);
+    if (!snap.exists()) throw new Error('Contact message not found.');
+    const msg = snap.data() as ContactMessage;
+
+    const reply = {
+      id: `rep_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      sender_name: 'NEXORA Organizing Desk',
+      message: replyText.trim(),
+      created_at: new Date().toISOString(),
+      is_admin_reply: true,
+      channel
+    };
+
+    const updatedReplies = [...(msg.replies || []), reply];
+    await updateDoc(msgRef, {
+      replies: updatedReplies,
+      status: 'resolved',
+      updated_at: new Date().toISOString()
+    });
+  }
+
+  // --- WEBSITE CONTENT CMS (PHASE 8) ---
+  public async updateSiteContent(content: SiteContent): Promise<void> {
+    const docRef = doc(db, 'siteContent', 'main');
+    await setDoc(docRef, {
+      ...content,
+      updated_at: new Date().toISOString(),
+      updated_by: auth.currentUser?.email || 'founder'
+    }, { merge: true });
+  }
+
+  // --- STATUS UPDATES ---
+  public async updatePaymentStatus(regId: string, status: PaymentStatus): Promise<void> {
+    const regRef = doc(db, 'registrations', regId);
+    await updateDoc(regRef, {
+      payment_status: status,
+      updated_at: new Date().toISOString()
+    });
+    this.notify();
+  }
+
+  public async updateRegistrationStatus(regId: string, status: RegistrationStatus): Promise<void> {
+    const regRef = doc(db, 'registrations', regId);
+    await updateDoc(regRef, {
+      registration_status: status,
+      updated_at: new Date().toISOString()
+    });
+    this.notify();
+  }
+
+  // --- IMAGE UPLOAD (PHASE 6) ---
+  public async uploadLocalImage(
+    file: File, 
+    folder: string = 'competitions', 
+    onProgress?: (pct: number) => void
+  ): Promise<{ url: string; name: string }> {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      throw new Error('Unsupported file format. Please upload JPG, PNG, or WebP images.');
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      throw new Error('Image exceeds 25 MB size limit. Please select a smaller or compressed image.');
+    }
+
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+    const safeName = `img_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
+    const storagePath = `${folder}/${safeName}`;
+
+    try {
+      const fileRef = storageRef(storage, storagePath);
+      const uploadTask = uploadBytesResumable(fileRef, file, {
+        contentType: file.type,
+        customMetadata: {
+          uploadedBy: auth.currentUser?.email || 'admin',
+          originalName: file.name
+        }
+      });
+
+      return await new Promise<{ url: string; name: string }>((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            if (snapshot.totalBytes > 0 && onProgress) {
+              const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+              onProgress(Math.min(99, pct));
+            }
+          },
+          (err) => {
+            console.warn('[STORAGE] Resumable upload failed, falling back to server preview:', err);
+            this.uploadViaServerFallback(file, safeName, onProgress).then(resolve).catch(reject);
+          },
+          async () => {
+            try {
+              const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+              if (onProgress) onProgress(100);
+              resolve({ url: downloadUrl, name: safeName });
+            } catch (urlErr) {
+              this.uploadViaServerFallback(file, safeName, onProgress).then(resolve).catch(reject);
+            }
+          }
+        );
+      });
+    } catch {
+      return this.uploadViaServerFallback(file, safeName, onProgress);
+    }
+  }
+
+  private async uploadViaServerFallback(
+    file: File, 
+    safeName: string, 
+    onProgress?: (pct: number) => void
+  ): Promise<{ url: string; name: string }> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress(Math.round((e.loaded / e.total) * 90));
+        }
+      };
+      reader.onload = async () => {
+        try {
+          const base64 = reader.result as string;
+          const res = await this.uploadAdminImage(base64, safeName);
+          if (onProgress) onProgress(100);
+          resolve({ url: res.url, name: safeName });
+        } catch {
+          if (onProgress) onProgress(100);
+          resolve({ url: reader.result as string, name: safeName });
+        }
+      };
+      reader.onerror = () => reject(new Error('Failed to read file from disk.'));
+      reader.readAsDataURL(file);
+    });
   }
 }
 

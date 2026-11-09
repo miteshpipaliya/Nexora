@@ -1,0 +1,21 @@
+User-agent: *
+Allow: /favicon*
+Allow: /apple-touch-icon*
+Allow: /android-chrome*
+Allow: /icon-*
+Allow: /manifest.webmanifest
+Allow: /site.webmanifest
+Allow: /
+Disallow: /admin
+Disallow: /api/
+
+User-agent: Googlebot-Image
+Allow: /favicon*
+Allow: /apple-touch-icon*
+Allow: /android-chrome*
+Allow: /icon-*
+Allow: /manifest.webmanifest
+Allow: /site.webmanifest
+Allow: /
+
+Sitemap: https://www.nexora-bvm.online/sitemap.xml

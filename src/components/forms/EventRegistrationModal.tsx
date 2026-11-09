@@ -14,6 +14,8 @@ import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import { CompetitionEvent, RegistrationRecord, TeamMemberDetail } from '../../types';
 import { NexoraLogo } from '../ui/NexoraLogo';
+import { IndianPhoneInput } from '../common/IndianPhoneInput';
+import { validateIndianMobile, normalizeIndianMobile } from '../../shared/lib/phoneUtils';
 
 interface EventRegistrationModalProps {
   event: CompetitionEvent;
@@ -43,13 +45,22 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
   const [enrollmentNo, setEnrollmentNo] = useState('');
   const [division, setDivision] = useState('11');
   
-  // Team states (for Hackathon or CTF)
-  const isTeamEvent = event.slug === 'hackathon';
-  const [participationType, setParticipationType] = useState<'Individual' | 'Team'>(
-    event.slug === 'hackathon' ? 'Team' : 'Individual'
+  // Team states (e.g. BrainBattle requires 5 members; RoboRace 1–4; PathFinder 1–2; CTF 1–2)
+  const maxTeamMembers = event.max_team_size ?? (
+    event.slug === 'brainbattle' ? 5 :
+    event.slug === 'roborace' ? 4 :
+    event.slug === 'pathfinder' ? 2 :
+    event.slug === 'ctf' ? 2 : 1
   );
+  const minTeamMembers = event.min_team_size ?? (
+    event.slug === 'brainbattle' ? 5 : 1
+  );
+  const isTeamEvent = maxTeamMembers > 1;
+  const additionalSlotsCount = Math.max(0, maxTeamMembers - 1);
+
   const [teamName, setTeamName] = useState('');
   const [teamMembers, setTeamMembers] = useState<TeamMemberDetail[]>([
+    { name: '', college: 'BVM', branch: '', enrollment_number: '' },
     { name: '', college: 'BVM', branch: '', enrollment_number: '' },
     { name: '', college: 'BVM', branch: '', enrollment_number: '' },
     { name: '', college: 'BVM', branch: '', enrollment_number: '' }
@@ -62,6 +73,7 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
   // Submission Statuses
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [registrationCheckError, setRegistrationCheckError] = useState(false);
   const [confirmedRecord, setConfirmedRecord] = useState<RegistrationRecord | null>(null);
   const [copiedId, setCopiedId] = useState(false);
 
@@ -70,9 +82,14 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
     if (!isOpen) {
       setConfirmedRecord(null);
       setErrorMessage(null);
+      setRegistrationCheckError(false);
       setCopiedId(false);
       return;
     }
+
+    setAlreadyRegistered(false);
+    setErrorMessage(null);
+    setRegistrationCheckError(false);
 
     if (user) {
       setFullName(user.full_name || '');
@@ -89,7 +106,11 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
         .then((exists) => {
           setAlreadyRegistered(exists);
         })
-        .catch((err) => console.error(err))
+        .catch((err) => {
+          console.error('Could not verify prior competition registration:', err);
+          setRegistrationCheckError(true);
+          setErrorMessage('We could not verify your existing registration. Please retry before submitting.');
+        })
         .finally(() => setCheckingExisting(false));
     } else {
       setCheckingExisting(false);
@@ -171,14 +192,27 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
     e.preventDefault();
     setErrorMessage(null);
 
+    if (registrationCheckError) {
+      setErrorMessage('We could not verify your existing registration. Please close and reopen this form to retry.');
+      return;
+    }
+
+    if (event.isComingSoon) {
+      return setErrorMessage('Registration is currently locked. This competition is Coming Soon.');
+    }
+
     // Validation
     if (!fullName.trim()) return setErrorMessage('Full name is required.');
     if (!email.trim() || !email.includes('@')) return setErrorMessage('Valid email address is required.');
-    if (!phone.trim() || phone.length < 8) return setErrorMessage('Valid mobile phone number is required.');
+    const phoneValidation = validateIndianMobile(phone);
+    if (!phoneValidation.valid) return setErrorMessage(phoneValidation.error || 'Valid 10-digit Indian mobile number is required.');
     if (college === 'Other' && !customCollege.trim()) return setErrorMessage('Please specify your institution name.');
     if (!branch.trim()) return setErrorMessage('Branch/department is required.');
     if (!enrollmentNo.trim()) return setErrorMessage('Enrollment number is required.');
-    if (isTeamEvent && !teamName.trim()) return setErrorMessage('Team name is required for collaborative competitions.');
+    if (isTeamEvent && !teamName.trim()) return setErrorMessage('Team name is required for team competitions.');
+    if (isTeamEvent && minTeamMembers > 1 && (1 + activeExtraMembers.length) < minTeamMembers) {
+      return setErrorMessage(`${event.title} requires exactly ${minTeamMembers} team members (you must add ${minTeamMembers - 1} teammate${minTeamMembers - 1 > 1 ? 's' : ''}).`);
+    }
     if (!agreeRules) return setErrorMessage('You must review and agree to the competition rules.');
     if (!agreeDataConsent) return setErrorMessage('Consent to the registration data processing is required.');
 
@@ -194,7 +228,7 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
         event_slug: event.slug,
         full_name: fullName.trim(),
         email: email.trim(),
-        phone_number: phone.trim(),
+        phone_number: normalizeIndianMobile(phone),
         college: activeCollege,
         branch: branch.trim(),
         academic_year: academicYear as any,
@@ -414,16 +448,13 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
                   </div>
 
                   <div className="sm:col-span-2">
-                    <label className="block text-xs font-medium text-slate-300 mb-1">
-                      Mobile Number (WhatsApp) *
-                    </label>
-                    <input
-                      type="tel"
+                    <IndianPhoneInput
+                      id="event-reg-phone"
+                      label="Mobile Number (WhatsApp)"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(canonical) => setPhone(canonical)}
                       required
-                      placeholder="+91 98765 43210"
-                      className="w-full px-3 py-2 text-xs bg-[#11101B] border border-violet-500/25 rounded-lg text-white focus:outline-none focus:border-violet-400 select-text"
+                      placeholder="Enter 10-digit mobile number"
                     />
                   </div>
                 </div>
@@ -545,12 +576,12 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
                   <div>
                     <span className="block text-xs font-medium text-slate-400 mb-1">Participation Type</span>
                     <div className="p-2.5 bg-[#11101B] border border-violet-500/20 rounded-lg text-xs text-slate-300">
-                      {isTeamEvent ? 'Team (1–4 Members)' : 'Individual Challenge'}
+                      {isTeamEvent ? `Team (${minTeamMembers === maxTeamMembers ? `Exactly ${maxTeamMembers}` : `${minTeamMembers}–${maxTeamMembers}`} Members)` : 'Individual Challenge'}
                     </div>
                   </div>
                 </div>
 
-                {/* Team Details for Hackathon */}
+                {/* Team Details for Collaborative Competitions */}
                 {isTeamEvent && (
                   <div className="p-4 bg-[#11101B] border border-violet-500/25 rounded-xl space-y-4">
                     <div className="flex items-center gap-2 text-xs font-semibold text-violet-300">
@@ -574,33 +605,33 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
 
                     <div className="space-y-3 pt-2">
                       <div className="text-[11px] font-mono text-slate-400">
-                        Additional Team Members (Leave blank if solo or smaller team):
+                        {minTeamMembers > 1 ? `Additional Team Members (${minTeamMembers - 1} required):` : 'Additional Team Members (Leave blank if solo or smaller team):'}
                       </div>
 
-                      {[0, 1, 2].map((idx) => (
+                      {Array.from({ length: additionalSlotsCount }).map((_, idx) => (
                         <div key={idx} className="p-3 bg-[#08080D] rounded-lg border border-violet-500/15 space-y-2">
                           <div className="text-[11px] font-mono text-violet-400">
-                            Member #{idx + 2} Details
+                            Member #{idx + 2} Details {idx < minTeamMembers - 1 ? '*' : '(Optional)'}
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                             <input
                               type="text"
                               placeholder="Full Name"
-                              value={teamMembers[idx].name}
+                              value={teamMembers[idx]?.name || ''}
                               onChange={(e) => handleMemberChange(idx, 'name', e.target.value)}
                               className="px-2.5 py-1.5 text-xs bg-[#11101B] border border-violet-500/20 rounded-md text-white select-text"
                             />
                             <input
                               type="text"
                               placeholder="College"
-                              value={teamMembers[idx].college}
+                              value={teamMembers[idx]?.college || ''}
                               onChange={(e) => handleMemberChange(idx, 'college', e.target.value)}
                               className="px-2.5 py-1.5 text-xs bg-[#11101B] border border-violet-500/20 rounded-md text-white select-text"
                             />
                             <input
                               type="text"
                               placeholder="Enrollment / Branch"
-                              value={teamMembers[idx].enrollment_number}
+                              value={teamMembers[idx]?.enrollment_number || ''}
                               onChange={(e) => handleMemberChange(idx, 'enrollment_number', e.target.value)}
                               className="px-2.5 py-1.5 text-xs bg-[#11101B] border border-violet-500/20 rounded-md text-white select-text"
                             />

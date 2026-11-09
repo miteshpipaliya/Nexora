@@ -25,6 +25,12 @@ import { PrivacyPage } from './pages/Legal/PrivacyPage';
 import { TermsPage } from './pages/Legal/TermsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
+import { DynamicCompetitionPage } from './pages/Competitions/DynamicCompetitionPage';
+import { useBroadcastPopups } from './features/notifications/useBroadcastPopups';
+import { BroadcastPopup } from './features/notifications/BroadcastPopup';
+import { BroadcastToast } from './components/common/BroadcastToast';
+import { CopyGuard } from './components/common/CopyGuard';
+
 // Scroll to top helper on navigation
 const ScrollToTop: React.FC = () => {
   const { pathname } = useLocation();
@@ -36,12 +42,22 @@ const ScrollToTop: React.FC = () => {
   return null;
 };
 
+// Broadcast popup listener and modal container
+const BroadcastPopupContainer: React.FC = () => {
+  const { activePopup, dismissPopup } = useBroadcastPopups();
+  if (!activePopup) return null;
+  return <BroadcastPopup notification={activePopup} onDismiss={() => { dismissPopup(); }} />;
+};
+
 export function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
         <BrowserRouter>
           <ScrollToTop />
+          <CopyGuard />
+          <BroadcastPopupContainer />
+          <BroadcastToast />
           {/* Layer 1: Full-website animated galaxy background covering entire viewport */}
           <GlobalGalaxyBackground />
 
@@ -50,35 +66,32 @@ export function App() {
             <Navbar />
             <main className="flex-grow">
               <Routes>
-                <Route path="/" element={<HomePage />} />
-                <Route path="/about" element={<AboutPage />} />
+                <Route path="/" element={<ErrorBoundary><HomePage /></ErrorBoundary>} />
+                <Route path="/about" element={<ErrorBoundary><AboutPage /></ErrorBoundary>} />
                 
-                {/* Competitions */}
-                <Route path="/competitions" element={<CompetitionsHubPage />} />
-                <Route path="/competitions/zerocode" element={<ZeroCodePage />} />
-                <Route path="/competitions/ctf" element={<CTFPage />} />
-                <Route path="/competitions/hackathon" element={<HackathonPage />} />
-                <Route path="/competitions/coderush" element={<CodeRushPage />} />
+                {/* Competitions: Dynamic Firestore-backed routes */}
+                <Route path="/competitions" element={<ErrorBoundary><CompetitionsHubPage /></ErrorBoundary>} />
+                <Route path="/competitions/:slug" element={<ErrorBoundary><DynamicCompetitionPage /></ErrorBoundary>} />
                 
                 {/* Team & Store */}
-                <Route path="/team" element={<TeamPage />} />
-                <Route path="/store" element={<StorePage />} />
+                <Route path="/team" element={<ErrorBoundary><TeamPage /></ErrorBoundary>} />
+                <Route path="/store" element={<ErrorBoundary><StorePage /></ErrorBoundary>} />
                 
                 {/* Student Profile & Auth */}
-                <Route path="/profile" element={<ProfilePage />} />
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/signup" element={<SignupPage />} />
-                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                <Route path="/profile" element={<ErrorBoundary><ProfilePage /></ErrorBoundary>} />
+                <Route path="/login" element={<ErrorBoundary><LoginPage /></ErrorBoundary>} />
+                <Route path="/signup" element={<ErrorBoundary><SignupPage /></ErrorBoundary>} />
+                <Route path="/forgot-password" element={<ErrorBoundary><ForgotPasswordPage /></ErrorBoundary>} />
                 
                 {/* Administration */}
-                <Route path="/admin" element={<AdminPage />} />
+                <Route path="/admin" element={<ErrorBoundary><AdminPage /></ErrorBoundary>} />
                 
                 {/* Legal & Governance */}
-                <Route path="/privacy" element={<PrivacyPage />} />
-                <Route path="/terms" element={<TermsPage />} />
+                <Route path="/privacy" element={<ErrorBoundary><PrivacyPage /></ErrorBoundary>} />
+                <Route path="/terms" element={<ErrorBoundary><TermsPage /></ErrorBoundary>} />
                 
                 {/* 404 Fallback */}
-                <Route path="*" element={<NotFoundPage />} />
+                <Route path="*" element={<ErrorBoundary><NotFoundPage /></ErrorBoundary>} />
               </Routes>
             </main>
             <Footer />
