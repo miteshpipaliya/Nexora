@@ -43,15 +43,6 @@ googleProvider.setCustomParameters({
 });
 
 // Verification check
-export async function testFirestoreConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firebase Firestore client is offline, verifying connectivity.');
-    }
-  }
-}
 
 /**
  * Increments a Firestore document counter within a transaction.
