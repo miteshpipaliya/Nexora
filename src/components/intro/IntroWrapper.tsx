@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { IntroAnimation } from './intro/IntroAnimation';
-import App from './App';
+import { IntroAnimation } from './IntroAnimation';
+import App from '../../App';
 
 /**
  * Intro Wrapper
