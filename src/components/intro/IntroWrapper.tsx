@@ -71,7 +71,7 @@ export const IntroWrapper: React.FC = () => {
   }, []);
 
   if (!hasPlayed && !isInternalNavigation) {
-    return <IntroAnimation autoPlay={true} skipVisible={true} />;
+    return <IntroAnimation autoPlay={true} skipVisible={true} onComplete={() => setHasPlayed(true)} />;
   }
 
   // If intro already played or internal navigation, render the app directly

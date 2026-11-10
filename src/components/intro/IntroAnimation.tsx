@@ -5,6 +5,7 @@ import { useSound } from './IntroSoundController';
 interface IntroAnimationProps {
   autoPlay?: boolean;
   skipVisible?: boolean;
+  onComplete?: () => void;
 }
 
 /**
@@ -17,7 +18,7 @@ interface IntroAnimationProps {
  * - Sound effects via Web Audio API
  * - Skip intro and reduced-motion support
  */
-export const IntroAnimation: React.FC<IntroAnimationProps> = ({ autoPlay = true, skipVisible = true }) => {
+export const IntroAnimation: React.FC<IntroAnimationProps> = ({ autoPlay = true, skipVisible = true, onComplete }) => {
   const [showHomepage, setShowHomepage] = useState(false);
   const refs = {
     mainLogoRef: useRef<HTMLImageElement>(null),
@@ -44,10 +45,11 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({ autoPlay = true,
 
     const timeout = setTimeout(() => {
       setShowHomepage(true);
+      onComplete?.();
     }, 4500);
 
     return () => clearTimeout(timeout);
-  }, [autoPlay, showHomepage]);
+  }, [autoPlay, showHomepage, onComplete]);
 
   useEffect(() => {
     const mainImg = refs.mainLogoRef.current;
@@ -67,6 +69,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({ autoPlay = true,
       Promise.all([mainLoad, textLoad]).then(() => {
         if (!showHomepage) {
           setShowHomepage(true);
+          onComplete?.();
         }
       });
     }
@@ -75,6 +78,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({ autoPlay = true,
   const handleSkip = () => {
     stopAll();
     setShowHomepage(true);
+    onComplete?.();
   };
 
   if (showHomepage) {
