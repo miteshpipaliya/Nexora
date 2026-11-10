@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { IntroAnimation } from './IntroAnimation';
 import App from '../../App';
 
