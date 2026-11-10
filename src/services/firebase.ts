@@ -21,7 +21,7 @@ import { resolveFirebaseConfig } from './firebaseConfig';
 const firebaseConfig = resolveFirebaseConfig(
   productionFirebaseConfig,
   import.meta.env,
-  import.meta.env.VERCEL_ENV || ''
+  ''
 );
 
 // Initialize Firebase App

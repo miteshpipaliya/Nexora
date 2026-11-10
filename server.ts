@@ -48,7 +48,7 @@ app.use(express.json({ limit: '100kb' }));
 const ALLOWED_ORIGINS = [
   process.env.FRONTEND_URL,
   process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
-  process.env.VERCEL_ENV === 'production' ? 'https://www.nexora-bvm.online' : undefined,
+  process.env.VERCEL_ENV?.trim() === 'production' ? 'https://www.nexora-bvm.online' : undefined,
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:3000',

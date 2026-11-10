@@ -9,9 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
-    define: {
-      'import.meta.env.VERCEL_ENV': JSON.stringify(process.env.VERCEL_ENV || '')
-    },
+    define: {},
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
