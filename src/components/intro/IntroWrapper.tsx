@@ -4,11 +4,15 @@ import App from '../../App';
 
 /**
  * Intro Wrapper
- * Handles the cinematic intro animation playback:
- * - Plays on new browsing sessions and page refreshes
- * - Does not replay on internal navigation
- * - Respects reduced-motion preference
- * - Manages skip state and persistence
+ * 
+ * Architecture:
+ * - <App /> is ALWAYS mounted and visible (never blocked by intro)
+ * - IntroAnimation is a fixed-position overlay ABOVE <App />
+ * - Intro has a max duration safety timeout (7 seconds)
+ * - When intro completes, it removes itself; homepage remains visible
+ * - Skip button immediately removes intro overlay
+ * - Reduced motion simplifies the intro
+ * - Internal navigation does not replay intro
  */
 export const IntroWrapper: React.FC = () => {
   const [hasPlayed, setHasPlayed] = useState(false);
@@ -34,44 +38,21 @@ export const IntroWrapper: React.FC = () => {
     }
   }, []);
 
-  // Reset the played state when the user opens a new browser session/tab
-  // This is detected when sessionStorage is cleared or on new tab open
-  useEffect(() => {
-    // Check if we're in a new session by checking if the intro
-    // was played in the previous session but the storage was reset
-    const played = sessionStorage.getItem('introPlayed');
-    if (!played) {
-      setHasPlayed(false);
-    }
-  }, [sessionStorage]);
-
-  // Handle visibility change (user switching tabs, etc.)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        // New page view after tab switch
-        const played = sessionStorage.getItem('introPlayed');
-        if (!played) {
-          const timeout = setTimeout(() => {
-            setHasPlayed(true);
-            sessionStorage.setItem('introPlayed', 'true');
-          }, 100);
-        }
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, []);
-
-  // Clean up on unmount
-  useEffect(() => {
-    return () => {
-      sessionStorage.removeItem('introPlayed');
-    };
-  }, []);
-
+  // If intro already played or internal navigation, render the app directly
   if (!hasPlayed && !isInternalNavigation) {
-    return <IntroAnimation autoPlay={true} skipVisible={true} onComplete={() => setHasPlayed(true)} />;
+    return (
+      <div style={{ position: 'relative', height: '100%' }}>
+        {/* App is always mounted and visible underneath */}
+        <App />
+
+        {/* Intro overlay - ABOVE the app, will auto-remove after completion */}
+        <IntroAnimation
+          autoPlay={true}
+          skipVisible={true}
+          onComplete={() => setHasPlayed(true)}
+        />
+      </div>
+    );
   }
 
   // If intro already played or internal navigation, render the app directly
