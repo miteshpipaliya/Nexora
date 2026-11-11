@@ -16,7 +16,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
   skipVisible = true,
   onComplete,
 }) => {
-  // ... (complete implementation)
+  // Placeholder - animation implementation in progress
 };
 const MAIN_LOGO = '/images/intro/NEXORA%20LOGO.png';
 const TEXT_LOGO = '/images/intro/nexora-bvm-text-logo.png';
