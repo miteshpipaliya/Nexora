@@ -1,60 +1,69 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Component, useCallback, useState } from 'react';
 import { IntroAnimation } from './IntroAnimation';
 import App from '../../App';
 
 /**
  * Intro Wrapper
- * 
- * Architecture:
- * - <App /> is ALWAYS mounted and visible (never blocked by intro)
- * - IntroAnimation is a fixed-position overlay ABOVE <App />
- * - Intro has a max duration safety timeout (7 seconds)
- * - When intro completes, it removes itself; homepage remains visible
- * - Skip button immediately removes intro overlay
- * - Reduced motion simplifies the intro
- * - Internal navigation does not replay intro
+ * - <App /> is ALWAYS mounted (same tree before, during and after the intro,
+ *   so React never remounts it).
+ * - IntroAnimation is a fixed overlay above it; it is removed ONLY when it
+ *   calls onComplete (after its own timeline or Skip).
+ * - Plays once per browser tab session. Add ?intro=1 to the URL to force it.
+ * - If the intro ever crashes, it is skipped and the site still loads.
  */
-export const IntroWrapper: React.FC = () => {
-  const [hasPlayed, setHasPlayed] = useState(false);
-  const [isInternalNavigation, setIsInternalNavigation] = useState(false);
-  const refs = {
-    mainLogoRef: useRef<HTMLImageElement>(null),
-    textLogoRef: useRef<HTMLImageElement>(null),
-  };
 
-  // Check if this is a refresh vs internal navigation
-  useEffect(() => {
-    // On page load, check if intro has been played in this session
-    const played = sessionStorage.getItem('introPlayed');
-    if (!played) {
-      // First load of the session - play intro after short delay
-      const timeout = setTimeout(() => {
-        setHasPlayed(true);
-        sessionStorage.setItem('introPlayed', 'true');
-      }, 100);
-    } else {
-      // Intro already played this session - don't replay on navigation
-      setIsInternalNavigation(true);
+const STORAGE_KEY = 'introPlayed';
+
+const shouldPlayIntro = (): boolean => {
+  try {
+    if (new URLSearchParams(window.location.search).get('intro') === '1') return true;
+  } catch {
+    /* ignore */
+  }
+  try {
+    return sessionStorage.getItem(STORAGE_KEY) !== 'true';
+  } catch {
+    return true;
+  }
+};
+
+class IntroBoundary extends Component<
+  { onError: () => void; children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error: unknown) {
+    console.error('[Intro] crashed, skipping intro:', error);
+    this.props.onError();
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
+export const IntroWrapper: React.FC = () => {
+  const [showIntro, setShowIntro] = useState<boolean>(shouldPlayIntro);
+
+  const handleComplete = useCallback(() => {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, 'true');
+    } catch {
+      /* ignore */
     }
+    setShowIntro(false);
   }, []);
 
-  // If intro already played or internal navigation, render the app directly
-  if (!hasPlayed && !isInternalNavigation) {
-    return (
-      <div style={{ position: 'relative', height: '100%' }}>
-        {/* App is always mounted and visible underneath */}
-        <App />
-
-        {/* Intro overlay - ABOVE the app, will auto-remove after completion */}
-        <IntroAnimation
-          autoPlay={true}
-          skipVisible={true}
-          onComplete={() => setHasPlayed(true)}
-        />
-      </div>
-    );
-  }
-
-  // If intro already played or internal navigation, render the app directly
-  return <App />;
+  return (
+    <>
+      <App />
+      {showIntro && (
+        <IntroBoundary onError={handleComplete}>
+          <IntroAnimation autoPlay skipVisible onComplete={handleComplete} />
+        </IntroBoundary>
+      )}
+    </>
+  );
 };

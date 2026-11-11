@@ -45,6 +45,11 @@ export const CosmicHeroObject: React.FC = () => {
     renderer.domElement.style.height = '100%';
     renderer.domElement.style.pointerEvents = 'none';
     container.appendChild(renderer.domElement);
+    const handleContextLost = (event: Event) => {
+      event.preventDefault();
+      setWebGlSupported(false);
+    };
+    renderer.domElement.addEventListener('webglcontextlost', handleContextLost);
 
     const scene = new THREE.Scene();
 
@@ -386,6 +391,7 @@ export const CosmicHeroObject: React.FC = () => {
       (particles3.material as THREE.Material).dispose();
       dustGeo.dispose();
       dustMat.dispose();
+      renderer.domElement.removeEventListener('webglcontextlost', handleContextLost);
       renderer.dispose();
     };
   }, []);

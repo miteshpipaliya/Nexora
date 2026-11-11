@@ -1,85 +1,109 @@
-import React, { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 /**
  * Intro Sound Controller
- * Original technology-inspired sound effects using Web Audio API
+ * Small Web Audio API sound effects for the intro. Never throws.
  */
 
-export const useSound = () => {
-  const audioContext = useRef<AudioContext | null>(null);
-  const gainNode = useRef<GainNode | null>(null);
-  const initAudio = () => {
-    if (audioContext.current) return;
-    try {
-      audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      gainNode.current = audioContext.current.createGain();
-      gain.connect(gainNode.current ?? audioContext.current.destination);
-      gainNode.current.gain.value = 0.1;
-    } catch (e) {
-      console.warn('Web Audio API not supported');
-    }
-  };
+export type IntroSoundType = 'whoosh' | 'impact' | 'atmospheric' | 'cinematic';
 
-  useEffect(() => {
-    initAudio();
-    const handleUserInteraction = () => {
-      if (audioContext.current?.state === 'suspended') {
-        audioContext.current.resume();
-      }
-      document.removeEventListener('click', handleUserInteraction);
-    };
-    document.addEventListener('click', handleUserInteraction);
-    return () => document.removeEventListener('click', handleUserInteraction);
+export const useSound = () => {
+  const ctxRef = useRef<AudioContext | null>(null);
+  const masterRef = useRef<GainNode | null>(null);
+
+  const ensureAudio = useCallback(() => {
+    if (ctxRef.current) return;
+    try {
+      const Ctor: typeof AudioContext | undefined =
+        window.AudioContext || (window as any).webkitAudioContext;
+      if (!Ctor) return;
+      const ctx = new Ctor();
+      const master = ctx.createGain();
+      master.gain.value = 0.1;
+      master.connect(ctx.destination);
+      ctxRef.current = ctx;
+      masterRef.current = master;
+    } catch {
+      /* Web Audio not available - intro stays silent */
+    }
   }, []);
 
-const playSound = (type: 'whoosh' | 'impact' | 'atmospheric' | 'cinematic') => {
-    if (!audioContext.current) return;
-    if (audioContext.current.state !== 'running') return;
-    
+  const stopAll = useCallback(() => {
+    const ctx = ctxRef.current;
+    ctxRef.current = null;
     try {
-    const oscillator = audioContext.current.createOscillator();
-      const gain = audioContext.current.createGain();
-      gain.connect(gainNode.current ?? audioContext.current.destination);
-      gain.gain.value = 0.1;
+      masterRef.current?.disconnect();
+    } catch {
+      /* ignore */
+    }
+    masterRef.current = null;
+    if (ctx && ctx.state !== 'closed') {
+      try {
+        void ctx.close().catch(() => {});
+      } catch {
+        /* ignore */
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    ensureAudio();
+
+    // Browsers keep AudioContext suspended until a user gesture.
+    const resume = () => {
+      const ctx = ctxRef.current;
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+    };
+    const events = ['pointerdown', 'keydown', 'touchstart'] as const;
+    events.forEach((e) => window.addEventListener(e, resume, { once: true }));
+
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, resume));
+      stopAll();
+    };
+  }, [ensureAudio, stopAll]);
+
+  const playSound = useCallback((type: IntroSoundType) => {
+    const ctx = ctxRef.current;
+    const master = masterRef.current;
+    if (!ctx || !master || ctx.state !== 'running') return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const env = ctx.createGain();
+      osc.type = 'sine';
 
       switch (type) {
         case 'whoosh':
-          oscillator.frequency.value = 200;
-          oscillator.type = 'sine';
-          oscillator.frequency.setValueAtTime(200, audioContext.current.currentTime);
-          oscillator.frequency.setValueAtTime(800, audioContext.current.currentTime + 0.3);
+          osc.frequency.setValueAtTime(200, now);
+          osc.frequency.exponentialRampToValueAtTime(800, now + 0.4);
           break;
         case 'impact':
-          oscillator.frequency.value = 440;
-          oscillator.type = 'sine';
+          osc.frequency.setValueAtTime(440, now);
+          osc.frequency.exponentialRampToValueAtTime(110, now + 0.5);
           break;
         case 'atmospheric':
-          oscillator.frequency.value = 110;
-          oscillator.type = 'sine';
+          osc.frequency.setValueAtTime(110, now);
           break;
         case 'cinematic':
-          oscillator.frequency.value = 150;
-          oscillator.type = 'sine';
+          osc.frequency.setValueAtTime(150, now);
           break;
       }
 
-      oscillator.connect(gain);
-      oscillator.start();
-      oscillator.stop(audioContext.current.currentTime + 0.5);
-    } catch (e) {
-      console.warn('Sound playback failed', e);
-    }
-  };
+      env.gain.setValueAtTime(0.0001, now);
+      env.gain.exponentialRampToValueAtTime(1, now + 0.05);
+      env.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
 
-  const stopAll = () => {
-    if (audioContext.current) {
-      audioContext.current.close();
-      audioContext.current = null;
+      osc.connect(env);
+      env.connect(master);
+      osc.start(now);
+      osc.stop(now + 0.65);
+    } catch {
+      /* never let sound break the intro */
     }
-    if (gainNode.current) {
-      gainNode.current.disconnect();
-    }
-  };
+  }, []);
 
   return { playSound, stopAll };
 };
