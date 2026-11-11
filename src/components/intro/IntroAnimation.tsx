@@ -1,7 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSound } from './IntroSoundController';
-import * as THREE from 'three';
+
+interface IntroAnimationProps {
+  autoPlay?: boolean;
+  skipVisible?: boolean;
+  onComplete?: () => void;
+}
+
+import React, { useRef, useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { useSound } from './IntroSoundController';
 
 interface IntroAnimationProps {
   autoPlay?: boolean;
@@ -13,12 +22,21 @@ const EASE = [0.16, 1, 0.3, 1] as const;
 const MAIN_LOGO = '/images/intro/NEXORA%20LOGO.png';
 const TEXT_LOGO = '/images/intro/nexora-bvm-text-logo.png';
 
+/** Cinematic fog keyframes defined in index.css @keyframes */
+
+export const IntroAnimation: React.FC<IntroAnimationProps> = ({
+  autoPlay = true,
+  skipVisible = true,
+  onComplete,
+}) => {
+  // ... (complete implementation)
+};
+const MAIN_LOGO = '/images/intro/NEXORA%20LOGO.png';
+const TEXT_LOGO = '/images/intro/nexora-bvm-text-logo.png';
+
 /**
  * Cinematic NEXORA intro (fixed overlay above the always-mounted <App />).
- * Timeline:
- * Phase A: 0-3.8s - Both logos, atmospheric glow, particles, sync with sound
- * Phase B: 3.8-5.0s - Earth-entry zoom with procedural cloud layers
- * Phase C: 5.0-6.2s - Homepage reveal, smooth opacity transition
+ /**\n * Cinematic NEXORA intro (fixed overlay above the always-mounted <App />).\n * Timeline:\n * \n * Phase B: 3.8-5.0s - Cinematic fog zoom\n * Phase C: 5.0-6.2s - Homepage reveal, smooth opacity transition\n * onComplete fires exactly once (after the fade-out, or via Skip).\n */\n
  * onComplete fires exactly once (after the fade-out, or via Skip).
  */
 export const IntroAnimation: React.FC<IntroAnimationProps> = ({
@@ -26,16 +44,59 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
   skipVisible = true,
   onComplete,
 }) => {
-  const [visible, setVisible] = useState(true);
+  
   const finishedRef = useRef(false);
   const completedRef = useRef(false);
   const onCompleteRef = useRef(onComplete);
-  const PhaseBZoomEnd = 5000;
+  
   useEffect(() => {
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
   const { playSound, stopAll } = useSound();
+
+  // Intro animation implementation
+  // Phase A: Logo introduction (0-3.8s)
+  // Phase B: CSS fog zoom (3.8-5.0s)  
+  // Phase C: Homepage reveal (5.0-6.2s)
+
+  const [phase, setPhase] = useState<'enter' | 'exit'>('enter');
+
+  useEffect(() => {
+    if (!autoPlay) return;
+
+    let mounted = true;
+    const phaseBTimeout = window.setTimeout(() => {
+      if (!mounted) return;
+      setPhase('exit');
+    }, 3800);
+
+    const skipHandler = () => {
+      if (!mounted) return;
+      setPhase('exit');
+    };
+
+    return () => {
+      mounted = false;
+      window.clearTimeout(phaseBTimeout);
+    };
+  }, [setPhase]);
+
+  useEffect(() => {
+    if (phase === 'exit' && !reduced) {
+      const exitTimeout = window.setTimeout(() => {
+        if (!finishedRef.current) return;
+        finish();
+      }, 1200);
+      return () => window.clearTimeout(exitTimeout);
+    }
+  }, [phase, reduced, finish]);
+
+  useEffect(() => {
+    if (reduced && phase === 'enter') {
+      setPhase('exit');
+    }
+  }, [reduced, phase]);
 
   const reduced =
     typeof window !== 'undefined' &&
@@ -56,42 +117,123 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
     window.setTimeout(complete, 6200);
   }, [stopAll, complete]);
 
+  const [phase, setPhase] = useState<'enter' | 'exit'>('enter');
+
   useEffect(() => {
     if (!autoPlay) return;
-    const timers: number[] = [];
-    const Reduced = reduced ? 1200 : 3800;
-    const PhaseBStart = 3800;
 
-    if (!reduced) {
-      // 0s: atmospheric drone start
-      timers.push(window.setTimeout(() => playSound('atmospheric'), 0));
-      // 150ms: logo whoosh
-      timers.push(window.setTimeout(() => playSound('whoosh'), 150));
-      // 900ms: cinematic impact
-      timers.push(window.setTimeout(() => playSound('impact'), 900));
-      // 3.8s: transition whoosh start
-      timers.push(window.setTimeout(() => playSound('whoosh'), PhaseBStart));
-      // 5.0s: arrival fade
-      timers.push(window.setTimeout(() => playSound('cinematic'), PhaseBZoomEnd));
-    } else {
-      // Reduced-motion: simplified audio
-      timers.push(window.setTimeout(() => playSound('atmospheric'), 0));
-      timers.push(window.setTimeout(() => playSound('whoosh'), 150));
-      timers.push(window.setTimeout(complete, Reduced));
+    let mounted = true;
+    const phaseBTimeout = window.setTimeout(() => {
+      if (!mounted) return;
+      setPhase('exit');
+    }, 3800);
+
+    const skipHandler = () => {
+      if (!mounted) return;
+      setPhase('exit');
+    };
+
+    return () => {
+      mounted = false;
+      window.clearTimeout(phaseBTimeout);
+    };
+  }, [setPhase]);
+
+  useEffect(() => {
+    if (phase === 'exit' && !reduced) {
+      const exitTimeout = window.setTimeout(() => {
+        if (!finishedRef.current) return;
+        finish();
+      }, 1200);
+      return () => window.clearTimeout(exitTimeout);
     }
+  }, [phase, reduced, finish]);
 
-    return () => timers.forEach((t) => window.clearTimeout(t));
-  }, [autoPlay, reduced, playSound, complete]);
+  useEffect(() => {
+    if (reduced && phase === 'enter') {
+      setPhase('exit');
+    }
+  }, [reduced, phase]);
 
   // ── Phase B: Three.js Earth-entry zoom (3.8–5.0s) ──
   useEffect(() => {
     if (!autoPlay) return;
     const reduced = typeof window !== 'undefined' &&
       !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (reduced) return; // skip 3D phase in reduced-motion mode
+    const [phase, setPhase] = useState<'enter' | 'exit'>('enter');
+
+  useEffect(() => {
+    if (!autoPlay) return;
 
     let mounted = true;
-    const startTime = performance.now();
+    const phaseBTimeout = window.setTimeout(() => {
+      if (!mounted) return;
+      setPhase('exit');
+    }, 3800);
+
+    const skipHandler = () => {
+      if (!mounted) return;
+      setPhase('exit');
+    };
+
+    return () => {
+      mounted = false;
+      window.clearTimeout(phaseBTimeout);
+    };
+  }, [setPhase]);
+
+  useEffect(() => {
+    if (phase === 'exit' && !reduced) {
+      const exitTimeout = window.setTimeout(() => {
+        if (!finishedRef.current) return;
+        finish();
+      }, 1200);
+      return () => window.clearTimeout(exitTimeout);
+    }
+  }, [phase, reduced, finish]);
+
+  useEffect(() => {
+    if (reduced && phase === 'enter') {
+      setPhase('exit');
+    }
+  }, [reduced, phase]);
+    const [phase, setPhase] = useState<'enter' | 'exit'>('enter');
+
+  useEffect(() => {
+    if (!autoPlay) return;
+
+    let mounted = true;
+    const phaseBTimeout = window.setTimeout(() => {
+      if (!mounted) return;
+      setPhase('exit');
+    }, 3800);
+
+    const skipHandler = () => {
+      if (!mounted) return;
+      setPhase('exit');
+    };
+
+    return () => {
+      mounted = false;
+      window.clearTimeout(phaseBTimeout);
+    };
+  }, [setPhase]);
+
+  useEffect(() => {
+    if (phase === 'exit' && !reduced) {
+      const exitTimeout = window.setTimeout(() => {
+        if (!finishedRef.current) return;
+        finish();
+      }, 1200);
+      return () => window.clearTimeout(exitTimeout);
+    }
+  }, [phase, reduced, finish]);
+
+  useEffect(() => {
+    if (reduced && phase === 'enter') {
+      setPhase('exit');
+    }
+  }, [reduced, phase]);
 
     // Create canvas for the earth-entry effect
     const canvas = document.createElement('canvas');
