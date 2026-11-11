@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSound } from './IntroSoundController';
+import * as THREE from 'three';
 
 interface IntroAnimationProps {
   autoPlay?: boolean;
@@ -14,7 +15,10 @@ const TEXT_LOGO = '/images/intro/nexora-bvm-text-logo.png';
 
 /**
  * Cinematic NEXORA intro (fixed overlay above the always-mounted <App />).
- * Timeline: 0-0.9s logos slide in -> glow pulse -> ~3.2s fade out -> onComplete.
+ * Timeline:
+ * Phase A: 0-3.8s - Both logos, atmospheric glow, particles, sync with sound
+ * Phase B: 3.8-5.0s - Earth-entry zoom with procedural cloud layers
+ * Phase C: 5.0-6.2s - Homepage reveal, smooth opacity transition
  * onComplete fires exactly once (after the fade-out, or via Skip).
  */
 export const IntroAnimation: React.FC<IntroAnimationProps> = ({
@@ -26,6 +30,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
   const finishedRef = useRef(false);
   const completedRef = useRef(false);
   const onCompleteRef = useRef(onComplete);
+  const PhaseBZoomEnd = 5000;
   useEffect(() => {
     onCompleteRef.current = onComplete;
   }, [onComplete]);
@@ -54,13 +59,211 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
   useEffect(() => {
     if (!autoPlay) return;
     const timers: number[] = [];
+    const Reduced = reduced ? 1200 : 3800;
+    const PhaseBStart = 3800;
+
     if (!reduced) {
+      // 0s: atmospheric drone start
+      timers.push(window.setTimeout(() => playSound('atmospheric'), 0));
+      // 150ms: logo whoosh
       timers.push(window.setTimeout(() => playSound('whoosh'), 150));
+      // 900ms: cinematic impact
       timers.push(window.setTimeout(() => playSound('impact'), 900));
+      // 3.8s: transition whoosh start
+      timers.push(window.setTimeout(() => playSound('whoosh'), PhaseBStart));
+      // 5.0s: arrival fade
+      timers.push(window.setTimeout(() => playSound('cinematic'), PhaseBZoomEnd));
+    } else {
+      // Reduced-motion: simplified audio
+      timers.push(window.setTimeout(() => playSound('atmospheric'), 0));
+      timers.push(window.setTimeout(() => playSound('whoosh'), 150));
+      timers.push(window.setTimeout(complete, Reduced));
     }
-    timers.push(window.setTimeout(finish, reduced ? 1200 : 3200));
+
     return () => timers.forEach((t) => window.clearTimeout(t));
-  }, [autoPlay, reduced, finish, playSound]);
+  }, [autoPlay, reduced, playSound, complete]);
+
+  // ── Phase B: Three.js Earth-entry zoom (3.8–5.0s) ──
+  useEffect(() => {
+    if (!autoPlay) return;
+    const reduced = typeof window !== 'undefined' &&
+      !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) return; // skip 3D phase in reduced-motion mode
+
+    let mounted = true;
+    const startTime = performance.now();
+
+    // Create canvas for the earth-entry effect
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 640;
+    canvas.style.position = 'fixed';
+    canvas.style.inset = '0';
+    canvas.style.zIndex = '9998';
+    canvas.style.pointerEvents = 'none';
+    canvas.style.top = '0';
+    canvas.style.left = '0';
+    document.body.appendChild(canvas);
+
+    let renderer: THREE.WebGLRenderer;
+    let scene: THREE.Scene;
+    let camera: THREE.PerspectiveCamera;
+    let animId: number;
+    let phaseStart = startTime;
+
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: 'high-performance',
+      });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.25;
+      renderer.domElement.style.display = 'block';
+      renderer.domElement.style.width = '100%';
+      renderer.domElement.style.height = '100%';
+      renderer.domElement.style.pointerEvents = 'none';
+      canvas.appendChild(renderer.domElement);
+
+      scene = new THREE.Scene();
+
+      camera = new THREE.PerspectiveCamera(45, 640 / 640, 0.1, 100);
+
+      // Cloud layer parameters
+      const cloudCount = 50;
+      const cloudLayers: Array<{
+        size: number;
+        speed: number;
+        z: number;
+        x: number;
+        y: number;
+        alpha: number;
+      }> = [];
+
+      for (let i = 0; i < cloudCount; i++) {
+        const size = Math.random() * 100 + 50;
+        const speed = Math.random() * 0.02 + 0.005;
+        const startZ = Math.random() * 200 + 100;
+        const startX = (Math.random() - 0.5) * 640;
+        const startY = (Math.random() - 0.5) * 640;
+
+        cloudLayers.push({
+          size,
+          speed,
+          z: startZ,
+          x: startX,
+          y: startY,
+          alpha: Math.random() * 0.5 + 0.1,
+        });
+      }
+
+      // Earth sphere
+      const earthGeometry = new THREE.SphereGeometry(150, 64, 64);
+      const earthMaterial = new THREE.MeshPhysicalMaterial({
+        color: 0x2c3e50,
+        roughness: 0.3,
+        metalness: 0.1,
+        opacity: 0.9,
+        transparent: true,
+        depthWrite: false,
+      });
+      const earth = new THREE.Mesh(earthGeometry, earthMaterial);
+      earth.position.set(0, 0, -300);
+      scene.add(earth);
+
+      // Atmosphere layer
+      const atmosphereGeometry = new THREE.SphereGeometry(155, 32, 32);
+      const atmosphereMaterial = new THREE.MeshBasicMaterial({
+        color: 0x3498db,
+        opacity: 0.3,
+        transparent: true,
+        depthWrite: false,
+      });
+      const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+      atmosphere.position.set(0, 0, -300);
+      scene.add(atmosphere);
+
+      // Light
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+      scene.add(ambientLight);
+
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight.position.set(100, 100, 100);
+      scene.add(directionalLight);
+
+      // Animation loop
+      const targetTime = startTime + 1200; // 1.2 seconds
+      let currentTime = startTime;
+
+      const animate = () => {
+        if (!mounted) return;
+        currentTime = performance.now();
+        const delta = Math.min(currentTime - phaseStart, 1200) / 1200;
+
+        // Cloud movement - create depth parallax
+        cloudLayers.forEach((layer, i) => {
+          layer.z -= layer.speed * delta * 100;
+          layer.x += (Math.sin(i * 0.5 + currentTime * 0.001) * 0.5) * delta;
+          layer.y += (Math.cos(i * 0.3 + currentTime * 0.001) * 0.5) * delta;
+
+          // Wrap clouds around
+          if (layer.z < -100) {
+            layer.z = 300;
+            layer.x = (Math.random() - 0.5) * 640;
+            layer.y = (Math.random() - 0.5) * 640;
+          }
+
+          const scaledSize = layer.size * (1 - layer.z / 400);
+          const opacity = layer.alpha * (1 - layer.z / 400);
+
+          // Draw cloud (simple circle for prototype)
+          renderer.domElement.style.background = `rgba(255, 255, 255, ${opacity})`;
+        });
+
+        // Earth rotation
+        earth.rotation.y += delta * 0.1;
+
+        // Atmosphere glow
+        atmosphere.rotation.y -= delta * 0.05;
+
+        // Camera zoom - start far and move closer
+        const t = Math.min(1, (currentTime - startTime) / 1200);
+        camera.position.z = 300 * (1 - t * 2); // Move from 300 to -300
+
+        renderer.render(scene, camera);
+        animId = requestAnimationFrame(animate);
+      };
+
+      animate();
+
+      // On complete - stop after 1.2s
+      const endTime = startTime + 1200;
+      const checkComplete = () => {
+        if (!mounted) return;
+        if (performance.now() >= endTime) {
+          cancelAnimationFrame(animId);
+          document.body.removeChild(canvas);
+          finish();
+        } else {
+          requestAnimationFrame(checkComplete);
+        }
+      };
+      checkComplete();
+    } catch (e) {
+      console.error('[Intro] Earth-entry scene error:', e);
+      if (!mounted) return;
+      document.body.removeChild(canvas);
+      finish();
+    }
+
+    return () => {
+      mounted = false;
+      if (animId) cancelAnimationFrame(animId);
+      if (renderer) renderer.dispose();
+      if (canvas && canvas.parentNode) canvas.parentNode.removeChild(canvas);
+    };
+  }, [autoPlay, reduced, finish, PhaseBZoomEnd]);
 
   return (
     <AnimatePresence onExitComplete={complete}>
