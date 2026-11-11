@@ -135,11 +135,6 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
       const clouds: THREE.Mesh[] = [];
 
         const speed = Math.random() * 0.02 + 0.005;
-        const startZ = Math.random() * 200 + 100;
-
-        color: 0x2c3e50,
-      });
-      const earth = new THREE.Mesh(earthGeometry, earthMaterial);
       earth.position.set(0, 0, -300);
       scene.add(earth);
 
@@ -174,15 +169,15 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
 
         // Cloud movement - create depth parallax
         clouds.forEach((layer, i) => {
-          layer.z -= layer.speed * delta * 100;
-          layer.x += (Math.sin(i * 0.5 + currentTime * 0.001) * 0.5) * delta;
-          layer.y += (Math.cos(i * 0.3 + currentTime * 0.001) * 0.5) * delta;
+          mesh.position.z -= 0.02 * delta;
+          mesh.position.x += (Math.sin(i * 0.5 + currentTime * 0.001) * 0.5) * delta;
+          mesh.position.y += (Math.cos(i * 0.3 + currentTime * 0.001) * 0.5) * delta;
 
           // Wrap clouds around
-          if (layer.z < -100) {
-            layer.z = 300;
-            layer.x = (Math.random() - 0.5) * 640;
-            layer.y = (Math.random() - 0.5) * 640;
+          if (mesh.position.z < -160) {
+            mesh.position.set(160 * Math.sin(phi) * Math.cos(theta), 160 * Math.sin(phi) * Math.sin(theta), 160 * Math.cos(phi));
+            mesh.position.x = (Math.random() - 0.5) * 640;
+            mesh.position.y = (Math.random() - 0.5) * 640;
           }
 
           const scaledSize = layer.size * (1 - layer.z / 400);
@@ -199,7 +194,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
         atmosphere.rotation.y -= delta * 0.05;
 
         // Camera zoom - start far and move closer
-        const t = Math.min(1, (currentTime - startTime) / 6200;
+        const t = Math.min(1, (currentTime - startTime) / 6200);
         camera.position.z = 300 * (1 - t * 2); // Move from 300 to -300
 
         renderer.render(scene, camera);
