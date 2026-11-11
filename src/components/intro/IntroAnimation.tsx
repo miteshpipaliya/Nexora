@@ -110,6 +110,9 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
     let camera: THREE.PerspectiveCamera;
     let animId: number;
     let phaseStart = startTime;
+      const earth = new THREE.Mesh(new THREE.SphereGeometry(150, 64, 64), new THREE.MeshPhysicalMaterial({ color: 0x2c3e50, roughness: 0.3, metalness: 0.1, opacity: 0.9, transparent: true, depthWrite: false }));
+      earth.position.set(0, 0, -300);
+      scene.add(earth);
 
     try {
       renderer = new THREE.WebGLRenderer({
@@ -194,8 +197,9 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
         atmosphere.rotation.y -= delta * 0.05;
 
         // Camera zoom - start far and move closer
+        // Camera zoom - start far and move closer
         const t = Math.min(1, (currentTime - startTime) / 6200);
-        camera.position.z = 300 * (1 - t * 2); // Move from 300 to -300
+        camera.position.z = THREE.MathUtils.lerp(200, -150, t);
 
         renderer.render(scene, camera);
         animId = requestAnimationFrame(animate);
