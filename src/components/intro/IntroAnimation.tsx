@@ -10,7 +10,7 @@ interface IntroAnimationProps {
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 const MAIN_LOGO = '/images/intro/NEXORA%20LOGO.png';
-const TEXT_LOGO = '/images/intro/NEXORA%20BVM%20TEXT%20LOGO.png';
+const TEXT_LOGO = '/images/intro/nexora-bvm-text-logo.png';
 
 /**
  * Cinematic NEXORA intro (fixed overlay above the always-mounted <App />).
