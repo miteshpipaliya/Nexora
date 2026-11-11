@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { useSound } from './IntroSoundController';
 
 interface IntroAnimationProps {
@@ -19,6 +19,11 @@ interface IntroAnimationProps {
  * - Skip intro and reduced-motion support
  */
 export const IntroAnimation: React.FC<IntroAnimationProps> = ({ autoPlay = true, skipVisible = true, onComplete }) => {
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  const done = useRef(false);
+
   const [showHomepage, setShowHomepage] = useState(false);
   const refs = {
     mainLogoRef: useRef<HTMLImageElement>(null),
@@ -32,48 +37,45 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({ autoPlay = true,
 
   const slideRight = {
     hidden: { x: '100%', opacity: 0 },
-    visible: { x: 0, opacity: 1, transition: { duration: 0.8, ease: ' cubic-bezier(0.16, 1, 0.3, 1)' } },
+    visible: { x: 0, opacity: 1, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } },
   };
 
   const slideLeft = {
     hidden: { x: '-100%', opacity: 0 },
-    visible: { x: 0, opacity: 1, transition: { duration: 0.8, ease: ' cubic-bezier(0.16, 1, 0.3, 1)' } },
+    visible: { x: 0, opacity: 1, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } },
   };
 
   useEffect(() => {
     if (!autoPlay || showHomepage) return;
 
-    const timeout = setTimeout(() => {
-      setShowHomepage(true);
-      onComplete?.();
-    }, 4500);
+    const whooshTimeout = setTimeout(() => {
+      playSound('whoosh');
+    }, 150);
 
-    return () => clearTimeout(timeout);
-  }, [autoPlay, showHomepage, onComplete]);
+    const impactTimeout = setTimeout(() => {
+      playSound('impact');
+    }, 900);
 
-  useEffect(() => {
-    const mainImg = refs.mainLogoRef.current;
-    const textImg = refs.textLogoRef.current;
+    const sequenceTimeout = setTimeout(() => {
+      finish();
+    }, 4000);
 
-    if (mainImg && textImg) {
-      const mainLoad = new Promise((resolve) => {
-        if (mainImg.complete) resolve();
-        else mainImg.onload = resolve;
-      });
+    return () => {
+      clearTimeout(whooshTimeout);
+      clearTimeout(impactTimeout);
+      clearTimeout(sequenceTimeout);
+    };
+  }, [autoPlay, showHomepage]);
 
-      const textLoad = new Promise((resolve) => {
-        if (textImg.complete) resolve();
-        else textImg.onload = resolve;
-      });
-
-      Promise.all([mainLoad, textLoad]).then(() => {
-        if (!showHomepage) {
-          setShowHomepage(true);
-          onComplete?.();
-        }
-      });
-    }
+  const finish = useCallback(() => {
+    if (done.current) return;
+    done.current = true;
+    stopAll();
+    onCompleteRef.current?.();
+    setShowHomepage(true);
   }, []);
+
+  
 
   const handleSkip = () => {
     stopAll();
@@ -116,14 +118,13 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({ autoPlay = true,
         }}
       />
 
-      <motion.image
+      <motion.img
         ref={refs.mainLogoRef}
         src='/images/intro/NEXORA%20LOGO.png'
         style={{
-          width: 200,
-          height: 200,
+          maxWidth: '80vw',
+          height: 'auto',
           position: 'absolute',
-          right: -200,
           top: '50%',
           transform: 'translateY(-50%)',
           opacity: 0,
@@ -134,14 +135,13 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({ autoPlay = true,
         animate="visible"
       />
 
-      <motion.image
+      <motion.img
         ref={refs.textLogoRef}
         src='/images/intro/NEXORA%20TEXT%20LOGO.png'
         style={{
-          width: 280,
-          height: 80,
+          maxWidth: '80vw',
+          height: 'auto',
           position: 'absolute',
-          left: -280,
           top: '50%',
           transform: 'translateY(-50%)',
           opacity: 0,
@@ -153,22 +153,18 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({ autoPlay = true,
       />
 
       {showHomepage && (
-        <motion.div
-          style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: 400,
-            height: 400,
-            background:
-              'radial-gradient(circle at 30% 20%, rgba(139, 92, 246, 0.3) 0%, transparent 50%)',
-            pointerEvents: 'none',
-            opacity: 0,
-            transition: { duration: 0.3 },
-          }}
-        />
-      )}
+          <motion.div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background:
+                'radial-gradient(at 50% 0%, rgba(139, 92, 246, 0.3) 0%, transparent 50%)',
+              pointerEvents: 'none',
+              opacity: 0,
+              transition: { duration: 0.7, opacity: [0, 0.9, 0.5], scale: [0.8, 1.1, 1] },
+            }}
+          />
+        )}
 
       {skipVisible && !prefersReducedMotion && (
         <button

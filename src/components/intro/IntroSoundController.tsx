@@ -8,14 +8,12 @@ import React, { useEffect, useRef } from 'react';
 export const useSound = () => {
   const audioContext = useRef<AudioContext | null>(null);
   const gainNode = useRef<GainNode | null>(null);
-  isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-
   const initAudio = () => {
     if (audioContext.current) return;
     try {
       audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       gainNode.current = audioContext.current.createGain();
-      gainNode.current.connect(audioContext.current.destination);
+      gain.connect(gainNode.current ?? audioContext.current.destination);
       gainNode.current.gain.value = 0.1;
     } catch (e) {
       console.warn('Web Audio API not supported');
@@ -34,38 +32,43 @@ export const useSound = () => {
     return () => document.removeEventListener('click', handleUserInteraction);
   }, []);
 
-  const playSound = (type: 'whoosh' | 'impact' | 'atmospheric' | 'cinematic') => {
+const playSound = (type: 'whoosh' | 'impact' | 'atmospheric' | 'cinematic') => {
     if (!audioContext.current) return;
+    if (audioContext.current.state !== 'running') return;
     
+    try {
     const oscillator = audioContext.current.createOscillator();
-    const gain = audioContext.current.createGain();
-    gain.connect(gainNode.current?.gain ?? audioContext.current.destination);
-    gain.gain.value = 0.1;
+      const gain = audioContext.current.createGain();
+      gain.connect(gainNode.current ?? audioContext.current.destination);
+      gain.gain.value = 0.1;
 
-    switch (type) {
-      case 'whoosh':
-        oscillator.frequency.value = 200;
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(200, audioContext.current.currentTime);
-        oscillator.frequency.setValueAtTime(800, audioContext.current.currentTime + 0.3);
-        break;
-      case 'impact':
-        oscillator.frequency.value = 440;
-        oscillator.type = 'sine';
-        break;
-      case 'atmospheric':
-        oscillator.frequency.value = 110;
-        oscillator.type = 'sine';
-        break;
-      case 'cinematic':
-        oscillator.frequency.value = 150;
-        oscillator.type = 'sine';
-        break;
+      switch (type) {
+        case 'whoosh':
+          oscillator.frequency.value = 200;
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(200, audioContext.current.currentTime);
+          oscillator.frequency.setValueAtTime(800, audioContext.current.currentTime + 0.3);
+          break;
+        case 'impact':
+          oscillator.frequency.value = 440;
+          oscillator.type = 'sine';
+          break;
+        case 'atmospheric':
+          oscillator.frequency.value = 110;
+          oscillator.type = 'sine';
+          break;
+        case 'cinematic':
+          oscillator.frequency.value = 150;
+          oscillator.type = 'sine';
+          break;
+      }
+
+      oscillator.connect(gain);
+      oscillator.start();
+      oscillator.stop(audioContext.current.currentTime + 0.5);
+    } catch (e) {
+      console.warn('Sound playback failed', e);
     }
-
-    oscillator.connect(gain);
-    oscillator.start();
-    oscillator.stop(audioContext.current.currentTime + 0.5);
   };
 
   const stopAll = () => {
