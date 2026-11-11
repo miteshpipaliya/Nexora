@@ -53,7 +53,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
     stopAll();
     setVisible(false); // triggers the fade-out; AnimatePresence calls complete()
     // Safety net: if the exit animation never reports back, still finish.
-    window.setTimeout(complete, 1200);
+    window.setTimeout(complete, 6200);
   }, [stopAll, complete]);
 
   useEffect(() => {
@@ -132,41 +132,12 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
 
       // Cloud layer parameters
       const cloudCount = 50;
-      const cloudLayers: Array<{
-        size: number;
-        speed: number;
-        z: number;
-        x: number;
-        y: number;
-        alpha: number;
-      }> = [];
+      const clouds: THREE.Mesh[] = [];
 
-      for (let i = 0; i < cloudCount; i++) {
-        const size = Math.random() * 100 + 50;
         const speed = Math.random() * 0.02 + 0.005;
         const startZ = Math.random() * 200 + 100;
-        const startX = (Math.random() - 0.5) * 640;
-        const startY = (Math.random() - 0.5) * 640;
 
-        cloudLayers.push({
-          size,
-          speed,
-          z: startZ,
-          x: startX,
-          y: startY,
-          alpha: Math.random() * 0.5 + 0.1,
-        });
-      }
-
-      // Earth sphere
-      const earthGeometry = new THREE.SphereGeometry(150, 64, 64);
-      const earthMaterial = new THREE.MeshPhysicalMaterial({
         color: 0x2c3e50,
-        roughness: 0.3,
-        metalness: 0.1,
-        opacity: 0.9,
-        transparent: true,
-        depthWrite: false,
       });
       const earth = new THREE.Mesh(earthGeometry, earthMaterial);
       earth.position.set(0, 0, -300);
@@ -193,16 +164,16 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
       scene.add(directionalLight);
 
       // Animation loop
-      const targetTime = startTime + 1200; // 1.2 seconds
+      const targetTime = startTime + 6200; // 6.2 seconds
       let currentTime = startTime;
 
       const animate = () => {
         if (!mounted) return;
         currentTime = performance.now();
-        const delta = Math.min(currentTime - phaseStart, 1200) / 1200;
+        const delta = Math.min(elapsed, 6200) / 6200;
 
         // Cloud movement - create depth parallax
-        cloudLayers.forEach((layer, i) => {
+        clouds.forEach((layer, i) => {
           layer.z -= layer.speed * delta * 100;
           layer.x += (Math.sin(i * 0.5 + currentTime * 0.001) * 0.5) * delta;
           layer.y += (Math.cos(i * 0.3 + currentTime * 0.001) * 0.5) * delta;
@@ -228,7 +199,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
         atmosphere.rotation.y -= delta * 0.05;
 
         // Camera zoom - start far and move closer
-        const t = Math.min(1, (currentTime - startTime) / 1200);
+        const t = Math.min(1, (currentTime - startTime) / 6200;
         camera.position.z = 300 * (1 - t * 2); // Move from 300 to -300
 
         renderer.render(scene, camera);
@@ -238,7 +209,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
       animate();
 
       // On complete - stop after 1.2s
-      const endTime = startTime + 1200;
+      const totalDuration = 6200;
       const checkComplete = () => {
         if (!mounted) return;
         if (performance.now() >= endTime) {
