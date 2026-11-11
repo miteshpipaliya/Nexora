@@ -35,10 +35,10 @@ const MAIN_LOGO = '/images/intro/NEXORA%20LOGO.png';
 const TEXT_LOGO = '/images/intro/nexora-bvm-text-logo.png';
 
 /**
- * Cinematic NEXORA intro (fixed overlay above the always-mounted <App />).
- /**\n * Cinematic NEXORA intro (fixed overlay above the always-mounted <App />).\n * Timeline:\n * \n * Phase B: 3.8-5.0s - Cinematic fog zoom\n * Phase C: 5.0-6.2s - Homepage reveal, smooth opacity transition\n * onComplete fires exactly once (after the fade-out, or via Skip).\n */\n
- * onComplete fires exactly once (after the fade-out, or via Skip).
- */
+ * Cinematic NEXORA intro animation.
+ /**
+ * Cinematic NEXORA intro animation.n * Cinematic NEXORA intro animation.\n * Timeline:\n * \n * Phase B: 3.8-5.0s - Cinematic fog zoom\n * Phase C: 5.0-6.2s - Homepage reveal, smooth opacity transition\n * onComplete fires exactly once (after the fade-out, or via Skip).\n */\n
+ 
 export const IntroAnimation: React.FC<IntroAnimationProps> = ({
   autoPlay = true,
   skipVisible = true,
