@@ -59,37 +59,42 @@ export const MobileIntro: React.FC<MobileIntroProps> = ({ onComplete }) => {
   // Timeline: run exactly once at mount
   useEffect(() => {
     if (reduced) {
-      // Reduced motion: show immediately, exit quickly
+      // Reduced motion: show immediately, quick exit
       setPhase('visible');
-      const t = window.setTimeout(() => setPhase('exiting'), 800);
+      const t = window.setTimeout(() => setPhase('exiting'), 500);
       timeoutRefs.current.add(t);
+      const t2 = window.setTimeout(() => {
+        if (phase === 'exiting' || phase === 'done') {
+          if (!completedRef.current) complete();
+        }
+      }, 1100);
+      timeoutRefs.current.add(t2);
       return;
     }
 
-    // Main logo enters at 0s, text logo enters at 0.3s
-    // Hold visible for ~1.0s after logos settle
-    // Exit starts at ~2.8s total (~0.8s exit)
-    // Complete at ~3.4s total
-
-    const t1 = window.setTimeout(() => setPhase('visible'), 1500);
-    const t2 = window.setTimeout(() => setPhase('exiting'), 2800);
-    const t3 = window.setTimeout(complete, 3400);
+    // Exactly 3.0 seconds total intro timeline
+    // Phase 1 (0-0.8s): main logo entrance
+    // Phase 2 (0.8-2.2s): both logos visible (text logo delayed 0.2s)
+    // Phase 3 (2.2-3.0s): exit transition + complete
+    const t1 = window.setTimeout(() => setPhase('visible'), 800);
+    const t2 = window.setTimeout(() => setPhase('exiting'), 2200);
+    const t3 = window.setTimeout(() => {
+      setPhase('done');
+      complete();
+    }, 3000);
 
     timeoutRefs.current.add(t1);
     timeoutRefs.current.add(t2);
     timeoutRefs.current.add(t3);
 
-    // Safety: if any timeout was already executed (bypassing refs),
-    // ensure completion still fires
+    // Safety fallback: if anything goes wrong, complete by 3.2s
     const safetyTimer = window.setTimeout(() => {
-      // Check if we've already moved past entering phase
-      if (phase !== 'entering') {
-        // Only complete if not already completed
-        if (!completedRef.current) {
-          complete();
-        }
+      if (phase === 'exiting' || phase === 'done') {
+        if (!completedRef.current) complete();
+      } else {
+        complete();
       }
-    }, 4000);
+    }, 3200);
 
     timeoutRefs.current.add(safetyTimer);
   }, [reduced, complete]);
