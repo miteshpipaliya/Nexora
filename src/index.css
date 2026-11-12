@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 @theme {
+  --animate-spin-slow: spin 12s linear infinite;
   --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-display: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
