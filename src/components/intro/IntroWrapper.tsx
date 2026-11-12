@@ -1,33 +1,34 @@
-import React, { Component, useCallback, useState } from 'react';
-import { IntroAnimation } from './IntroAnimation';
+import React, { useCallback, useState } from 'react';
+import { MobileIntro } from './mobile/MobileIntro';
+import { isDesktopDevice } from './device/DeviceDetector';
+import { shouldPlayIntro, markIntroCompleted } from './shared/IntroCompletion';
 import App from '../../App';
 
 /**
- * Intro Wrapper
- * - <App /> is ALWAYS mounted (same tree before, during and after the intro,
- *   so React never remounts it).
- * - IntroAnimation is a fixed overlay above it; it is removed ONLY when it
- *   calls onComplete (after its own timeline).
- * - Plays once per browser tab session. Add ?intro=1 to the URL to force it.
- * - If the intro ever crashes, it is skipped and the site still loads.
+ * IntroWrapper
+ * Central animation selector.
+ *
+ * 1. Detects device category (desktop vs mobile/tablet).
+ * 2. Renders exactly ONE intro system - never both.
+ * 3. Desktop: renders the existing cinematic IntroAnimation (with sound, fog, zoom).
+ *    Lazily loaded so desktop code is NOT downloaded on mobile.
+ * 4. Mobile/Tablet: renders the lightweight MobileIntro (silent, no fog, no zoom).
+ * 5. <App /> is ALWAYS mounted behind the intro overlay.
+ * 6. Intro is removed only when onComplete fires.
+ * 7. Plays once per browser tab session. Add ?intro=1 to force replay.
+ * 8. If the intro crashes, it is skipped and the site still loads.
  */
 
-const STORAGE_KEY = 'introPlayed';
+// Lazily load the desktop cinematic intro only on desktop devices.
+// This prevents the desktop animation bundle (including sound controller) from
+// being downloaded on mobile/tablet devices.
+const DesktopIntro = React.lazy(() =>
+  import('./IntroAnimation').then((mod) => ({
+    default: mod.IntroAnimation,
+  }))
+);
 
-const shouldPlayIntro = (): boolean => {
-  try {
-    if (new URLSearchParams(window.location.search).get('intro') === '1') return true;
-  } catch {
-    /* ignore */
-  }
-  try {
-    return sessionStorage.getItem(STORAGE_KEY) !== 'true';
-  } catch {
-    return true;
-  }
-};
-
-class IntroBoundary extends Component<
+class IntroBoundary extends React.Component<
   { onError: () => void; children: React.ReactNode },
   { failed: boolean }
 > {
@@ -45,25 +46,33 @@ class IntroBoundary extends Component<
 }
 
 export const IntroWrapper: React.FC = () => {
-  const [showIntro, setShowIntro] = useState<boolean>(shouldPlayIntro);
+  const [showIntro, setShowIntro] = useState<boolean>(shouldPlayIntro());
+  const isDesktop = isDesktopDevice();
 
   const handleComplete = useCallback(() => {
-    try {
-      sessionStorage.setItem(STORAGE_KEY, 'true');
-    } catch {
-      /* ignore */
-    }
+    markIntroCompleted();
     setShowIntro(false);
   }, []);
+
+  // Desktop: use lazy-loaded Suspense-wrapped IntroAnimation.
+  // Mobile/Tablet: use MobileIntro directly (already lightweight, no lazy needed).
+  const introElement = isDesktop ? (
+    <React.Suspense fallback={null}>
+      <IntroBoundary onError={handleComplete}>
+        <DesktopIntro autoPlay onComplete={handleComplete} />
+      </IntroBoundary>
+    </React.Suspense>
+  ) : (
+    <IntroBoundary onError={handleComplete}>
+      <MobileIntro onComplete={handleComplete} />
+    </IntroBoundary>
+  );
 
   return (
     <>
       <App />
-      {showIntro && (
-        <IntroBoundary onError={handleComplete}>
-          <IntroAnimation autoPlay onComplete={handleComplete} />
-        </IntroBoundary>
-      )}
+      {showIntro && introElement}
     </>
   );
 };
+

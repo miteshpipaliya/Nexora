@@ -53,8 +53,8 @@ const PARTICLES = (() => {
 })();
 
 // soft procedural FOG texture, violet-tinted (generated once, no image files needed)
-// larger canvas on desktop for crisp zoom; smaller on mobile to prevent crashes
-const makeFogTexture = (seed: number, size = 512): string => {
+// larger canvas for crisp zoom; 2048px prevents edge exposure during scaling
+const makeFogTexture = (seed: number, size = 2048): string => {
   if (typeof document === 'undefined') return '';
   try {
     const canvas = document.createElement('canvas');
@@ -94,7 +94,9 @@ const makeFogTexture = (seed: number, size = 512): string => {
         const dx = u - 0.5, dy = v - 0.5;
         const r = Math.sqrt(dx * dx + dy * dy) * 2;
         let a = step(0.25, 0.70, n) * 0.6; // wider, softer mist (no hard edges)
-        a *= 1 - step(0.78, 1.0, r); // softer fade at edges
+        // smooth radial fade instead of hard step to prevent visible texture edges
+        const edgeFade = 1 - Math.min(1, Math.max(0, (r - 0.62) / 0.28));
+        a *= edgeFade;
         a *= 0.30 + 0.70 * step(0.02, 0.45, r); // clear tunnel in the middle
         const shade = 0.78 + 0.22 * step(0.45, 0.85, fbm(u + 0.3, v + 0.17));
         const i = (y * size + x) * 4;
@@ -201,7 +203,7 @@ const GATE_CSS = [
 
 const MOBILE_CSS = [
   'html,body{overflow:hidden;touch-action:none;-webkit-touch-callout:none;-webkit-text-size-adjust:100%}',
-  '.nx-intro-container{height:100dvh;width:100vw;overflow:hidden;background:#000}',
+  '.nx-intro-container{height:100dvh;width:100vw;overflow:hidden;min-height:100vh;background:radial-gradient(ellipse at 50% 50%, rgba(109, 40, 217, 0.35) 0%, rgba(30, 16, 78, 0.75) 40%, rgba(8, 8, 13, 0.98) 100%)}',
   '@media (max-width: 768px) {',
   '  .nx-gate-logo{min-width:clamp(200px,45vw,340px);min-height:clamp(200px,45vw,340px);padding:clamp(44px,12vw,90px)}',
   '  .nx-gate-logo img{width:clamp(180px,32vw,280px)}',
@@ -466,7 +468,10 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
             inset: 0,
             width: '100vw',
             height: '100dvh',
-            background: '#000',
+            // Fallback for browsers that don't support dvh
+            minHeight: '100vh',
+            background:
+              'radial-gradient(ellipse at 50% 50%, rgba(109, 40, 217, 0.35) 0%, rgba(30, 16, 78, 0.75) 40%, rgba(8, 8, 13, 0.98) 100%)',
             zIndex: 9999,
             overflow: 'hidden',
             touchAction: 'none',
@@ -634,18 +639,22 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                     transition={{ delay: SCENE_S, duration: END_S - SCENE_S, times: [0, 0.25, 0.5, 0.72, 1], ease: 'linear' }}
                   />
 
-                  {/* fog banks drifting toward the camera (3 depth layers) */}
+                  {/* fog banks: 200% size + tiled so scaling/rotation never exposes a texture boundary; smooth edge fade prevents seams */}
                   {FOG_LAYERS.map((l, i) =>
                     fog[i] ? (
                       <motion.div
                         key={l.seed}
                         style={{
                           position: 'absolute',
-                          inset: 0,
+                          top: '-50%',
+                          left: '-50%',
+                          width: '200%',
+                          height: '200%',
                           pointerEvents: 'none',
                           backgroundImage: `url(${fog[i]})`,
-                          backgroundSize: 'cover',
-                          backgroundRepeat: 'no-repeat',
+                          backgroundSize: '400px 400px',
+                          backgroundRepeat: 'repeat',
+                          backgroundPosition: 'center',
                           transformOrigin: '50% 50%',
                           willChange: 'transform, opacity',
                           imageRendering: 'auto',
