@@ -8,27 +8,533 @@ interface IntroAnimationProps {
   onComplete?: () => void;
 }
 
+/* ===================== TWEAKABLE SETTINGS ===================== */
+const SCENE_S = 3.8; // logos + glow phase (seconds)
+const ZOOM_S = 1.2; // zoom into the fog (seconds)
+const REVEAL_S = 1.2; // homepage fades in smoothly (seconds)
+const FINISH_MS = Math.round((SCENE_S + ZOOM_S) * 1000); // 5000 -> reveal starts
+const ZOOM_SCALE = 22; // how far the camera flies into the scene
+// exponential keyframes = constant perceived speed of flight
+const ZOOM_KEYS = [0, 0.25, 0.5, 0.75, 1].map((p) => Math.pow(ZOOM_SCALE, p));
+const TAP_TO_ENTER = true; // true = "Tap to enter" screen first (guarantees sound). false = plays instantly, sound starts after the first tap/click
+const ASSET_VERSION = 2; // bump this number when you replace a logo file (busts the browser cache)
+const TAGLINE = 'BEYOND A CLUB  ·  THE BEGINNING OF A NEW TECH ERA';
+const MAIN_LOGO_W = 'clamp(180px, 30vw, 320px)';
+const TEXT_LOGO_W = 'clamp(260px, 44vw, 560px)';
+/* ============================================================== */
 
-/** Cinematic fog keyframes defined in index.css @keyframes */
+const EASE = [0.16, 1, 0.3, 1] as const;
+const MAIN_LOGO = `/images/intro/NEXORA%20LOGO.png?v=${ASSET_VERSION}`;
+const TEXT_LOGO = `/images/intro/nexora-bvm-text-logo.png?v=${ASSET_VERSION}`;
 
+// deterministic "random" star particles (same every render)
+const mulberry32 = (seed: number) => () => {
+  seed |= 0;
+  seed = (seed + 0x6d2b79f5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+const PARTICLES = (() => {
+  const r = mulberry32(7);
+  return Array.from({ length: 36 }, () => ({
+    left: r() * 100,
+    top: r() * 100,
+    size: 1 + r() * 2.2,
+    delay: r() * 3,
+    dur: 2.5 + r() * 3,
+    drift: 20 + r() * 40,
+  }));
+})();
+
+// soft procedural FOG texture, violet-tinted (generated once, no image files needed)
+const makeFogTexture = (seed: number, size = 256): string => {
+  if (typeof document === 'undefined') return '';
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+    const img = ctx.createImageData(size, size);
+    const rnd = mulberry32(seed);
+    const G = 64;
+    const lat = new Float32Array(G * G);
+    for (let i = 0; i < lat.length; i++) lat[i] = rnd();
+    const sm = (t: number) => t * t * (3 - 2 * t);
+    const step = (a: number, b: number, x: number) => sm(Math.min(1, Math.max(0, (x - a) / (b - a))));
+    const noise = (x: number, y: number) => {
+      const xi = Math.floor(x), yi = Math.floor(y);
+      const xf = sm(x - xi), yf = sm(y - yi);
+      const x0 = ((xi % G) + G) % G, y0 = ((yi % G) + G) % G;
+      const x1 = (x0 + 1) % G, y1 = (y0 + 1) % G;
+      const a = lat[y0 * G + x0], b = lat[y0 * G + x1], c = lat[y1 * G + x0], d = lat[y1 * G + x1];
+      const top = a + (b - a) * xf;
+      return top + (c + (d - c) * xf - top) * yf;
+    };
+    const fbm = (u: number, v: number) => {
+      let amp = 0.5, freq = 3, sum = 0, norm = 0;
+      for (let o = 0; o < 6; o++) {
+        sum += amp * noise(u * freq, v * freq);
+        norm += amp;
+        amp *= 0.5;
+        freq *= 2;
+      }
+      return sum / norm;
+    };
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const u = x / size, v = y / size;
+        const n = fbm(u, v);
+        const dx = u - 0.5, dy = v - 0.5;
+        const r = Math.sqrt(dx * dx + dy * dy) * 2;
+        let a = step(0.30, 0.66, n) * 0.8; // wide, soft mist (never a hard cloud edge)
+        a *= 1 - step(0.72, 1.0, r); // soft edges
+        a *= 0.35 + 0.65 * step(0.05, 0.4, r); // clear tunnel in the middle
+        const shade = 0.78 + 0.22 * step(0.45, 0.85, fbm(u + 0.3, v + 0.17));
+        const i = (y * size + x) * 4;
+        img.data[i] = 118 * shade + 60; // violet-lavender mist, deliberately not white
+        img.data[i + 1] = 96 * shade + 50;
+        img.data[i + 2] = 255;
+        img.data[i + 3] = Math.round(a * 255);
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return canvas.toDataURL('image/png');
+  } catch {
+    return '';
+  }
+};
+
+// three fog layers drifting toward the camera at different speeds (parallax = depth)
+const FOG_LAYERS = [
+  { seed: 11, start: 3.9, s0: 0.7, s1: 3.6, rot: -6, peak: 0.7 },
+  { seed: 23, start: 4.05, s0: 0.9, s1: 6.5, rot: 5, peak: 0.8 },
+  { seed: 37, start: 4.2, s0: 1.2, s1: 12, rot: -9, peak: 0.85 },
+];
+const END_S = SCENE_S + ZOOM_S + REVEAL_S; // 6.2
+
+type ExitMode = 'normal' | 'fast' | 'reduced';
+const rootVariants = {
+  exit: (mode: ExitMode) => ({
+    opacity: 0,
+    transition: { duration: mode === 'fast' ? 0.35 : mode === 'reduced' ? 0.5 : REVEAL_S, ease: 'easeOut' as const },
+  }),
+};
+
+const SoundIcon: React.FC<{ off?: boolean }> = ({ off }) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
+    {off ? (
+      <>
+        <line x1="22" y1="9" x2="16" y2="15" />
+        <line x1="16" y1="9" x2="22" y2="15" />
+      </>
+    ) : (
+      <>
+        <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+        <path d="M18.5 5.5a9 9 0 0 1 0 13" />
+      </>
+    )}
+  </svg>
+);
+
+const glassButton: React.CSSProperties = {
+  background: 'rgba(0, 0, 0, 0.5)',
+  border: '1px solid rgba(255, 255, 255, 0.2)',
+  color: '#fff',
+  padding: '8px 16px',
+  borderRadius: 8,
+  fontSize: 14,
+  cursor: 'pointer',
+  backdropFilter: 'blur(10px)',
+};
+
+const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
+  <>
+    <motion.div
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(60% 50% at 20% 30%, rgba(109, 40, 217, 0.22), transparent 70%)' }}
+      animate={{ x: [0, 40, 0] }}
+      transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
+    />
+    <motion.div
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(55% 45% at 80% 72%, rgba(139, 92, 246, 0.18), transparent 70%)' }}
+      animate={{ x: [0, -40, 0] }}
+      transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+    />
+    {!reduced &&
+      PARTICLES.map((p, i) => (
+        <motion.span
+          key={i}
+          style={{ position: 'absolute', left: `${p.left}%`, top: `${p.top}%`, width: p.size, height: p.size, borderRadius: '50%', background: '#C4B5FD', pointerEvents: 'none' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 0.85, 0], y: [0, -p.drift] }}
+          transition={{ duration: p.dur, delay: p.delay, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      ))}
+  </>
+);
+
+/**
+ * Cinematic NEXORA intro (fixed overlay above the always-mounted <App />).
+ * Timeline: 0-3.8s logos + glow | 3.8-5.0s zoom into the fog |
+ * 5.0-6.2s homepage fades in. onComplete fires exactly once.
+ */
 export const IntroAnimation: React.FC<IntroAnimationProps> = ({
   autoPlay = true,
   skipVisible = true,
   onComplete,
 }) => {
-  // Placeholder - animation implementation in progress
-};
-const MAIN_LOGO = '/images/intro/NEXORA%20LOGO.png';
-const TEXT_LOGO = '/images/intro/nexora-bvm-text-logo.png';
+  const reduced =
+    typeof window !== 'undefined' &&
+    !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const gate = TAP_TO_ENTER && !reduced && autoPlay;
 
-/**
- * Cinematic NEXORA intro animation.
-* Fixed overlay above the always-mounted <App />.
- 
- * Timeline:
- * Phase A: 0-3.8s - Both logos, atmospheric glow, particles, sync with sound
- * Phase B: 3.8-5.0s - Cinematic fog zoom
- * Phase C: 5.0-6.2s - Homepage reveal, smooth opacity transition
- * onComplete fires exactly once (after the fade-out, or via Skip).
- */
- 
+  const [started, setStarted] = useState(!gate);
+  const [visible, setVisible] = useState(true);
+  const [exitMode, setExitMode] = useState<ExitMode>(reduced ? 'reduced' : 'normal');
+  const [fog, setFog] = useState<string[]>([]);
+  const finishedRef = useRef(false);
+  const completedRef = useRef(false);
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
+  const { unlock, playSound, fadeOutAndStop, stopLater, toggleMute, muted, audioRunning } = useSound({
+    eager: !gate && !reduced,
+    enabled: !reduced,
+  });
+
+  // generate the fog textures once (during the "tap to enter" screen)
+  useEffect(() => {
+    if (reduced) return;
+    setFog(FOG_LAYERS.map((l) => makeFogTexture(l.seed)));
+  }, [reduced]);
+
+  const complete = useCallback(() => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    onCompleteRef.current?.();
+  }, []);
+
+  const finish = useCallback(
+    (fast = false) => {
+      if (finishedRef.current) return;
+      finishedRef.current = true;
+      if (fast) {
+        setExitMode('fast');
+        fadeOutAndStop(300);
+      } else {
+        stopLater(2300); // let the "arrive" chord and wind ring out
+      }
+      setVisible(false); // reveal: overlay fades out, AnimatePresence then calls complete()
+      window.setTimeout(complete, fast ? 800 : reduced ? 1000 : 2600); // safety net if the exit animation never reports back
+    },
+    [fadeOutAndStop, stopLater, complete, reduced]
+  );
+
+  const handleEnter = () => {
+    unlock(); // must happen inside the click so the browser allows sound
+    setStarted(true);
+  };
+
+  // timeline: sounds + auto finish (starts when the intro starts)
+  useEffect(() => {
+    if (!autoPlay || !started) return;
+    const timers: number[] = [];
+    const at = (ms: number, fn: () => void) => timers.push(window.setTimeout(fn, ms));
+    if (!reduced) {
+      at(0, () => playSound('drone'));
+      at(380, () => playSound('whoosh'));
+      at(1400, () => playSound('impact'));
+      at(2500, () => playSound('shimmer'));
+      at(3700, () => playSound('warp'));
+      at(4800, () => playSound('wind'));
+      at(FINISH_MS, () => playSound('arrive'));
+    }
+    at(reduced ? 1200 : FINISH_MS, () => finish());
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [autoPlay, started, reduced, finish, playSound]);
+
+  const topInset = 'max(20px, env(safe-area-inset-top))';
+
+  return (
+    <AnimatePresence onExitComplete={complete} custom={exitMode}>
+      {visible && (
+        <motion.div
+          key="nexora-intro"
+          role="presentation"
+          custom={exitMode}
+          variants={rootVariants}
+          initial={{ opacity: 1 }}
+          exit="exit"
+          style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 9999, overflow: 'hidden' }}
+        >
+          {!started ? (
+            /* ---------------- "TAP TO ENTER" gate ---------------- */
+            <>
+              <Backdrop reduced={reduced} />
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 28,
+                  padding: 24,
+                }}
+              >
+                <motion.img
+                  src={MAIN_LOGO}
+                  alt="NEXORA"
+                  draggable={false}
+                  style={{ width: 'clamp(140px, 22vw, 220px)', height: 'auto', filter: 'drop-shadow(0 0 24px rgba(139,92,246,0.55))' }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: [0.65, 1, 0.65], scale: [0.97, 1.03, 0.97] }}
+                  transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+                />
+                <motion.button
+                  type="button"
+                  autoFocus
+                  onClick={handleEnter}
+                  aria-label="Enter NEXORA with sound"
+                  style={{
+                    ...glassButton,
+                    padding: '14px 36px',
+                    fontSize: 15,
+                    letterSpacing: '0.35em',
+                    borderColor: 'rgba(167, 139, 250, 0.6)',
+                    boxShadow: '0 0 28px rgba(139, 92, 246, 0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                  }}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3, duration: 0.6 }}
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.97 }}
+                >
+                  <SoundIcon /> ENTER
+                </motion.button>
+                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12, letterSpacing: '0.2em', margin: 0 }}>
+                  SOUND ON · BEST WITH HEADPHONES
+                </p>
+              </div>
+            </>
+          ) : (
+            /* ---------------- the cinematic sequence ---------------- */
+            <>
+              {/* CAMERA: everything in here flies toward the viewer during the zoom */}
+              <motion.div
+                style={{ position: 'absolute', inset: 0, transformOrigin: '50% 50%', willChange: 'transform, opacity' }}
+                initial={{ scale: 1, opacity: 1 }}
+                animate={reduced ? undefined : { scale: ZOOM_KEYS, opacity: [1, 1, 0] }}
+                transition={{
+                  scale: { delay: SCENE_S, duration: ZOOM_S, times: [0, 0.25, 0.5, 0.75, 1], ease: 'linear' },
+                  opacity: { delay: SCENE_S, duration: ZOOM_S, times: [0, 0.6, 1], ease: 'linear' },
+                }}
+              >
+                <Backdrop reduced={reduced} />
+
+                {/* impact flash + shockwave rings */}
+                {!reduced && (
+                  <>
+                    <motion.div
+                      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(circle at 50% 50%, rgba(196,181,253,0.55), transparent 55%)' }}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: [0, 0.5, 0] }}
+                      transition={{ delay: 1.4, duration: 0.7, ease: 'easeOut' }}
+                    />
+                    {[0, 0.18].map((d, i) => (
+                      <div key={i} style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                        <motion.div
+                          style={{ width: 300, height: 300, borderRadius: '50%', border: '1.5px solid rgba(167,139,250,0.75)' }}
+                          initial={{ scale: 0.2, opacity: 0 }}
+                          animate={{ scale: 3.4, opacity: [0, 0.8, 0] }}
+                          transition={{ delay: 1.4 + d, duration: 1.7, ease: 'easeOut' }}
+                        />
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {/* central purple glow */}
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                  <motion.div
+                    style={{ width: 640, height: 640, maxWidth: '95vw', maxHeight: '95vw', background: 'radial-gradient(circle, rgba(139, 92, 246, 0.38) 0%, transparent 65%)' }}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: [0, 0.9, 0.45, 0.85, 0.5], scale: [0.8, 1.15, 1, 1.12, 1.05] }}
+                    transition={{ duration: SCENE_S, delay: 0.3, ease: 'easeInOut' }}
+                  />
+                </div>
+
+                {/* logos + tagline */}
+                <div
+                  style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, pointerEvents: 'none' }}
+                >
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 36 }}>
+                    {/* main logo with orbit rings */}
+                    <motion.div
+                      style={{ position: 'relative', width: MAIN_LOGO_W, flex: '0 0 auto' }}
+                      animate={reduced ? undefined : { scale: [1, 1.035, 1] }}
+                      transition={{ delay: 1.5, duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                    >
+                      {!reduced && (
+                        <>
+                          <motion.div
+                            style={{ position: 'absolute', inset: '-9%', borderRadius: '50%', border: '2px solid transparent', borderTopColor: 'rgba(196,181,253,0.95)', borderRightColor: 'rgba(139,92,246,0.35)' }}
+                            initial={{ opacity: 0, rotate: 0 }}
+                            animate={{ opacity: 1, rotate: 360 }}
+                            transition={{ opacity: { delay: 1.4, duration: 0.6 }, rotate: { repeat: Infinity, duration: 3.2, ease: 'linear' } }}
+                          />
+                          <motion.div
+                            style={{ position: 'absolute', inset: '-18%', borderRadius: '50%', border: '1.5px solid transparent', borderBottomColor: 'rgba(167,139,250,0.7)', borderLeftColor: 'rgba(139,92,246,0.25)' }}
+                            initial={{ opacity: 0, rotate: 0 }}
+                            animate={{ opacity: 1, rotate: -360 }}
+                            transition={{ opacity: { delay: 1.6, duration: 0.6 }, rotate: { repeat: Infinity, duration: 5.2, ease: 'linear' } }}
+                          />
+                        </>
+                      )}
+                      <motion.img
+                        src={MAIN_LOGO}
+                        alt="NEXORA logo"
+                        draggable={false}
+                        style={{ display: 'block', width: '100%', height: 'auto', filter: 'drop-shadow(0 0 26px rgba(139,92,246,0.6))' }}
+                        initial={{ x: reduced ? 0 : 160, opacity: 0, scale: reduced ? 1 : 0.9 }}
+                        animate={{ x: 0, opacity: 1, scale: 1 }}
+                        transition={{ delay: reduced ? 0 : 0.4, duration: reduced ? 0.5 : 1.0, ease: EASE }}
+                      />
+                    </motion.div>
+
+                    {/* text logo with a light sweep clipped to the letters */}
+                    <div style={{ position: 'relative', width: TEXT_LOGO_W, flex: '0 0 auto' }}>
+                      <motion.img
+                        src={TEXT_LOGO}
+                        alt="NEXORA"
+                        draggable={false}
+                        style={{ display: 'block', width: '100%', height: 'auto' }}
+                        initial={{ x: reduced ? 0 : -160, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        transition={{ delay: reduced ? 0 : 0.4, duration: reduced ? 0.5 : 1.0, ease: EASE }}
+                      />
+                      {!reduced && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            overflow: 'hidden',
+                            WebkitMaskImage: `url("${TEXT_LOGO}")`,
+                            maskImage: `url("${TEXT_LOGO}")`,
+                            WebkitMaskSize: '100% 100%',
+                            maskSize: '100% 100%',
+                            WebkitMaskRepeat: 'no-repeat',
+                            maskRepeat: 'no-repeat',
+                          }}
+                        >
+                          <motion.div
+                            style={{ position: 'absolute', top: 0, left: 0, width: '45%', height: '100%', background: 'linear-gradient(100deg, transparent 0%, rgba(255,255,255,0.9) 50%, transparent 100%)' }}
+                            initial={{ x: '-110%' }}
+                            animate={{ x: '330%' }}
+                            transition={{ delay: 2.1, duration: 1.2, ease: 'easeInOut' }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {!reduced && (
+                    <motion.p
+                      style={{ marginTop: 34, textAlign: 'center', color: '#DDD6FE', fontSize: 'clamp(11px, 1.6vw, 15px)', fontFamily: 'var(--font-display, system-ui, sans-serif)', fontWeight: 500, textShadow: '0 0 18px rgba(139,92,246,0.8)' }}
+                      initial={{ opacity: 0, letterSpacing: '0.7em' }}
+                      animate={{ opacity: 1, letterSpacing: '0.3em' }}
+                      transition={{ delay: 2.3, duration: 1.4, ease: 'easeOut' }}
+                    >
+                      {TAGLINE}
+                    </motion.p>
+                  )}
+                </div>
+              </motion.div>
+
+              {/* ===== FOG (3.8s - 6.2s): dark violet mist the camera flies into. NOT inside the camera ===== */}
+              {!reduced && (
+                <>
+                  {/* deep violet haze: thickens while we fly in, thins out for the homepage */}
+                  <motion.div
+                    style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse at 50% 50%, rgba(76,42,160,0.55) 0%, rgba(30,16,78,0.85) 55%, rgba(12,6,34,0.95) 100%)' }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: [0, 0.75, 0.9, 0.7, 0] }}
+                    transition={{ delay: SCENE_S, duration: END_S - SCENE_S, times: [0, 0.25, 0.5, 0.72, 1], ease: 'linear' }}
+                  />
+
+                  {/* fog banks drifting toward the camera (3 depth layers) */}
+                  {FOG_LAYERS.map((l, i) =>
+                    fog[i] ? (
+                      <motion.div
+                        key={l.seed}
+                        style={{ position: 'absolute', inset: '-5%', pointerEvents: 'none', backgroundImage: `url(${fog[i]})`, backgroundSize: '100% 100%', transformOrigin: '50% 50%', willChange: 'transform, opacity' }}
+                        initial={{ opacity: 0, scale: l.s0, rotate: 0 }}
+                        animate={{ opacity: [0, l.peak, l.peak * 0.9, 0], scale: l.s1, rotate: l.rot }}
+                        transition={{ delay: l.start, duration: END_S - l.start, ease: [0.4, 0, 0.9, 0.6], opacity: { delay: l.start, duration: END_S - l.start, times: [0, 0.3, 0.62, 1], ease: 'linear' } }}
+                      />
+                    ) : null
+                  )}
+                </>
+              )}
+
+              {/* progress bar */}
+              {!reduced && (
+                <motion.div
+                  style={{ position: 'absolute', left: 0, bottom: 0, height: 2, width: '100%', transformOrigin: 'left', background: 'linear-gradient(90deg, #6D28D9, #A78BFA, #C4B5FD)' }}
+                  initial={{ scaleX: 0 }}
+                  animate={{ scaleX: 1 }}
+                  transition={{ duration: FINISH_MS / 1000, ease: 'linear' }}
+                />
+              )}
+
+              {/* tap-for-sound hint (only if the browser is still blocking audio) */}
+              {!reduced && !audioRunning && !muted && (
+                <motion.div
+                  style={{ position: 'absolute', left: 0, right: 0, bottom: 'max(28px, env(safe-area-inset-bottom))', textAlign: 'center', color: 'rgba(255,255,255,0.6)', fontSize: 12, letterSpacing: '0.2em', pointerEvents: 'none' }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: [0, 1, 0.5, 1] }}
+                  transition={{ delay: 0.8, duration: 2 }}
+                >
+                  TAP ANYWHERE FOR SOUND
+                </motion.div>
+              )}
+            </>
+          )}
+
+          {/* mute toggle (top-left) */}
+          {!reduced && started && (
+            <button
+              type="button"
+              onClick={toggleMute}
+              aria-label={muted ? 'Unmute intro sound' : 'Mute intro sound'}
+              title={muted ? 'Unmute' : 'Mute'}
+              style={{ ...glassButton, position: 'absolute', top: topInset, left: 20, padding: '8px 10px', zIndex: 2, display: 'flex' }}
+            >
+              <SoundIcon off={muted} />
+            </button>
+          )}
+
+          {/* skip (top-right) */}
+          {skipVisible && (
+            <button
+              type="button"
+              onClick={() => finish(true)}
+              aria-label="Skip intro"
+              title="Skip intro"
+              style={{ ...glassButton, position: 'absolute', top: topInset, right: 20, zIndex: 2 }}
+            >
+              Skip
+            </button>
+          )}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
