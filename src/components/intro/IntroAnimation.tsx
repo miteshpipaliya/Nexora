@@ -30,8 +30,7 @@ const DESKTOP_PARTICLE_COUNT = 36;
 const EASE = [0.16, 1, 0.3, 1] as const;
 const MAIN_LOGO = `/images/intro/NEXORA%20LOGO.png?v=${ASSET_VERSION}`;
 const TEXT_LOGO = `/images/intro/nexora-bvm-text-logo.png?v=${ASSET_VERSION}`;
-
-// deterministic "random" star particles (same every render)
+// deterministic "random" star particles (desktop atmospheric background)
 const mulberry32 = (seed: number) => () => {
   seed |= 0;
   seed = (seed + 0x6d2b79f5) | 0;
@@ -39,16 +38,19 @@ const mulberry32 = (seed: number) => () => {
   t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
-const PARTICLES = (() => {
-  const isMobile = typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 768px)').matches;
+
+// Desktop star particles for the atmospheric background
+const DESKTOP_PARTICLES = (() => {
   const r = mulberry32(7);
-  return Array.from({ length: isMobile ? MOBILE_PARTICLE_COUNT : DESKTOP_PARTICLE_COUNT }, () => ({
+  return Array.from({ length: 180 }, () => ({
     left: r() * 100,
     top: r() * 100,
-    size: 1 + r() * 2.2,
-    delay: r() * 3,
-    dur: 2.5 + r() * 3,
-    drift: 20 + r() * 40,
+    size: 0.6 + r() * 1.8,
+    delay: r() * 4,
+    dur: 18 + r() * 30,
+    drift: 15 + r() * 25,
+    alpha: 0.3 + r() * 0.5,
+    twinkle: 2 + r() * 4,
   }));
 })();
 
@@ -165,24 +167,60 @@ const glassButton: React.CSSProperties = {
 
 const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
   <>
+    {/* Deep purple-black base background for full viewport coverage */}
     <motion.div
-      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(60% 50% at 20% 30%, rgba(109, 40, 217, 0.22), transparent 70%)' }}
-      animate={{ x: [0, 40, 0] }}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        pointerEvents: 'none',
+        background: 'radial-gradient(ellipse at 50% 50%, rgba(109, 40, 217, 0.15) 0%, rgba(30, 16, 78, 0.5) 40%, rgba(8, 8, 13, 0.75) 100%)',
+      }}
+    />
+    {/* Ambient purple glow drifting left */}
+    <motion.div
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(40% 50% at 15% 40%, rgba(109, 40, 217, 0.12), transparent 70%)' }}
+      animate={{ x: [0, 30, 0] }}
+      transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+    />
+    {/* Ambient lavender glow drifting right */}
+    <motion.div
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(45% 45% at 85% 65%, rgba(167, 139, 250, 0.1), transparent 70%)' }}
+      animate={{ x: [0, -30, 0] }}
       transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
     />
+    {/* Subtle nebula overlay for depth */}
     <motion.div
-      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(55% 45% at 80% 72%, rgba(139, 92, 246, 0.18), transparent 70%)' }}
-      animate={{ x: [0, -40, 0] }}
-      transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse at 50% 50%, rgba(139, 92, 246, 0.06) 0%, transparent 60%)' }}
     />
+    {/* Star particles */}
     {!reduced &&
-      PARTICLES.map((p, i) => (
+      DESKTOP_PARTICLES.map((p, i) => (
         <motion.span
           key={i}
-          style={{ position: 'absolute', left: `${p.left}%`, top: `${p.top}%`, width: p.size, height: p.size, borderRadius: '50%', background: '#C4B5FD', pointerEvents: 'none' }}
+          style={{
+            position: 'absolute',
+            left: `${p.left}%`,
+            top: `${p.top}%`,
+            width: p.size,
+            height: p.size,
+            borderRadius: '50%',
+            background: '#C4B5FD',
+            opacity: p.alpha * 0.8,
+            boxShadow: p.size > 1 ? '0 0 6px rgba(196,181,253,0.4)' : 'none',
+          }}
           initial={{ opacity: 0 }}
-          animate={{ opacity: [0, 0.85, 0], y: [0, -p.drift] }}
-          transition={{ duration: p.dur, delay: p.delay, repeat: Infinity, ease: 'easeInOut' }}
+          animate={{
+            opacity: [0, p.alpha * 0.8, 0],
+            y: [0, p.drift * 0.2],
+            scale: [0.8, 1.2, 0.9],
+          }}
+          transition={{
+            duration: p.dur,
+            delay: p.delay,
+            repeat: Infinity,
+            ease: 'easeInOut',
+            opacity: { duration: p.dur, delay: p.delay, repeat: Infinity, ease: 'easeInOut' },
+          }}
         />
       ))}
   </>
