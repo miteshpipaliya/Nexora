@@ -16,7 +16,10 @@ const FINISH_MS = Math.round((SCENE_S + ZOOM_S) * 1000); // 5000 -> reveal start
 const ZOOM_SCALE = 22; // how far the camera flies into the scene
 // exponential keyframes = constant perceived speed of flight
 const ZOOM_KEYS = [0, 0.25, 0.5, 0.75, 1].map((p) => Math.pow(ZOOM_SCALE, p));
-const SHOW_TAP_FOR_SOUND_HINT = true; // small "TAP ANYWHERE FOR SOUND" line, shown ONLY if the browser blocks autoplay audio. false = never show it
+const SHOW_TAP_FOR_SOUND_HINT = false; // the logo click already unlocks sound. true = also show a "TAP ANYWHERE FOR SOUND" line if the browser still blocks audio
+const TYPING_DELAY_MS = 800; // wait before the instruction line starts typing
+const TYPING_SPEED_MS = 55; // time per typed character (about 2 seconds for the whole line)
+const LAUNCH_MS = 380; // length of the logo flash after the click, before the intro starts
 const ASSET_VERSION = 2; // bump this number when you replace a logo file (busts the browser cache)
 const TAGLINE = 'BEYOND A CLUB  ·  THE BEGINNING OF A NEW TECH ERA';
 const MAIN_LOGO_W = 'clamp(180px, 30vw, 320px)';
@@ -174,6 +177,152 @@ const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
   </>
 );
 
+/* NX_START_GATE_V6 - "click the logo to start" screen */
+const isTouchDevice = (): boolean =>
+  typeof window !== 'undefined' && !!window.matchMedia?.('(hover: none) and (pointer: coarse)').matches;
+
+const GATE_CSS = [
+  '.nx-gate-logo{-webkit-tap-highlight-color:transparent;outline:none}',
+  '.nx-gate-halo{transition:filter .35s ease}',
+  '.nx-gate-logo:hover .nx-gate-halo,.nx-gate-logo:focus-visible .nx-gate-halo{filter:brightness(1.7) saturate(1.2)}',
+  '.nx-gate-logo:focus-visible{outline:2px solid rgba(196,181,253,.75);outline-offset:4px}',
+].join('');
+
+const TypingLine: React.FC<{ text: string }> = ({ text }) => {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let i = 0;
+    let iv: number | undefined;
+    const t = window.setTimeout(() => {
+      iv = window.setInterval(() => {
+        i += 1;
+        setCount(i);
+        if (i >= text.length && iv !== undefined) window.clearInterval(iv);
+      }, TYPING_SPEED_MS);
+    }, TYPING_DELAY_MS);
+    return () => {
+      window.clearTimeout(t);
+      if (iv !== undefined) window.clearInterval(iv);
+    };
+  }, [text]);
+
+  const font: React.CSSProperties = {
+    fontFamily: "ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace",
+    fontSize: 'clamp(10px, 2.8vw, 15px)',
+    letterSpacing: '0.2em',
+    whiteSpace: 'pre-wrap',
+    color: '#DDD6FE',
+    textShadow: '0 0 16px rgba(139,92,246,0.85)',
+  };
+  return (
+    <div role="status" aria-label={text} style={{ display: 'inline-grid', ...font }}>
+      {/* invisible full-length copy reserves the width so the line never shifts while typing */}
+      <span aria-hidden="true" style={{ gridArea: '1 / 1', visibility: 'hidden' }}>{'> ' + text + ' '}</span>
+      <span aria-hidden="true" style={{ gridArea: '1 / 1', textAlign: 'left' }}>
+        <span style={{ color: '#A78BFA' }}>{'> '}</span>
+        {text.slice(0, count)}
+        <motion.span
+          style={{ display: 'inline-block', width: '0.55em', height: '1.05em', marginLeft: '0.15em', verticalAlign: '-0.15em', background: '#C4B5FD', boxShadow: '0 0 10px rgba(196,181,253,0.9)' }}
+          animate={{ opacity: [1, 1, 0, 0] }}
+          transition={{ duration: 1, repeat: Infinity, times: [0, 0.5, 0.5, 1], ease: 'linear' }}
+        />
+      </span>
+    </div>
+  );
+};
+
+const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () => void }> = ({ reduced, launching, onStart }) => {
+  const [touch] = useState(isTouchDevice);
+  const label = (touch ? 'TAP' : 'CLICK') + ' LOGO TO START EXPERIENCE';
+
+  // Enter / Space also starts it (keyboard users)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' && e.key !== ' ' && e.code !== 'Space') return;
+      const el = e.target as HTMLElement | null;
+      const btn = el && el.closest ? el.closest('button') : null;
+      if (btn && !btn.classList.contains('nx-gate-logo')) return; // e.g. the Skip button handles its own key
+      e.preventDefault();
+      onStart();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onStart]);
+
+  return (
+    <>
+      <style>{GATE_CSS}</style>
+      <Backdrop reduced={reduced} />
+
+      {/* white-violet flash when the logo is clicked */}
+      {launching && (
+        <motion.div
+          style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1, background: 'radial-gradient(circle at 50% 45%, rgba(237,233,254,0.95), rgba(139,92,246,0.4) 38%, transparent 70%)' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 0.8, 0] }}
+          transition={{ duration: LAUNCH_MS / 1000, ease: 'easeOut' }}
+        />
+      )}
+
+      <div
+        style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 'clamp(4px, 1.5vh, 16px)', padding: 24 }}
+      >
+        <motion.button
+          type="button"
+          className="nx-gate-logo"
+          onClick={onStart}
+          aria-label="Start NEXORA experience"
+          style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'clamp(40px, 9vw, 80px)', background: 'transparent', border: 'none', borderRadius: '50%', cursor: 'pointer' }}
+          initial={{ opacity: 0, scale: 0.88 }}
+          animate={launching ? { opacity: 1, scale: 1.25 } : { opacity: 1, scale: 1 }}
+          transition={launching ? { duration: LAUNCH_MS / 1000, ease: 'easeIn' } : { duration: 1.2, ease: EASE }}
+          whileHover={launching ? undefined : { scale: 1.06 }}
+          whileTap={launching ? undefined : { scale: 0.96 }}
+        >
+          {/* soft breathing halo behind the logo */}
+          <div className="nx-gate-halo" style={{ position: 'absolute', inset: '-6%', pointerEvents: 'none' }}>
+            <motion.div
+              style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,92,246,0.55) 0%, rgba(109,40,217,0.25) 38%, transparent 68%)' }}
+              animate={{ scale: [1, 1.14, 1], opacity: [0.55, 1, 0.55] }}
+              transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+            />
+          </div>
+
+          {/* one thin ring that expands and fades (sonar pulse) */}
+          <motion.span
+            style={{ position: 'absolute', inset: '14%', borderRadius: '50%', border: '1px solid rgba(196,181,253,0.55)', pointerEvents: 'none' }}
+            animate={{ scale: [0.9, 1.45], opacity: [0.55, 0] }}
+            transition={{ duration: 3.2, repeat: Infinity, ease: 'easeOut' }}
+          />
+
+          <motion.img
+            src={MAIN_LOGO}
+            alt=""
+            draggable={false}
+            style={{ position: 'relative', width: 'clamp(150px, 24vw, 250px)', height: 'auto', pointerEvents: 'none', userSelect: 'none' }}
+            animate={
+              launching
+                ? { filter: 'drop-shadow(0 0 60px rgba(237,233,254,1)) brightness(1.8)' }
+                : {
+                    filter: [
+                      'drop-shadow(0 0 14px rgba(139,92,246,0.45)) brightness(1)',
+                      'drop-shadow(0 0 36px rgba(167,139,250,0.9)) brightness(1.12)',
+                      'drop-shadow(0 0 14px rgba(139,92,246,0.45)) brightness(1)',
+                    ],
+                  }
+            }
+            transition={launching ? { duration: LAUNCH_MS / 1000, ease: 'easeOut' } : { duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        </motion.button>
+
+        <motion.div animate={{ opacity: launching ? 0 : 1 }} transition={{ duration: 0.2 }}>
+          <TypingLine text={label} />
+        </motion.div>
+      </div>
+    </>
+  );
+};
+
 /**
  * Cinematic NEXORA intro (fixed overlay above the always-mounted <App />).
  * Timeline: 0-3.8s logos + glow | 3.8-5.0s zoom into the fog |
@@ -187,6 +336,10 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
   const reduced =
     typeof window !== 'undefined' &&
     !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const gate = !reduced && autoPlay; // show the "click the logo" screen first
+  const [started, setStarted] = useState(!gate);
+  const [launching, setLaunching] = useState(false);
+  const launchingRef = useRef(false);
   const [visible, setVisible] = useState(true);
   const [exitMode, setExitMode] = useState<ExitMode>(reduced ? 'reduced' : 'normal');
   const [fog, setFog] = useState<string[]>([]);
@@ -199,7 +352,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
-  const { playSound, fadeOutAndStop, stopLater, toggleMute, muted, audioRunning } = useSound({
+  const { unlock, playSound, fadeOutAndStop, stopLater, toggleMute, muted, audioRunning } = useSound({
     eager: !reduced,
     enabled: !reduced,
   });
@@ -232,14 +385,21 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
     [fadeOutAndStop, stopLater, complete, reduced]
   );
 
+  const handleStart = useCallback(() => {
+    if (launchingRef.current) return;
+    launchingRef.current = true;
+    unlock(); // must run inside the click/key press so the browser allows sound
+    setLaunching(true);
+    window.setTimeout(() => setStarted(true), LAUNCH_MS);
+  }, [unlock]);
+
   // timeline: sounds + auto finish (starts when the intro starts)
   useEffect(() => {
-    if (!autoPlay) return;
+    if (!autoPlay || !started) return;
     introStartRef.current = performance.now();
     const timers: number[] = [];
     const at = (ms: number, fn: () => void) => timers.push(window.setTimeout(fn, ms));
     if (!reduced) {
-      at(0, () => playSound('drone'));
       at(380, () => playSound('whoosh'));
       at(1400, () => playSound('impact'));
       at(2500, () => playSound('shimmer'));
@@ -249,15 +409,15 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
     }
     at(reduced ? 1200 : FINISH_MS, () => finish());
     return () => timers.forEach((t) => window.clearTimeout(t));
-  }, [autoPlay, reduced, finish, playSound]);
+  }, [autoPlay, started, reduced, finish, playSound]);
 
-  // browsers may block sound until the first tap/click/key. If audio starts a moment late, bring in the ambient bed so it is never silent.
+  // starts the ambient bed once the intro is running AND audio is unlocked (immediately after the logo click, or a moment later if the browser is slow to resume)
   useEffect(() => {
-    if (!audioRunning || reduced || caughtUpRef.current) return;
+    if (!started || !audioRunning || reduced || caughtUpRef.current) return;
     caughtUpRef.current = true;
     const elapsed = performance.now() - introStartRef.current;
-    if (elapsed > 120 && elapsed < FINISH_MS - 400) playSound('drone');
-  }, [audioRunning, reduced, playSound]);
+    if (elapsed < FINISH_MS - 400) playSound('drone');
+  }, [started, audioRunning, reduced, playSound]);
 
   const topInset = 'max(20px, env(safe-area-inset-top))';
 
@@ -273,6 +433,9 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
           exit="exit"
           style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 9999, overflow: 'hidden' }}
         >
+          {!started ? (
+            <StartGate reduced={reduced} launching={launching} onStart={handleStart} />
+          ) : (
           <>
               {/* CAMERA: everything in here flies toward the viewer during the zoom */}
               <motion.div
@@ -453,9 +616,10 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                 </motion.div>
               )}
             </>
+          )}
 
           {/* mute toggle (top-left) */}
-          {!reduced && (
+          {!reduced && started && (
             <button
               type="button"
               onClick={toggleMute}
