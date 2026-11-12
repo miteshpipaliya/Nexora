@@ -1,31 +1,14 @@
-import React, { useCallback, useState } from 'react';
-import { MobileIntro } from './mobile/MobileIntro';
+import React, { useCallback, useEffect, useState } from 'react';
 import { isDesktopDevice } from './device/DeviceDetector';
 import { shouldPlayIntro, markIntroCompleted } from './shared/IntroCompletion';
 import App from '../../App';
 
 /**
- * IntroWrapper
- * Central animation selector.
- *
- * 1. Detects device category (desktop vs mobile/tablet).
- * 2. Renders exactly ONE intro system - never both.
- * 3. Desktop: renders the existing cinematic IntroAnimation (with sound, fog, zoom).
- *    Lazily loaded so desktop code is NOT downloaded on mobile.
- * 4. Mobile/Tablet: renders the lightweight MobileIntro (silent, no fog, no zoom).
- * 5. <App /> is ALWAYS mounted behind the intro overlay.
- * 6. Intro is removed only when onComplete fires.
- * 7. Plays once per browser tab session. Add ?intro=1 to force replay.
- * 8. If the intro crashes, it is skipped and the site still loads.
+ * Desktop-only cinematic experience. Phones and tablets go directly to App:
+ * no mobile overlay, countdown, intro audio, or navigation interruption.
  */
-
-// Lazily load the desktop cinematic intro only on desktop devices.
-// This prevents the desktop animation bundle (including sound controller) from
-// being downloaded on mobile/tablet devices.
 const DesktopIntro = React.lazy(() =>
-  import('./IntroAnimation').then((mod) => ({
-    default: mod.IntroAnimation,
-  }))
+  import('./IntroAnimation').then((mod) => ({ default: mod.IntroAnimation }))
 );
 
 class IntroBoundary extends React.Component<
@@ -33,46 +16,51 @@ class IntroBoundary extends React.Component<
   { failed: boolean }
 > {
   state = { failed: false };
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
+  static getDerivedStateFromError() { return { failed: true }; }
   componentDidCatch(error: unknown) {
-    console.error('[Intro] crashed, skipping intro:', error);
+    console.error('[Intro] failed; recovering to homepage:', error);
     this.props.onError();
   }
-  render() {
-    return this.state.failed ? null : this.props.children;
-  }
+  render() { return this.state.failed ? null : this.props.children; }
 }
 
 export const IntroWrapper: React.FC = () => {
-  const [showIntro, setShowIntro] = useState<boolean>(shouldPlayIntro());
-  const isDesktop = isDesktopDevice();
+  const [desktop] = useState(() => isDesktopDevice());
+  const [showIntro, setShowIntro] = useState(() => desktop && shouldPlayIntro());
 
   const handleComplete = useCallback(() => {
     markIntroCompleted();
     setShowIntro(false);
   }, []);
 
-  // Desktop: use lazy-loaded Suspense-wrapped IntroAnimation.
-  // Mobile/Tablet: use MobileIntro directly (already lightweight, no lazy needed).
-  const introElement = isDesktop ? (
-    <React.Suspense fallback={null}>
+  useEffect(() => {
+    if (!showIntro) return;
+    // Scoped scroll locking: always restore the original styles after the intro.
+    const previousOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.documentElement.style.overflow = previousOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, [showIntro]);
+
+  // No intro DOM, no lazy intro asset loading, and no full-screen overlays on mobile/tablet.
+  if (!showIntro) return <App />;
+
+  // Do not mount the homepage until the desktop intro ends. This also
+  // eliminates the first-frame homepage flash while Suspense loads.
+  return (
+    <React.Suspense fallback={
+      <div
+        aria-label="Loading NEXORA intro"
+        style={{ position: 'fixed', inset: 0, background: '#080313', zIndex: 9999 }}
+      />
+    }>
       <IntroBoundary onError={handleComplete}>
         <DesktopIntro autoPlay onComplete={handleComplete} />
       </IntroBoundary>
     </React.Suspense>
-  ) : (
-    <IntroBoundary onError={handleComplete}>
-      <MobileIntro onComplete={handleComplete} />
-    </IntroBoundary>
-  );
-
-  return (
-    <>
-      <App />
-      {showIntro && introElement}
-    </>
   );
 };
-
