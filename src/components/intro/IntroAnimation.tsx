@@ -173,7 +173,7 @@ const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
         position: 'absolute',
         inset: 0,
         pointerEvents: 'none',
-        background: 'radial-gradient(ellipse at 50% 50%, rgba(109, 40, 217, 0.15) 0%, rgba(30, 16, 78, 0.5) 40%, rgba(8, 8, 13, 0.75) 100%)',
+        background: 'radial-gradient(ellipse at 50% 50%, #211044 0%, #100921 48%, #080313 100%)',
       }}
     />
     {/* Ambient purple glow drifting left */}
@@ -238,8 +238,7 @@ const GATE_CSS = [
 ].join('');
 
 const MOBILE_CSS = [
-  'html,body{overflow:hidden;touch-action:none;-webkit-touch-callout:none;-webkit-text-size-adjust:100%}',
-  '.nx-intro-container{height:100dvh;width:100vw;overflow:hidden;min-height:100vh;background:#000}',
+  '.nx-intro-container{height:100dvh;width:100%;overflow:hidden;min-height:100vh;background:#080313}',
   '@media (max-width: 768px) {',
   '  .nx-gate-logo{min-width:clamp(200px,45vw,340px);min-height:clamp(200px,45vw,340px);padding:clamp(44px,12vw,90px)}',
   '  .nx-gate-logo img{width:clamp(180px,32vw,280px)}',
