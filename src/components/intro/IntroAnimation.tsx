@@ -53,7 +53,8 @@ const PARTICLES = (() => {
 })();
 
 // soft procedural FOG texture, violet-tinted (generated once, no image files needed)
-const makeFogTexture = (seed: number, size = 256): string => {
+// larger canvas on desktop for crisp zoom; smaller on mobile to prevent crashes
+const makeFogTexture = (seed: number, size = 512): string => {
   if (typeof document === 'undefined') return '';
   try {
     const canvas = document.createElement('canvas');
@@ -92,9 +93,9 @@ const makeFogTexture = (seed: number, size = 256): string => {
         const n = fbm(u, v);
         const dx = u - 0.5, dy = v - 0.5;
         const r = Math.sqrt(dx * dx + dy * dy) * 2;
-        let a = step(0.30, 0.66, n) * 0.8; // wide, soft mist (never a hard cloud edge)
-        a *= 1 - step(0.72, 1.0, r); // soft edges
-        a *= 0.35 + 0.65 * step(0.05, 0.4, r); // clear tunnel in the middle
+        let a = step(0.25, 0.70, n) * 0.6; // wider, softer mist (no hard edges)
+        a *= 1 - step(0.78, 1.0, r); // softer fade at edges
+        a *= 0.30 + 0.70 * step(0.02, 0.45, r); // clear tunnel in the middle
         const shade = 0.78 + 0.22 * step(0.45, 0.85, fbm(u + 0.3, v + 0.17));
         const i = (y * size + x) * 4;
         img.data[i] = 118 * shade + 60; // violet-lavender mist, deliberately not white
@@ -111,11 +112,19 @@ const makeFogTexture = (seed: number, size = 256): string => {
 };
 
 // three fog layers drifting toward the camera at different speeds (parallax = depth)
-const FOG_LAYERS = [
-  { seed: 11, start: 3.9, s0: 0.7, s1: 3.6, rot: -6, peak: 0.7 },
-  { seed: 23, start: 4.05, s0: 0.9, s1: 6.5, rot: 5, peak: 0.8 },
-  { seed: 37, start: 4.2, s0: 1.2, s1: 12, rot: -9, peak: 0.85 },
-];
+// Desktop: smooth zoom into fog. Mobile: tiny scale, no rotation — prevents crashes.
+const isMobileDevice = typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 768px)').matches;
+const FOG_LAYERS = isMobileDevice
+  ? [
+      { seed: 11, start: 3.9, s0: 1.0, s1: 1.5, rot: 0, peak: 0.4 },
+      { seed: 23, start: 4.05, s0: 1.0, s1: 1.8, rot: 0, peak: 0.45 },
+      { seed: 37, start: 4.2, s0: 1.0, s1: 2.0, rot: 0, peak: 0.5 },
+    ]
+  : [
+      { seed: 11, start: 3.9, s0: 0.7, s1: 3.6, rot: -6, peak: 0.7 },
+      { seed: 23, start: 4.05, s0: 0.9, s1: 6.5, rot: 5, peak: 0.8 },
+      { seed: 37, start: 4.2, s0: 1.2, s1: 12, rot: -9, peak: 0.85 },
+    ];
 const END_S = SCENE_S + ZOOM_S + REVEAL_S; // 6.2
 
 type ExitMode = 'normal' | 'fast' | 'reduced';
@@ -468,7 +477,10 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
             <StartGate reduced={reduced} launching={launching} onStart={handleStart} />
           ) : (
           <>
-              {/* CAMERA: everything in here flies toward the viewer during the zoom */}
+              {/* FIXED BACKGROUND: stays at screen size, never scales — outside the zoom camera */}
+              <Backdrop reduced={reduced} />
+
+              {/* CAMERA: only logos + tagline fly toward the viewer during the zoom */}
               <motion.div
                 style={{ position: 'absolute', inset: 0, transformOrigin: '50% 50%', willChange: 'transform, opacity' }}
                 initial={{ scale: 1, opacity: 1 }}
@@ -478,8 +490,6 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                   opacity: { delay: SCENE_S, duration: ZOOM_S, times: [0, 0.6, 1], ease: 'linear' },
                 }}
               >
-                <Backdrop reduced={reduced} />
-
                 {/* impact flash + shockwave rings */}
                 {!reduced && (
                   <>
@@ -588,9 +598,23 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
 
                   {!reduced && (
                     <motion.p
-                      style={{ marginTop: 34, textAlign: 'center', color: '#DDD6FE', fontSize: 'clamp(11px, 1.6vw, 15px)', fontFamily: 'var(--font-display, system-ui, sans-serif)', fontWeight: 500, textShadow: '0 0 18px rgba(139,92,246,0.8)' }}
-                      initial={{ opacity: 0, letterSpacing: '0.7em' }}
-                      animate={{ opacity: 1, letterSpacing: '0.3em' }}
+                      style={{
+                        marginTop: 34,
+                        textAlign: 'center',
+                        color: '#DDD6FE',
+                        fontSize: 'clamp(10px, 1.4vw, 14px)',
+                        fontFamily: 'var(--font-display, system-ui, sans-serif)',
+                        fontWeight: 500,
+                        textShadow: '0 0 12px rgba(139,92,246,0.6)',
+                        letterSpacing: isMobileDevice ? '0.1em' : '0.3em',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        padding: '0 clamp(4px, 2vw, 16px)',
+                        boxSizing: 'border-box',
+                      }}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
                       transition={{ delay: 2.3, duration: 1.4, ease: 'easeOut' }}
                     >
                       {TAGLINE}
@@ -615,7 +639,17 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                     fog[i] ? (
                       <motion.div
                         key={l.seed}
-                        style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundImage: `url(${fog[i]})`, backgroundSize: 'cover', transformOrigin: '50% 50%', willChange: 'transform, opacity' }}
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          pointerEvents: 'none',
+                          backgroundImage: `url(${fog[i]})`,
+                          backgroundSize: 'cover',
+                          backgroundRepeat: 'no-repeat',
+                          transformOrigin: '50% 50%',
+                          willChange: 'transform, opacity',
+                          imageRendering: 'auto',
+                        }}
                         initial={{ opacity: 0, scale: l.s0, rotate: 0 }}
                         animate={{ opacity: [0, l.peak, l.peak * 0.9, 0], scale: l.s1, rotate: l.rot }}
                         transition={{ delay: l.start, duration: END_S - l.start, ease: [0.4, 0, 0.9, 0.6], opacity: { delay: l.start, duration: END_S - l.start, times: [0, 0.3, 0.62, 1], ease: 'linear' } }}
