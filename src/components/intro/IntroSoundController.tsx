@@ -372,6 +372,10 @@ export const useSound = ({ eager = false, enabled = true }: UseSoundOptions = {}
       const sync = () => setAudioRunning(ctx.state === 'running');
       ctx.onstatechange = sync;
       sync();
+      // AUTOPLAY_UNLOCK_V5: try to start immediately (works wherever the browser allows autoplay audio)
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
     } catch {
       /* Web Audio not available - intro stays silent */
     }
@@ -446,8 +450,9 @@ export const useSound = ({ eager = false, enabled = true }: UseSoundOptions = {}
     if (!enabled) return;
     if (eager) ensureAudio();
     // any first user gesture unlocks audio (browser autoplay policy)
-    const events = ['pointerdown', 'keydown', 'touchstart'] as const;
-    events.forEach((e) => window.addEventListener(e, unlock, { once: true }));
+    // (touchstart alone is NOT accepted by mobile browsers, so touchend / pointerup / click are listened to as well)
+    const events = ['pointerdown', 'pointerup', 'mousedown', 'click', 'keydown', 'touchstart', 'touchend'] as const;
+    events.forEach((e) => window.addEventListener(e, unlock, { passive: true }));
     return () => {
       events.forEach((e) => window.removeEventListener(e, unlock));
       closeNow();

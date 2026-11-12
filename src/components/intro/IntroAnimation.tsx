@@ -16,7 +16,7 @@ const FINISH_MS = Math.round((SCENE_S + ZOOM_S) * 1000); // 5000 -> reveal start
 const ZOOM_SCALE = 22; // how far the camera flies into the scene
 // exponential keyframes = constant perceived speed of flight
 const ZOOM_KEYS = [0, 0.25, 0.5, 0.75, 1].map((p) => Math.pow(ZOOM_SCALE, p));
-const TAP_TO_ENTER = true; // true = "Tap to enter" screen first (guarantees sound). false = plays instantly, sound starts after the first tap/click
+const SHOW_TAP_FOR_SOUND_HINT = true; // small "TAP ANYWHERE FOR SOUND" line, shown ONLY if the browser blocks autoplay audio. false = never show it
 const ASSET_VERSION = 2; // bump this number when you replace a logo file (busts the browser cache)
 const TAGLINE = 'BEYOND A CLUB  ·  THE BEGINNING OF A NEW TECH ERA';
 const MAIN_LOGO_W = 'clamp(180px, 30vw, 320px)';
@@ -187,25 +187,24 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
   const reduced =
     typeof window !== 'undefined' &&
     !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  const gate = TAP_TO_ENTER && !reduced && autoPlay;
-
-  const [started, setStarted] = useState(!gate);
   const [visible, setVisible] = useState(true);
   const [exitMode, setExitMode] = useState<ExitMode>(reduced ? 'reduced' : 'normal');
   const [fog, setFog] = useState<string[]>([]);
   const finishedRef = useRef(false);
+  const introStartRef = useRef(0);
+  const caughtUpRef = useRef(false);
   const completedRef = useRef(false);
   const onCompleteRef = useRef(onComplete);
   useEffect(() => {
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
-  const { unlock, playSound, fadeOutAndStop, stopLater, toggleMute, muted, audioRunning } = useSound({
-    eager: !gate && !reduced,
+  const { playSound, fadeOutAndStop, stopLater, toggleMute, muted, audioRunning } = useSound({
+    eager: !reduced,
     enabled: !reduced,
   });
 
-  // generate the fog textures once (during the "tap to enter" screen)
+  // generate the fog textures once
   useEffect(() => {
     if (reduced) return;
     setFog(FOG_LAYERS.map((l) => makeFogTexture(l.seed)));
@@ -233,14 +232,10 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
     [fadeOutAndStop, stopLater, complete, reduced]
   );
 
-  const handleEnter = () => {
-    unlock(); // must happen inside the click so the browser allows sound
-    setStarted(true);
-  };
-
   // timeline: sounds + auto finish (starts when the intro starts)
   useEffect(() => {
-    if (!autoPlay || !started) return;
+    if (!autoPlay) return;
+    introStartRef.current = performance.now();
     const timers: number[] = [];
     const at = (ms: number, fn: () => void) => timers.push(window.setTimeout(fn, ms));
     if (!reduced) {
@@ -254,7 +249,15 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
     }
     at(reduced ? 1200 : FINISH_MS, () => finish());
     return () => timers.forEach((t) => window.clearTimeout(t));
-  }, [autoPlay, started, reduced, finish, playSound]);
+  }, [autoPlay, reduced, finish, playSound]);
+
+  // browsers may block sound until the first tap/click/key. If audio starts a moment late, bring in the ambient bed so it is never silent.
+  useEffect(() => {
+    if (!audioRunning || reduced || caughtUpRef.current) return;
+    caughtUpRef.current = true;
+    const elapsed = performance.now() - introStartRef.current;
+    if (elapsed > 120 && elapsed < FINISH_MS - 400) playSound('drone');
+  }, [audioRunning, reduced, playSound]);
 
   const topInset = 'max(20px, env(safe-area-inset-top))';
 
@@ -270,63 +273,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
           exit="exit"
           style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 9999, overflow: 'hidden' }}
         >
-          {!started ? (
-            /* ---------------- "TAP TO ENTER" gate ---------------- */
-            <>
-              <Backdrop reduced={reduced} />
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 28,
-                  padding: 24,
-                }}
-              >
-                <motion.img
-                  src={MAIN_LOGO}
-                  alt="NEXORA"
-                  draggable={false}
-                  style={{ width: 'clamp(140px, 22vw, 220px)', height: 'auto', filter: 'drop-shadow(0 0 24px rgba(139,92,246,0.55))' }}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: [0.65, 1, 0.65], scale: [0.97, 1.03, 0.97] }}
-                  transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-                />
-                <motion.button
-                  type="button"
-                  autoFocus
-                  onClick={handleEnter}
-                  aria-label="Enter NEXORA with sound"
-                  style={{
-                    ...glassButton,
-                    padding: '14px 36px',
-                    fontSize: 15,
-                    letterSpacing: '0.35em',
-                    borderColor: 'rgba(167, 139, 250, 0.6)',
-                    boxShadow: '0 0 28px rgba(139, 92, 246, 0.35)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                  }}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3, duration: 0.6 }}
-                  whileHover={{ scale: 1.04 }}
-                  whileTap={{ scale: 0.97 }}
-                >
-                  <SoundIcon /> ENTER
-                </motion.button>
-                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12, letterSpacing: '0.2em', margin: 0 }}>
-                  SOUND ON · BEST WITH HEADPHONES
-                </p>
-              </div>
-            </>
-          ) : (
-            /* ---------------- the cinematic sequence ---------------- */
-            <>
+          <>
               {/* CAMERA: everything in here flies toward the viewer during the zoom */}
               <motion.div
                 style={{ position: 'absolute', inset: 0, transformOrigin: '50% 50%', willChange: 'transform, opacity' }}
@@ -495,7 +442,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
               )}
 
               {/* tap-for-sound hint (only if the browser is still blocking audio) */}
-              {!reduced && !audioRunning && !muted && (
+              {SHOW_TAP_FOR_SOUND_HINT && !reduced && !audioRunning && !muted && (
                 <motion.div
                   style={{ position: 'absolute', left: 0, right: 0, bottom: 'max(28px, env(safe-area-inset-bottom))', textAlign: 'center', color: 'rgba(255,255,255,0.6)', fontSize: 12, letterSpacing: '0.2em', pointerEvents: 'none' }}
                   initial={{ opacity: 0 }}
@@ -506,10 +453,9 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                 </motion.div>
               )}
             </>
-          )}
 
           {/* mute toggle (top-left) */}
-          {!reduced && started && (
+          {!reduced && (
             <button
               type="button"
               onClick={toggleMute}
