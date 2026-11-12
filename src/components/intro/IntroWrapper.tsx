@@ -1,5 +1,4 @@
 import React, { useCallback, useState } from 'react';
-import { MobileIntro } from './mobile/MobileIntro';
 import { isDesktopDevice } from './device/DeviceDetector';
 import { shouldPlayIntro, markIntroCompleted } from './shared/IntroCompletion';
 import App from '../../App';
@@ -62,11 +61,7 @@ export const IntroWrapper: React.FC = () => {
         <DesktopIntro autoPlay onComplete={handleComplete} />
       </IntroBoundary>
     </React.Suspense>
-  ) : (
-    <IntroBoundary onError={handleComplete}>
-      <MobileIntro onComplete={handleComplete} />
-    </IntroBoundary>
-  );
+  ) : null;
 
   return (
     <>
