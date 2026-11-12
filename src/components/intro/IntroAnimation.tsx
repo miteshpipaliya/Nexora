@@ -15,14 +15,16 @@ const FINISH_MS = Math.round((SCENE_S + ZOOM_S) * 1000); // 5000 -> reveal start
 const ZOOM_SCALE = 22; // how far the camera flies into the scene
 // exponential keyframes = constant perceived speed of flight
 const ZOOM_KEYS = [0, 0.25, 0.5, 0.75, 1].map((p) => Math.pow(ZOOM_SCALE, p));
-const SHOW_TAP_FOR_SOUND_HINT = false; // the logo click already unlocks sound. true = also show a "TAP ANYWHERE FOR SOUND" line if the browser still blocks audio
+const SHOW_TAP_FOR_SOUND_HINT = true; // show tap hint on mobile so users know to tap for sound
 const TYPING_DELAY_MS = 800; // wait before the instruction line starts typing
 const TYPING_SPEED_MS = 55; // time per typed character (about 2 seconds for the whole line)
 const LAUNCH_MS = 380; // length of the logo flash after the click, before the intro starts
-const ASSET_VERSION = 2; // bump this number when you replace a logo file (busts the browser cache)
+const ASSET_VERSION = 3; // bump this number when you replace a logo file (busts the browser cache)
 const TAGLINE = 'BEYOND A CLUB  ·  THE BEGINNING OF A NEW TECH ERA';
-const MAIN_LOGO_W = 'clamp(180px, 30vw, 320px)';
-const TEXT_LOGO_W = 'clamp(260px, 44vw, 560px)';
+const MAIN_LOGO_W = 'clamp(200px, 32vw, 340px)'; // larger on mobile
+const TEXT_LOGO_W = 'clamp(280px, 48vw, 600px)'; // larger on mobile
+const MOBILE_PARTICLE_COUNT = 18; // fewer particles on mobile for smoother performance
+const DESKTOP_PARTICLE_COUNT = 36;
 /* ============================================================== */
 
 const EASE = [0.16, 1, 0.3, 1] as const;
@@ -38,8 +40,9 @@ const mulberry32 = (seed: number) => () => {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
 const PARTICLES = (() => {
+  const isMobile = typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 768px)').matches;
   const r = mulberry32(7);
-  return Array.from({ length: 36 }, () => ({
+  return Array.from({ length: isMobile ? MOBILE_PARTICLE_COUNT : DESKTOP_PARTICLE_COUNT }, () => ({
     left: r() * 100,
     top: r() * 100,
     size: 1 + r() * 2.2,
@@ -187,6 +190,17 @@ const GATE_CSS = [
   '.nx-gate-logo:focus-visible{outline:2px solid rgba(196,181,253,.75);outline-offset:4px}',
 ].join('');
 
+const MOBILE_CSS = [
+  'html,body{overflow:hidden;touch-action:none;-webkit-touch-callout:none;-webkit-text-size-adjust:100%}',
+  '.nx-intro-container{height:100dvh;width:100vw;overflow:hidden;background:#000}',
+  '@media (max-width: 768px) {',
+  '  .nx-gate-logo{min-width:clamp(200px,45vw,340px);min-height:clamp(200px,45vw,340px);padding:clamp(44px,12vw,90px)}',
+  '  .nx-gate-logo img{width:clamp(180px,32vw,280px)}',
+  '  .nx-typing-line{font-size:clamp(11px,3vw,15px);padding-bottom:env(safe-area-inset-bottom)}',
+  '  .nx-mute-btn{top:max(20px,env(safe-area-inset-top));left:16px}',
+  '}',
+].join('');
+
 const TypingLine: React.FC<{ text: string }> = ({ text }) => {
   const [count, setCount] = useState(0);
   useEffect(() => {
@@ -251,6 +265,7 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
   return (
     <>
       <style>{GATE_CSS}</style>
+      <style>{MOBILE_CSS}</style>
       <Backdrop reduced={reduced} />
 
       {/* white-violet flash when the logo is clicked */}
@@ -264,14 +279,37 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
       )}
 
       <div
-        style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 'clamp(4px, 1.5vh, 16px)', padding: 24 }}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 'clamp(8px, 2vh, 24px)',
+          padding: 'clamp(16px, 4vw, 24px)',
+          boxSizing: 'border-box',
+        }}
       >
         <motion.button
           type="button"
           className="nx-gate-logo"
           onClick={onStart}
           aria-label="Start NEXORA experience"
-          style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'clamp(40px, 9vw, 80px)', background: 'transparent', border: 'none', borderRadius: '50%', cursor: 'pointer' }}
+          style={{
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 'clamp(44px, 10vw, 90px)',
+            background: 'transparent',
+            border: 'none',
+            borderRadius: '50%',
+            cursor: 'pointer',
+            minWidth: 'clamp(200px, 40vw, 340px)',
+            minHeight: 'clamp(200px, 40vw, 340px)',
+            touchAction: 'manipulation',
+          }}
           initial={{ opacity: 0, scale: 0.88 }}
           animate={launching ? { opacity: 1, scale: 1.25 } : { opacity: 1, scale: 1 }}
           transition={launching ? { duration: LAUNCH_MS / 1000, ease: 'easeIn' } : { duration: 1.2, ease: EASE }}
@@ -282,7 +320,7 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
             src={MAIN_LOGO}
             alt=""
             draggable={false}
-            style={{ position: 'relative', width: 'clamp(150px, 24vw, 250px)', height: 'auto', pointerEvents: 'none', userSelect: 'none' }}
+            style={{ position: 'relative', width: 'clamp(180px, 30vw, 280px)', height: 'auto', pointerEvents: 'none', userSelect: 'none' }}
             animate={
               launching
                 ? { filter: 'drop-shadow(0 0 60px rgba(237,233,254,1)) brightness(1.8)' }
@@ -298,7 +336,7 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
           />
         </motion.button>
 
-        <motion.div animate={{ opacity: launching ? 0 : 1 }} transition={{ duration: 0.2 }}>
+        <motion.div className="nx-typing-line" animate={{ opacity: launching ? 0 : 1 }} transition={{ duration: 0.2 }}>
           <TypingLine text={label} />
         </motion.div>
       </div>
@@ -413,7 +451,18 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
           variants={rootVariants}
           initial={{ opacity: 1 }}
           exit="exit"
-          style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 9999, overflow: 'hidden' }}
+          className="nx-intro-container"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            width: '100vw',
+            height: '100dvh',
+            background: '#000',
+            zIndex: 9999,
+            overflow: 'hidden',
+            touchAction: 'none',
+            WebkitOverflowScrolling: 'touch',
+          }}
         >
           {!started ? (
             <StartGate reduced={reduced} launching={launching} onStart={handleStart} />
@@ -470,7 +519,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 36 }}>
                     {/* main logo with orbit rings */}
                     <motion.div
-                      style={{ position: 'relative', width: MAIN_LOGO_W, flex: '0 0 auto' }}
+                      style={{ position: 'relative', width: MAIN_LOGO_W, flex: '0 0 auto', minWidth: 'clamp(160px, 28vw, 300px)' }}
                       animate={reduced ? undefined : { scale: [1, 1.035, 1] }}
                       transition={{ delay: 1.5, duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
                     >
@@ -502,7 +551,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                     </motion.div>
 
                     {/* text logo with a light sweep clipped to the letters */}
-                    <div style={{ position: 'relative', width: TEXT_LOGO_W, flex: '0 0 auto' }}>
+                    <div style={{ position: 'relative', width: TEXT_LOGO_W, flex: '0 0 auto', minWidth: 'clamp(240px, 42vw, 540px)' }}>
                       <motion.img
                         src={TEXT_LOGO}
                         alt="NEXORA"
@@ -566,7 +615,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                     fog[i] ? (
                       <motion.div
                         key={l.seed}
-                        style={{ position: 'absolute', inset: '-5%', pointerEvents: 'none', backgroundImage: `url(${fog[i]})`, backgroundSize: '100% 100%', transformOrigin: '50% 50%', willChange: 'transform, opacity' }}
+                        style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundImage: `url(${fog[i]})`, backgroundSize: 'cover', transformOrigin: '50% 50%', willChange: 'transform, opacity' }}
                         initial={{ opacity: 0, scale: l.s0, rotate: 0 }}
                         animate={{ opacity: [0, l.peak, l.peak * 0.9, 0], scale: l.s1, rotate: l.rot }}
                         transition={{ delay: l.start, duration: END_S - l.start, ease: [0.4, 0, 0.9, 0.6], opacity: { delay: l.start, duration: END_S - l.start, times: [0, 0.3, 0.62, 1], ease: 'linear' } }}
@@ -604,6 +653,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
           {!reduced && started && (
             <button
               type="button"
+              className="nx-mute-btn"
               onClick={toggleMute}
               aria-label={muted ? 'Unmute intro sound' : 'Mute intro sound'}
               title={muted ? 'Unmute' : 'Mute'}
