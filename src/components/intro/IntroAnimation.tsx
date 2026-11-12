@@ -4,7 +4,6 @@ import { useSound } from './IntroSoundController';
 
 interface IntroAnimationProps {
   autoPlay?: boolean;
-  skipVisible?: boolean;
   onComplete?: () => void;
 }
 
@@ -178,13 +177,13 @@ const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
 );
 
 /* NX_START_GATE_V6 - "click the logo to start" screen */
+/* NX_LOGO_ONLY_V8 - only the logo glows (no disc, no circle behind it), no Skip button */
 const isTouchDevice = (): boolean =>
   typeof window !== 'undefined' && !!window.matchMedia?.('(hover: none) and (pointer: coarse)').matches;
 
 const GATE_CSS = [
-  '.nx-gate-logo{-webkit-tap-highlight-color:transparent;outline:none}',
-  '.nx-gate-halo{transition:filter .35s ease}',
-  '.nx-gate-logo:hover .nx-gate-halo,.nx-gate-logo:focus-visible .nx-gate-halo{filter:brightness(1.7) saturate(1.2)}',
+  '.nx-gate-logo{-webkit-tap-highlight-color:transparent;outline:none;transition:filter .35s ease}',
+  '.nx-gate-logo:hover,.nx-gate-logo:focus-visible{filter:brightness(1.3)}',
   '.nx-gate-logo:focus-visible{outline:2px solid rgba(196,181,253,.75);outline-offset:4px}',
 ].join('');
 
@@ -241,7 +240,7 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
       if (e.key !== 'Enter' && e.key !== ' ' && e.code !== 'Space') return;
       const el = e.target as HTMLElement | null;
       const btn = el && el.closest ? el.closest('button') : null;
-      if (btn && !btn.classList.contains('nx-gate-logo')) return; // e.g. the Skip button handles its own key
+      if (btn && !btn.classList.contains('nx-gate-logo')) return; // e.g. the mute button handles its own key
       e.preventDefault();
       onStart();
     };
@@ -279,22 +278,6 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
           whileHover={launching ? undefined : { scale: 1.06 }}
           whileTap={launching ? undefined : { scale: 0.96 }}
         >
-          {/* soft breathing halo behind the logo */}
-          <div className="nx-gate-halo" style={{ position: 'absolute', inset: '-6%', pointerEvents: 'none' }}>
-            <motion.div
-              style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,92,246,0.55) 0%, rgba(109,40,217,0.25) 38%, transparent 68%)' }}
-              animate={{ scale: [1, 1.14, 1], opacity: [0.55, 1, 0.55] }}
-              transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
-            />
-          </div>
-
-          {/* one thin ring that expands and fades (sonar pulse) */}
-          <motion.span
-            style={{ position: 'absolute', inset: '14%', borderRadius: '50%', border: '1px solid rgba(196,181,253,0.55)', pointerEvents: 'none' }}
-            animate={{ scale: [0.9, 1.45], opacity: [0.55, 0] }}
-            transition={{ duration: 3.2, repeat: Infinity, ease: 'easeOut' }}
-          />
-
           <motion.img
             src={MAIN_LOGO}
             alt=""
@@ -305,9 +288,9 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
                 ? { filter: 'drop-shadow(0 0 60px rgba(237,233,254,1)) brightness(1.8)' }
                 : {
                     filter: [
-                      'drop-shadow(0 0 14px rgba(139,92,246,0.45)) brightness(1)',
-                      'drop-shadow(0 0 36px rgba(167,139,250,0.9)) brightness(1.12)',
-                      'drop-shadow(0 0 14px rgba(139,92,246,0.45)) brightness(1)',
+                      'drop-shadow(0 0 8px rgba(167,139,250,0.55)) drop-shadow(0 0 22px rgba(139,92,246,0.45)) brightness(1)',
+                      'drop-shadow(0 0 14px rgba(196,181,253,0.95)) drop-shadow(0 0 44px rgba(139,92,246,0.8)) brightness(1.15)',
+                      'drop-shadow(0 0 8px rgba(167,139,250,0.55)) drop-shadow(0 0 22px rgba(139,92,246,0.45)) brightness(1)',
                     ],
                   }
             }
@@ -330,7 +313,6 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
  */
 export const IntroAnimation: React.FC<IntroAnimationProps> = ({
   autoPlay = true,
-  skipVisible = true,
   onComplete,
 }) => {
   const reduced =
@@ -628,19 +610,6 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
               style={{ ...glassButton, position: 'absolute', top: topInset, left: 20, padding: '8px 10px', zIndex: 2, display: 'flex' }}
             >
               <SoundIcon off={muted} />
-            </button>
-          )}
-
-          {/* skip (top-right) */}
-          {skipVisible && (
-            <button
-              type="button"
-              onClick={() => finish(true)}
-              aria-label="Skip intro"
-              title="Skip intro"
-              style={{ ...glassButton, position: 'absolute', top: topInset, right: 20, zIndex: 2 }}
-            >
-              Skip
             </button>
           )}
         </motion.div>

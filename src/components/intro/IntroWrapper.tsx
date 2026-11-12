@@ -7,7 +7,7 @@ import App from '../../App';
  * - <App /> is ALWAYS mounted (same tree before, during and after the intro,
  *   so React never remounts it).
  * - IntroAnimation is a fixed overlay above it; it is removed ONLY when it
- *   calls onComplete (after its own timeline or Skip).
+ *   calls onComplete (after its own timeline).
  * - Plays once per browser tab session. Add ?intro=1 to the URL to force it.
  * - If the intro ever crashes, it is skipped and the site still loads.
  */
@@ -61,7 +61,7 @@ export const IntroWrapper: React.FC = () => {
       <App />
       {showIntro && (
         <IntroBoundary onError={handleComplete}>
-          <IntroAnimation autoPlay skipVisible onComplete={handleComplete} />
+          <IntroAnimation autoPlay onComplete={handleComplete} />
         </IntroBoundary>
       )}
     </>
