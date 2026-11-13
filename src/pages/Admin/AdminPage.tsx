@@ -219,6 +219,7 @@ const BVM_DEPARTMENTS = [
   'B.Tech — Civil Engineering (CE)',
   'B.Tech — Computer Engineering (CP)',
   'B.Tech — Electrical Engineering (EE)',
+  'Electronics Engineering (EL)',
   'B.Tech — Electronics Engineering (EL)',
   'B.Tech — Mechanical Engineering (ME)',
   'B.Tech — Production Engineering (PE)',
@@ -4210,7 +4211,7 @@ export const AdminPage: React.FC = () => {
                   placeholder="Full name (no placeholder identities)" />
               </div>
               <div>
-                <label className="block text-xs font-mono text-slate-300 mb-1">BVM Department / Degree *</label>
+                <label className="block text-xs font-mono text-slate-300 mb-1">Department / Branch *</label>
                 <select required value={newTeamMemberData.department_name || ''}
                   onChange={e => setNewTeamMemberData({ ...newTeamMemberData, department_name: e.target.value })}
                   className="w-full p-3 rounded-lg bg-[#08080D] text-white border border-violet-500/25">
