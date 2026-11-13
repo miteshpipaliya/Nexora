@@ -1,4 +1,4 @@
-import { inspectImageDataUrl } from './src/server/imageValidation';
+import { inspectImageDataUrl, decodeAndSanitizeImage } from './src/server/imageValidation';
 import express from 'express';
 import crypto from 'crypto';
 import path from 'path';
@@ -2049,7 +2049,7 @@ apiRouter.get('/admin/audit-logs', requireElevatedAdmin, (req, res) => {
 });
 
 // Image Upload Endpoint (stores in /public/images/uploaded)
-apiRouter.post('/admin/upload-image', requireElevatedAdmin, express.json({ limit: '3mb' }), (req, res) => {
+apiRouter.post('/admin/upload-image', requireElevatedAdmin, express.json({ limit: '3mb' }), async (req, res) => {
   try {
     const { imageBase64, filename = 'image.jpg' } = req.body;
     if (!imageBase64 || typeof imageBase64 !== 'string') {
@@ -2062,6 +2062,14 @@ apiRouter.post('/admin/upload-image', requireElevatedAdmin, express.json({ limit
       res.status(400).json({ error: inspected.error });
       return;
     }
+    // Verify the image can actually be decoded, bound pixel count to prevent
+    // decompression bombs and strip metadata before saving or returning data.
+    const sanitizedBytes = await decodeAndSanitizeImage(inspected);
+    if (!sanitizedBytes) {
+      res.status(400).json({ error: 'Image is malformed, oversized, or cannot be safely decoded.' });
+      return;
+    }
+    const sanitizedDataUrl = `data:${inspected.mime};base64,${sanitizedBytes.toString('base64')}`;
     const ext = inspected.extension;
     const uploadDir = path.resolve(__dirname, 'public', 'images', 'uploaded');
     try {
@@ -2076,7 +2084,7 @@ apiRouter.post('/admin/upload-image', requireElevatedAdmin, express.json({ limit
     const targetPath = path.join(uploadDir, safeName);
 
     try {
-      fs.writeFileSync(targetPath, inspected.bytes);
+      fs.writeFileSync(targetPath, sanitizedBytes);
       recordAudit('IMAGE_UPLOADED', `Uploaded image: ${safeName}`);
       res.json({
         success: true,
@@ -2086,7 +2094,7 @@ apiRouter.post('/admin/upload-image', requireElevatedAdmin, express.json({ limit
       // In serverless read-only mode, return data URL as preview
       res.json({
         success: true,
-        url: imageBase64
+        url: sanitizedDataUrl
       });
     }
   } catch (err: any) {
