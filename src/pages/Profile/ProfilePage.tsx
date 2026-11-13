@@ -616,7 +616,7 @@ export const ProfilePage: React.FC = () => {
                   <div className="pt-2 text-xs font-mono text-slate-400 space-y-1">
                     <div>Registered: {new Date(reg.created_at).toLocaleDateString()}</div>
                     <div>Institution: {reg.college} · {reg.branch}</div>
-                    <div>Proposed Fee: ₹{reg.calculated_fee} ({reg.payment_status})</div>
+                    <div>Proposed Fee: ₹{reg.calculated_fee} · <span className="inline-block rounded-md border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-amber-300 font-semibold">Payment Pending</span></div>
                   </div>
                 </div>
 
