@@ -783,7 +783,7 @@ export function registerCmsEndpoints({
         is_featured: Boolean(data.is_featured),
         is_founder: Boolean(data.is_founder),
         enabled: data.enabled !== false,
-        visibility_approved: data.is_founder === true || data.visibility_approved === true,
+        visibility_approved: data.is_founder === true,
         created_at: now,
         updated_at: now
       });
@@ -814,6 +814,8 @@ export function registerCmsEndpoints({
       const updateDoc = sanitizeForFirestore({
         ...data,
         id,
+        // Non-founder visibility is deliberately private for this release.
+        ...('is_founder' in data ? { visibility_approved: data.is_founder === true } : { visibility_approved: false }),
         updated_at: new Date().toISOString()
       });
 
@@ -863,7 +865,7 @@ export function registerCmsEndpoints({
       const members = membersSnap.empty ? founderFallback : membersSnap.docs
         .map((snapshot: any) => ({ id: snapshot.id, ...snapshot.data() }))
         .filter((member: any) => member.enabled !== false &&
-          (member.is_founder === true || member.visibility_approved === true) &&
+          member.is_founder === true &&
           typeof member.name === 'string' && member.name.trim().length > 0)
         .map((member: any) => ({
           id: String(member.id),
