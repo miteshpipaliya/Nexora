@@ -87,4 +87,15 @@ describe('administrator security routes', () => {
     expect(testSend.status).toBe(401);
   });
 
+  it('authorizes admin image uploads before parsing their bodies', async () => {
+    const response = await fetch(`${baseUrl}/api/admin/upload-image`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{ not valid JSON'
+    });
+    expect(response.status).toBe(401);
+    const data = await response.json();
+    expect(JSON.stringify(data)).not.toContain('SyntaxError');
+  });
+
 });
