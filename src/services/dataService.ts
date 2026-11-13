@@ -1738,7 +1738,7 @@ return { initialized: true };
       is_featured: Boolean(data.is_featured),
       is_founder: Boolean(data.is_founder),
       enabled: data.enabled !== false,
-      visibility_approved: Boolean(data.visibility_approved) && Boolean(data.enabled),
+      visibility_approved: Boolean(data.is_founder),
       created_at: now,
       updated_at: now
     };
@@ -1798,7 +1798,7 @@ return { initialized: true };
         if (!response.ok) throw new Error(`Team API ${response.status}`);
         const data = await response.json() as { members?: TeamMember[]; meta?: any };
         if (!Array.isArray(data.members)) throw new Error('Invalid public team payload');
-        return { members: data.members.filter(m => m.enabled !== false), meta: data.meta ?? {} };
+        return { members: data.members.filter(m => m.enabled !== false && m.is_founder === true), meta: data.meta ?? {} };
       } finally {
         clearTimeout(timeout);
       }
@@ -1811,7 +1811,7 @@ return { initialized: true };
       ]);
       const members = memberSnapshot.docs
         .map(record => ({ id: record.id, ...record.data() } as TeamMember))
-        .filter(m => m.enabled !== false && (m.is_founder === true || m.visibility_approved === true))
+        .filter(m => m.enabled !== false && m.is_founder === true)
         .sort((a, b) => Number(Boolean(b.is_founder)) - Number(Boolean(a.is_founder)) || (a.display_order ?? 99) - (b.display_order ?? 99));
       return { members, meta: metaSnapshot.exists() ? metaSnapshot.data() : {} };
     };
