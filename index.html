@@ -65,10 +65,35 @@
       ]
     }
     </script>
-      <link rel="preload" as="image" href="/images/intro/NEXORA%20LOGO.png?v=2" />
+      <link rel="preload" as="image" href="/images/intro/NEXORA%20LOGO.png?v=3" />
     <link rel="preload" as="image" href="/images/intro/nexora-bvm-text-logo.png?v=2" />
+    <style>
+      /* First-paint desktop gate: display the actual brand before React loads.
+         It is absent on touch/tablet and when intro was already completed. */
+      #nx-first-paint-gate { display:none; }
+      @media (min-width:1025px) and (hover:hover) and (pointer:fine) {
+        html:not(.nx-intro-done) #nx-first-paint-gate {
+          display:flex; position:fixed; inset:0; z-index:100001;
+          flex-direction:column; align-items:center; justify-content:center;
+          gap:clamp(8px,2vh,24px); overflow:hidden; pointer-events:none;
+          background:#020105;
+        }
+      }
+    </style>
+    <script>
+      try {
+        if (sessionStorage.getItem('nexora-intro-completed') || sessionStorage.getItem('nx-intro-done')) {
+          document.documentElement.classList.add('nx-intro-done');
+        }
+      } catch (_) {}
+    </script>
   </head>
   <body class="bg-[#08080D] text-[#F8FAFC] min-h-screen antialiased selection:bg-[#8B5CF6]/30 selection:text-[#F8FAFC]">
+    <div id="nx-first-paint-gate" aria-hidden="true">
+      <div style="position:absolute;inset:-14%;background:radial-gradient(ellipse 34% 41% at 19% 27%,rgba(68,20,112,.23),transparent 82%),radial-gradient(ellipse 38% 36% at 82% 72%,rgba(71,31,120,.19),transparent 85%);filter:blur(30px)"></div>
+      <img src="/images/intro/NEXORA%20LOGO.png?v=3" alt="" fetchpriority="high" style="position:relative;width:clamp(180px,30vw,280px);height:auto;filter:drop-shadow(0 0 26px rgba(145,88,227,.6))"/>
+      <div style="position:relative;font:clamp(10px,1.15vw,14px) monospace;letter-spacing:.18em;color:#ddd6fe">&gt; CLICK LOGO TO START EXPERIENCE</div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
