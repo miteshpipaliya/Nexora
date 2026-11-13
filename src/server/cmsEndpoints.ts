@@ -872,6 +872,7 @@ export function registerCmsEndpoints({
           name: String(member.name).slice(0, 120),
           role_name: String(member.role_name || '').slice(0, 100),
           department_name: String(member.department_name || '').slice(0, 140),
+          academic_branch_name: String(member.academic_branch_name || '').slice(0, 140),
           division: String(member.division || '').slice(0, 40),
           enrollment_number: member.is_founder || member.visibility_approved === true
             ? String(member.enrollment_number || '').slice(0, 60) : '',
