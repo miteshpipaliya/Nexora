@@ -77,47 +77,9 @@ app.use((req, res, next) => {
 // This prevents bypassing rate limits across multiple function instances
 // Server-only Firebase Admin SDK is initialized lazily in getAdminFirestore().
 
-// In-memory fallback for rate limiting (in addition to Firestore rates)
-interface RateRecord {
-  count: number;
-  resetAt: number;
-}
-const ipRateLimits = new Map<string, RateRecord>();
-const adminRateLimits = new Map<string, RateRecord>();
+// Request limits for OTP and registration flows are handled in their
+// dedicated persistent stores; remove unused legacy global counters.
 
-function checkRateLimit(ipHash: string, now: number): { allowed: boolean; retryAfter?: number } {
-  // Global daily cap (max 1000 per day)
-  if (now > globalResetAt) {
-    globalDailyCount = 0;
-    globalResetAt = now + 24 * 60 * 60 * 1000;
-  }
-  if (globalDailyCount >= 1000) {
-    return { allowed: false, retryAfter: Math.ceil((globalResetAt - now) / 1000) };
-  }
-
-  // IP rate limit: 10 per 10 minutes
-  const ipRec = ipRateLimits.get(ipHash);
-  if (ipRec && now < ipRec.resetAt) {
-    if (ipRec.count >= 10) {
-      return { allowed: false, retryAfter: Math.ceil((ipRec.resetAt - now) / 1000) };
-    }
-  } else {
-    ipRateLimits.set(ipHash, { count: 1, resetAt: now + 10 * 60 * 1000 });
-  }
-
-  return { allowed: true };
-}
-
-function recordRateLimitConsumption(ipHash: string) {
-  const ipRec = ipRateLimits.get(ipHash);
-  if (ipRec) ipRec.count++;
-  globalDailyCount++;
-}
-
-// Admin OTP and account flows use the durable, transaction-backed challenge
-// stores below. Never import the browser Firebase module into the Node server.
-
-// ==========================================
 // ==========================================
 // CSRF / ORIGIN PROTECTION (P0-04, P4-9, P4-10)
 // ==========================================
