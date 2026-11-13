@@ -574,7 +574,7 @@ export const AdminPage: React.FC = () => {
       if (tMeta) setTeamMeta(tMeta);
     } catch (err: any) {
       console.warn('Dashboard load error:', err);
-      setStatsError(err.message || 'Error communicating with Firestore.');
+      setStatsError(err.message || 'Unable to load information.');
     } finally {
       setLoading(false);
     }
@@ -944,7 +944,7 @@ export const AdminPage: React.FC = () => {
     setLoading(true);
     try {
       const created = await dataService.createCompetition(newEventData);
-      showSuccessToast(`Competition "${created.title}" successfully created and saved to Firestore!`);
+      showSuccessToast(`Competition "${created.title}" successfully created and saved successfully!`);
       setShowNewEventModal(false);
       setNewEventData({
         title: '',
@@ -1165,8 +1165,8 @@ export const AdminPage: React.FC = () => {
       await dataService.replyToContactMessage(replyingMessage.id, replyText.trim(), replyChannel);
       showSuccessToast(
         replyChannel === 'email'
-          ? `Reply dispatched via Brevo to ${replyingMessage.sender_email} and recorded in database.`
-          : 'Reply recorded in database.'
+          ? `Reply sent to ${replyingMessage.sender_email} and saved.`
+          : 'Reply saved.'
       );
       setReplyingMessage(null);
       setReplyText('');
@@ -1834,7 +1834,7 @@ export const AdminPage: React.FC = () => {
               <h1 className="text-lg font-bold text-white tracking-tight">NEXORA Founder Console</h1>
               <span className="px-2 py-0.5 text-[10px] font-mono bg-emerald-950/80 text-emerald-300 border border-emerald-500/30 rounded-full flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Live Firestore Synced
+                Securely Synced
               </span>
             </div>
             <p className="text-xs text-slate-400 font-mono">
@@ -1893,7 +1893,7 @@ export const AdminPage: React.FC = () => {
         <div className="p-4 bg-amber-950/50 border border-amber-500/40 rounded-2xl flex items-center justify-between gap-4 text-xs text-amber-200">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
-            <span>Firestore Connectivity Note: {statsError}</span>
+            <span>Connection Notice: {statsError}</span>
           </div>
           <button
             type="button"
@@ -1944,7 +1944,7 @@ export const AdminPage: React.FC = () => {
         <div className="space-y-8">
           <div>
             <h2 className="text-xl font-bold text-white tracking-tight">Authoritative Platform Metrics</h2>
-            <p className="text-xs text-slate-400">Directly aggregated from Firestore collections. No hardcoded or fabricated statistics.</p>
+            <p className="text-xs text-slate-400">Live activity summary from verified NEXORA records.</p>
           </div>
 
           {/* 10 Required Real Statistics Grid */}
@@ -1956,7 +1956,7 @@ export const AdminPage: React.FC = () => {
               <div className="text-2xl font-extrabold text-white">
                 {displayStats.totalStudents}
               </div>
-              <span className="text-[10px] text-slate-500 font-mono">Firestore 'users' count</span>
+              <span className="text-[10px] text-slate-500 font-mono">Registered student count</span>
             </div>
 
             {/* 2. Active Students */}
@@ -2115,7 +2115,7 @@ export const AdminPage: React.FC = () => {
                   {events.length} / 15 Competitions
                 </span>
               </div>
-              <p className="text-xs text-slate-400">All changes write directly to Firestore. Real-time updates propagate across NEXORA immediately.</p>
+              <p className="text-xs text-slate-400">All changes are saved securely and updates appear across NEXORA.</p>
             </div>
             <button
               type="button"
@@ -2218,7 +2218,7 @@ export const AdminPage: React.FC = () => {
             <div className="p-12 bg-[#171426] border border-violet-500/20 rounded-2xl text-center space-y-3">
               <Trophy className="w-10 h-10 text-violet-400 mx-auto" />
               <h3 className="text-base font-bold text-white">No Competitions Created Yet</h3>
-              <p className="text-xs text-slate-400">Click &quot;Go Live&quot; on any prebuilt template above to activate your first flagship challenge in Firestore.</p>
+              <p className="text-xs text-slate-400">Click &quot;Go Live&quot; on any prebuilt template above to activate your first flagship challenge.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
