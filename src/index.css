@@ -115,3 +115,30 @@ input, textarea, select, [contenteditable="true"], .allow-select, .selectable-co
 @media (prefers-reduced-motion: reduce) {
   .nexora-registration-ticket, .nexora-ticket-sheen { animation: none !important; }
 }
+
+/* Futuristic NEXORA ticket: ornamental tech border, restrained motion. */
+.nexora-cyber-ticket {
+  background: radial-gradient(ellipse at 78% 44%,rgba(97,38,164,.24),transparent 45%),
+    linear-gradient(115deg,#080612 0%,#171028 51%,#090712 100%);
+  clip-path: polygon(0 10px,14px 10px,25px 0,calc(100% - 18px) 0,100% 16px,100% calc(100% - 15px),calc(100% - 15px) 100%,16px 100%,0 calc(100% - 18px));
+  box-shadow: inset 0 0 30px rgba(125,50,220,.12), 0 18px 70px -16px rgba(100,48,202,.5);
+}
+.nexora-cyber-ticket::after {
+  content: ''; position: absolute; inset: 3px; z-index: 0; pointer-events: none;
+  border: 1px solid rgba(155,95,245,.20);
+  clip-path: polygon(0 10px,14px 10px,25px 0,calc(100% - 18px) 0,100% 16px,100% calc(100% - 15px),calc(100% - 15px) 100%,16px 100%,0 calc(100% - 18px));
+}
+.nexora-ticket-grid {
+  opacity: .27;
+  background-image: repeating-linear-gradient(0deg, transparent 0, transparent 8px, rgba(160,94,251,.07) 9px,transparent 10px),
+    linear-gradient(90deg,rgba(139,77,224,.11) 1px,transparent 1px);
+  background-size: auto, 40px 100%;
+}
+.nexora-ticket-notch { position: absolute; z-index: 4; width: 13px; height: 13px; background: #0b0814; border: 1px solid rgba(180,130,255,.75); transform: rotate(45deg); }
+.nexora-ticket-notch-tl { top: -7px; left: -7px; }
+.nexora-ticket-notch-tr { top: -7px; right: -7px; }
+.nexora-ticket-notch-bl { bottom: -7px; left: -7px; }
+.nexora-ticket-notch-br { bottom: -7px; right: -7px; }
+.nexora-ticket-phoenix { animation: nexora-ticket-phoenix-breathe 6s ease-in-out infinite; }
+@keyframes nexora-ticket-phoenix-breathe { 0%,100% { filter: drop-shadow(0 0 8px rgba(165,99,255,.25)); } 50% { filter: drop-shadow(0 0 16px rgba(177,122,255,.43)); } }
+@media (prefers-reduced-motion: reduce) { .nexora-ticket-phoenix { animation: none !important; } }
