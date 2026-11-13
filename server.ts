@@ -21,7 +21,7 @@ import { resolveFirebaseAdminConfig } from './src/server/firebaseAdminConfig';
 import { StudentOtpStore, StudentOtpRateLimitError, StudentOtpStorageError } from './src/server/studentOtpStore';
 import { createRegistrationOnce, RegistrationStoreError } from './src/server/registrationStore';
 import { validateIndianMobile, normalizeIndianMobile } from './src/shared/lib/phoneUtils';
-import { incrementFirestoreCounter, checkFirestoreRateLimit } from './src/services/firebase';
+// Server-only Firebase Admin SDK is initialized lazily in getAdminFirestore().
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,7 +75,7 @@ app.use((req, res, next) => {
 // ==========================================
 // Firestore-backed rate limiting to handle Vercel serverless function instances
 // This prevents bypassing rate limits across multiple function instances
-import { incrementFirestoreCounter, checkFirestoreRateLimit } from './src/services/firebase';
+// Server-only Firebase Admin SDK is initialized lazily in getAdminFirestore().
 
 // In-memory fallback for rate limiting (in addition to Firestore rates)
 interface RateRecord {
@@ -114,13 +114,10 @@ function recordRateLimitConsumption(ipHash: string) {
   globalDailyCount++;
 }
 
-// Admin-specific rate limiting using Firestore-backed counters
-async function adminRateLimit(adminId: string, endpoint: string, now: number): Promise<{ allowed: boolean; retryAfter?: number }> {
-  const docPath = `admin_ratelimits/${adminId}_${endpoint}`;
-  const result = await checkFirestoreRateLimit(firebaseAdminApp?.auth()?.uid || '', docPath, 60 * 60 * 24);
-  return result;
-}
+// Admin OTP and account flows use the durable, transaction-backed challenge
+// stores below. Never import the browser Firebase module into the Node server.
 
+// ==========================================
 // ==========================================
 // CSRF / ORIGIN PROTECTION (P0-04, P4-9, P4-10)
 // ==========================================
