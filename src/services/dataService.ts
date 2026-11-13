@@ -1790,31 +1790,56 @@ class NexoraDataService {
   }
 
   public async getPublicTeamData(): Promise<{ members: TeamMember[]; meta: any }> {
-    // Public endpoint may be slow on a cold serverless invocation. Do not let the
-    // Team page remain on a spinner for 30 seconds before trying Firestore.
-    try {
-      const response = await fetch('/api/team/public', {
-        signal: AbortSignal.timeout(3500),
-        headers: { Accept: 'application/json' },
-      });
-      if (!response.ok) throw new Error(`Team API responded ${response.status}`);
-      const result = await response.json() as { members?: TeamMember[]; meta?: any };
-      if (Array.isArray(result.members)) {
-        return {
-          members: result.members.filter(member => member.enabled !== false),
-          meta: result.meta ?? {},
-        };
+    // Public endpoints and direct public Firestore reads race to provide the
+    // first populated roster. Never run slow admin-auth endpoints on this path.
+    type PublicRoster = { members: TeamMember[]; meta: any };
+    const fetchApi = async (): Promise<PublicRoster> => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2400);
+      try {
+        const response = await fetch('/api/team/public', {
+          signal: controller.signal,
+          headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) throw new Error(`Team API ${response.status}`);
+        const data = await response.json() as { members?: TeamMember[]; meta?: any };
+        if (!Array.isArray(data.members)) throw new Error('Invalid public team payload');
+        return { members: data.members.filter(m => m.enabled !== false), meta: data.meta ?? {} };
+      } finally {
+        clearTimeout(timeout);
       }
-      throw new Error('Invalid team payload');
+    };
+
+    const fetchFirestore = async (): Promise<PublicRoster> => {
+      const [memberSnapshot, metaSnapshot] = await Promise.all([
+        getDocs(collection(db, 'teamMembers')),
+        getDoc(doc(db, 'teamConfig', 'meta')),
+      ]);
+      const members = memberSnapshot.docs
+        .map(record => ({ id: record.id, ...record.data() } as TeamMember))
+        .filter(m => m.enabled !== false)
+        .sort((a, b) => (a.display_order || 99) - (b.display_order || 99));
+      return { members, meta: metaSnapshot.exists() ? metaSnapshot.data() : {} };
+    };
+
+    // A healthy source with members resolves immediately. An empty roster is
+    // retained only if neither source can produce members.
+    const filled = (task: Promise<PublicRoster>) => task.then(result => {
+      if (!result.members.length) throw new Error('No public members in source');
+      return result;
+    });
+    const api = fetchApi();
+    const firestore = fetchFirestore();
+    try {
+      return await Promise.race([
+        Promise.any([filled(api), filled(firestore)]),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Public team timeout')), 4800)),
+      ]);
     } catch (error) {
-      console.warn('[TEAM] Fast public endpoint unavailable; using Firestore fallback:', error);
+      console.warn('[TEAM] Public roster unavailable or empty:', error);
+      // Respect the public API's empty roster (if available) without guessing identities.
+      return api.catch(() => ({ members: [], meta: {} }));
     }
-    // These queries are independent; do not await them sequentially.
-    const [members, meta] = await Promise.all([
-      this.getTeamMembers(),
-      this.getTeamMeta(),
-    ]);
-    return { members: members.filter(member => member.enabled !== false), meta };
   }
 
   // --- STUDENT NOTIFICATION READ RECEIPTS ---
