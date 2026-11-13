@@ -14,6 +14,7 @@ import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import { CompetitionEvent, RegistrationRecord, TeamMemberDetail } from '../../types';
 import { NexoraLogo } from '../ui/NexoraLogo';
+import { RegistrationTicket } from '../common/RegistrationTicket';
 import { IndianPhoneInput } from '../common/IndianPhoneInput';
 import { validateIndianMobile, normalizeIndianMobile } from '../../shared/lib/phoneUtils';
 
@@ -311,94 +312,20 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
               </div>
             </div>
           ) : confirmedRecord ? (
-            /* Part 11: Official Registration Success Screen */
-            <div className="py-4 space-y-6 text-center">
-              <div className="w-14 h-14 rounded-full bg-emerald-950/80 border border-emerald-500/40 flex items-center justify-center mx-auto text-emerald-400">
-                <CheckCircle2 className="w-8 h-8" />
-              </div>
-              
+            <div className="space-y-6 py-3 text-center">
               <div className="space-y-1">
-                <span className="text-xs font-mono text-emerald-400 uppercase tracking-widest font-semibold user-select-none">
-                  REGISTRATION SUBMITTED SUCCESSFULLY
-                </span>
-                <h3 className="text-2xl font-bold text-white user-select-none">
-                  {event.title}
-                </h3>
+                <CheckCircle2 className="h-8 w-8 text-emerald-400 mx-auto" />
+                <h3 className="text-xl font-bold text-white">Registration Recorded!</h3>
+                <p className="text-xs text-slate-400">Your NEXORA entry ticket is ready. Payment remains pending until verified.</p>
               </div>
-
-              {/* Prominent Generated Competition ID Card */}
-              <div className="p-6 bg-[#11101B] border-2 border-violet-500/40 rounded-2xl max-w-md mx-auto space-y-4 shadow-[0_0_30px_-5px_rgba(139,92,246,0.3)]">
-                <div className="text-xs font-mono text-slate-400 uppercase tracking-wider user-select-none">
-                  Your NEXORA Competition ID
-                </div>
-                
-                <div className="flex items-center justify-center gap-3">
-                  <div className="text-3xl font-extrabold tracking-widest text-violet-300 font-mono select-text selectable-content">
-                    {confirmedRecord.competition_id}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleCopyId(confirmedRecord.competition_id)}
-                    className="p-2 rounded-lg bg-violet-950/80 text-violet-300 hover:text-white border border-violet-500/30 transition-colors"
-                    title="Copy Competition ID"
-                  >
-                    {copiedId ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                </div>
-                {copiedId && (
-                  <div className="text-[11px] text-emerald-400 font-mono">
-                    Copied Competition ID to clipboard!
-                  </div>
-                )}
-
-                {/* Summary Metadata */}
-                <div className="border-t border-violet-500/15 pt-3 space-y-2 text-left font-mono text-xs text-slate-300">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Participant:</span>
-                    <span className="text-white font-medium select-text">{confirmedRecord.full_name}</span>
-                  </div>
-                  {confirmedRecord.team_name && (
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Team:</span>
-                      <span className="text-violet-300 font-medium select-text">{confirmedRecord.team_name}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Institution:</span>
-                    <span className="text-slate-200">{confirmedRecord.college}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Registration Status:</span>
-                    <span className="text-emerald-400 font-semibold">{confirmedRecord.registration_status}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Registration Fee:</span>
-                    <span className="text-violet-300 font-bold">₹{confirmedRecord.calculated_fee}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Payment Status:</span>
-                    <span className="text-amber-400 font-medium">Unpaid (Awaiting Ratification)</span>
-                  </div>
-                </div>
-              </div>
-
-              <p className="text-xs text-slate-400 max-w-sm mx-auto font-light leading-relaxed">
-                Save your Competition ID for event entry verification. You can review all registrations at any time on your student dashboard.
-              </p>
-
-              <div className="flex justify-center gap-3">
-                <Link
-                  to="/profile"
-                  onClick={onClose}
-                  className="px-6 py-2.5 text-xs font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-500 transition-colors shadow-md"
-                >
-                  View My Registrations
+              <RegistrationTicket registration={confirmedRecord} />
+              <div className="flex justify-center flex-wrap gap-3">
+                <Link to="/profile" onClick={onClose}
+                  className="px-5 py-2.5 text-xs rounded-lg bg-violet-600 text-white font-semibold">
+                  My Competition Entries
                 </Link>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-4 py-2.5 text-xs text-slate-300 bg-[#171426] border border-violet-500/20 rounded-lg hover:text-white"
-                >
+                <button type="button" onClick={onClose}
+                  className="px-5 py-2.5 text-xs rounded-lg border border-violet-500/25 text-slate-300">
                   Done
                 </button>
               </div>
