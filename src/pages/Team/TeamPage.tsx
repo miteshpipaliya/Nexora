@@ -35,6 +35,11 @@ export const TeamPage: React.FC = () => {
 
   useEffect(() => {
     let active = true;
+    // Never leave a first-time visitor staring at a loading spinner indefinitely.
+    // Continue the fetch in the background; arriving roster data still renders.
+    const loadingGuard = window.setTimeout(() => {
+      if (active) setLoading(false);
+    }, 6500);
     // Data is never invented: cached entries are previously retrieved public team members.
     dataService.getPublicTeamData().then(data => {
       if (!active) return;
@@ -58,7 +63,7 @@ export const TeamPage: React.FC = () => {
     }).finally(() => {
       if (active) setLoading(false);
     });
-    return () => { active = false; };
+    return () => { active = false; window.clearTimeout(loadingGuard); };
   }, [refreshKey]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
