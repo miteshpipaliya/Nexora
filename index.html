@@ -71,6 +71,7 @@
       /* First-paint desktop gate: display the actual brand before React loads.
          It is absent on touch/tablet and when intro was already completed. */
       #nx-first-paint-gate { display:none; }
+      #nx-first-paint-start:focus-visible { outline:2px solid #c4b5fd; outline-offset:5px; border-radius:12px; }
       @media (min-width:1025px) and (hover:hover) and (pointer:fine) {
         html:not(.nx-intro-done):not(.nx-intro-ready) #root { visibility: hidden; }
         html:not(.nx-intro-done):not(.nx-intro-ready) #nx-first-paint-gate {
@@ -99,10 +100,10 @@
       <i aria-hidden="true" style="position:absolute;left:72%;top:17%;width:1.5px;height:1.5px;border-radius:50%;background:rgba(225,208,255,0.82);box-shadow:0 0 4px rgba(186,152,239,.35)"></i>
       <i aria-hidden="true" style="position:absolute;left:87%;top:56%;width:1.5px;height:1.5px;border-radius:50%;background:rgba(225,208,255,0.63);box-shadow:0 0 4px rgba(186,152,239,.35)"></i>
       <i aria-hidden="true" style="position:absolute;left:94%;top:29%;width:2px;height:2px;border-radius:50%;background:rgba(225,208,255,0.82);box-shadow:0 0 4px rgba(186,152,239,.35)"></i>
-      <img src="/images/intro/NEXORA%20LOGO.png?v=3" alt="" fetchpriority="high" style="position:relative;width:clamp(180px,30vw,280px);height:auto;filter:drop-shadow(0 0 26px rgba(145,88,227,.6))"/>
+      <button type="button" id="nx-first-paint-start" aria-label="Start NEXORA experience" onclick="document.documentElement.dataset.nxIntroPending='1'" style="position:relative;display:flex;align-items:center;justify-content:center;background:transparent;border:0;padding:0;cursor:pointer;max-width:100%;flex:none"><img src="/images/intro/NEXORA%20LOGO.png?v=3" alt="" fetchpriority="high" draggable="false" style="display:block;width:clamp(180px,30vw,280px);max-width:100%;height:auto;filter:drop-shadow(0 0 26px rgba(145,88,227,.6))"/></button>
       <div style="position:relative;font:clamp(10px,1.15vw,14px) monospace;letter-spacing:.18em;color:#ddd6fe">&gt; CLICK LOGO TO START EXPERIENCE</div>
     </div>
-    <div id="root"></div>
+    <div id="root" style="visibility:hidden"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
