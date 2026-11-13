@@ -93,7 +93,9 @@ function isSameOriginRequest(req: express.Request): boolean {
   const origin = req.headers.origin;
   const referer = req.headers.referer;
   if (!origin && !referer) return true;
-  if (origin && ALLOWED_ORIGINS.includes(origin)) return true;
+  // A supplied Origin is authoritative: never let a trusted Referer override
+  // an explicitly untrusted Origin on an authenticated state-changing request.
+  if (origin) return ALLOWED_ORIGINS.includes(origin);
   if (referer) {
     try {
       const refererUrl = new URL(referer);
