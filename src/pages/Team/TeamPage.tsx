@@ -6,11 +6,11 @@ import { NexoraLogo } from '../../components/ui/NexoraLogo';
 
 type PublicTeamCache = { members: TeamMember[]; departments: TeamDepartment[]; savedAt: number };
 const TEAM_CACHE_KEY = 'nexora-public-team-v1';
-const TEAM_CACHE_TTL = 15 * 60 * 1000;
+const TEAM_CACHE_TTL = 24 * 60 * 60 * 1000;
 
 const readCachedTeam = (): PublicTeamCache | null => {
   try {
-    const raw = sessionStorage.getItem(TEAM_CACHE_KEY);
+    const raw = localStorage.getItem(TEAM_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PublicTeamCache;
     if (!Array.isArray(parsed.members) || !Array.isArray(parsed.departments)) return null;
@@ -39,7 +39,7 @@ export const TeamPage: React.FC = () => {
     // Continue the fetch in the background; arriving roster data still renders.
     const loadingGuard = window.setTimeout(() => {
       if (active) setLoading(false);
-    }, 6500);
+    }, 3500);
     // Data is never invented: cached entries are previously retrieved public team members.
     dataService.getPublicTeamData().then(data => {
       if (!active) return;
@@ -49,7 +49,7 @@ export const TeamPage: React.FC = () => {
       setDepartments(liveDepartments);
       setLoadError(false);
       try {
-        sessionStorage.setItem(TEAM_CACHE_KEY, JSON.stringify({
+        localStorage.setItem(TEAM_CACHE_KEY, JSON.stringify({
           members: liveMembers,
           departments: liveDepartments,
           savedAt: Date.now(),
@@ -122,7 +122,7 @@ export const TeamPage: React.FC = () => {
                   transform: `perspective(1000px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
                   transition: 'transform 0.15s ease-out'
                 }}
-                className="relative w-full max-w-md bg-gradient-to-b from-[#1c1730] to-[#0d0c17] rounded-3xl p-6 sm:p-8 border border-violet-500/35 shadow-[0_20px_50px_-15px_rgba(139,92,246,0.35)] overflow-hidden group select-none"
+                className="relative w-full max-w-md bg-gradient-to-b from-[#211b30] to-[#0d0c17] rounded-3xl p-6 sm:p-8 border border-[#D4AF37]/75 shadow-[0_16px_45px_-16px_rgba(212,175,55,0.28)] hover:border-[#f2d177] transition-colors overflow-hidden group select-none"
               >
                 {/* Subtle holographic sheen overlay */}
                 <div className="absolute -inset-full bg-gradient-to-r from-transparent via-violet-400/10 to-transparent group-hover:translate-x-full duration-1000 transition-transform pointer-events-none" />
@@ -130,8 +130,8 @@ export const TeamPage: React.FC = () => {
                 {/* Card Header: Exact NexoraLogo & Founder Chip */}
                 <div className="flex items-center justify-between pb-6 border-b border-violet-500/20">
                   <NexoraLogo size="sm" />
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono text-violet-300 bg-violet-950/80 border border-violet-500/30 rounded-md user-select-none">
-                    <Sparkles className="w-3 h-3 text-violet-400" />
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono text-[#f1d68c] bg-[#3c2b12]/65 border border-[#D4AF37]/50 rounded-md user-select-none">
+                    <Sparkles className="w-3 h-3 text-[#f1d68c]" />
                     <span>FOUNDER</span>
                   </div>
                 </div>
