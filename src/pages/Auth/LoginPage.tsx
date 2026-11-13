@@ -389,7 +389,7 @@ export const LoginPage: React.FC = () => {
         {/* Security / Privacy notice */}
         <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400 text-center">
           <ShieldCheck className="w-3.5 h-3.5 text-violet-400" />
-          <span>Protected by Firebase Authentication &amp; BVM Collegiate Standards</span>
+          <span>Your account is protected by NEXORA security standards</span>
         </div>
       </div>
 
