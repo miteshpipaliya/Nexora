@@ -459,9 +459,12 @@ describe('Firestore Security Rules Test Suite (firestore.rules)', () => {
   it('explicitly denies all client access to administrator records and contact throttle counters', () => {
     const rules = fs.readFileSync(path.join(process.cwd(), 'firestore.rules'), 'utf8');
     for (const collection of ['_admin_admins', '_admin_sessions', 'contactRateLimits']) {
-      expect(rules).toContain(`match /${collection}/{docId} {
-      allow read, write: if false;
-    }`);
+      // Match the policy rather than exact formatting or indentation.
+      // Require each sensitive collection block to be explicitly deny-all.
+      const collectionPattern = new RegExp(
+        `match\\s+/${collection}/\\{docId\\}\\s*\\{\\s*allow\\s+read\\s*,\\s*write\\s*:\\s*if\\s+false\\s*;\\s*\\}`
+      );
+      expect(rules).toMatch(collectionPattern);
     }
   });
 });
