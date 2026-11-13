@@ -32,6 +32,14 @@ export const IntroWrapper: React.FC = () => {
   );
   const introActive = isDesktop && showIntro;
 
+  // The static HTML gate covers the first paint until React can render the
+  // actual intro (or the mobile homepage). Remove only once React has committed.
+  useEffect(() => {
+    const bootGate = document.getElementById('nx-first-paint-gate');
+    if (bootGate) bootGate.remove();
+  }, []);
+
+
   const handleComplete = useCallback(() => {
     markIntroCompleted();
     setShowIntro(false);
