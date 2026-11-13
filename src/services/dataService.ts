@@ -1790,18 +1790,32 @@ class NexoraDataService {
   }
 
   public async getPublicTeamData(): Promise<{ members: TeamMember[]; meta: any }> {
+    // Public endpoint may be slow on a cold serverless invocation. Do not let the
+    // Team page remain on a spinner for 30 seconds before trying Firestore.
     try {
-      const res = await safeApiFetch<{ success: boolean; members: TeamMember[]; meta: any }>('/api/team/public');
-      if (res && Array.isArray(res.members)) {
-        return { members: res.members, meta: res.meta };
+      const response = await fetch('/api/team/public', {
+        signal: AbortSignal.timeout(3500),
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) throw new Error(`Team API responded ${response.status}`);
+      const result = await response.json() as { members?: TeamMember[]; meta?: any };
+      if (Array.isArray(result.members)) {
+        return {
+          members: result.members.filter(member => member.enabled !== false),
+          meta: result.meta ?? {},
+        };
       }
-    } catch {}
-
-    const members = await this.getTeamMembers();
-    const meta = await this.getTeamMeta();
-    return { members: members.filter((m) => m.enabled !== false), meta };
+      throw new Error('Invalid team payload');
+    } catch (error) {
+      console.warn('[TEAM] Fast public endpoint unavailable; using Firestore fallback:', error);
+    }
+    // These queries are independent; do not await them sequentially.
+    const [members, meta] = await Promise.all([
+      this.getTeamMembers(),
+      this.getTeamMeta(),
+    ]);
+    return { members: members.filter(member => member.enabled !== false), meta };
   }
-
 
   // --- STUDENT NOTIFICATION READ RECEIPTS ---
   public async getReadNotificationIds(userId: string): Promise<Set<string>> {
