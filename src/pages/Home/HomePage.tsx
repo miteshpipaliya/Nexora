@@ -160,36 +160,36 @@ export const HomePage: React.FC = () => {
       )}
 
       {/* Hero Section */}
-      <section className="nx-home-hero relative pt-16 pb-24 md:pt-24 md:pb-32 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 xl:gap-16 items-center">
+      <section className="relative pt-12 pb-20 md:pt-20 md:pb-28 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
           
           {/* Left Column: Typography & CTAs */}
-          <div className="nx-home-hero-copy lg:col-span-7 space-y-7 text-center lg:text-left">
+          <div className="lg:col-span-7 space-y-6 text-center lg:text-left">
             
             {/* Status Kicker */}
-            <div className="inline-flex items-center gap-2.5 px-4 py-2 text-[10px] sm:text-xs font-mono tracking-wide text-[#c8d8e6] bg-[#071522]/85 border border-[#345068]/50 rounded-full user-select-none">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.7)]" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 text-xs font-mono text-violet-300 bg-[#171426]/90 border border-violet-500/30 rounded-full user-select-none">
+              <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />
               <span>Birla Vishvakarma Mahavidyalaya · Student Tech Community</span>
             </div>
 
             {/* Main Heading */}
-            <h1 className="hero-heading text-[clamp(2.6rem,5vw,5.15rem)] font-extrabold tracking-[-0.04em] text-white leading-[1.08] user-select-none">
+            <h1 className="hero-heading text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-[1.1] user-select-none">
               NOT JUST A CLUB.{' '}
-              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-[#ffc78f] via-[#f2a764] to-[#a7c5d7]">
+              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-purple-300 to-indigo-300">
                 {siteContent?.tagline || "THE BEGINNING OF BVM'S NEXT TECH ERA."}
               </span>
             </h1>
 
             {/* Supporting Description */}
-            <p className="text-base sm:text-lg text-[#bdccda] max-w-[640px] mx-auto lg:mx-0 leading-[1.8] font-light select-text">
+            <p className="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto lg:mx-0 leading-relaxed font-light select-text">
               {siteContent?.description || "Where code meets creativity, curiosity becomes innovation, and students become builders of what's next. A student-led multidisciplinary technology community connecting creators across branches and colleges."}
             </p>
 
             {/* Primary Action Buttons */}
-            <div className="pt-3 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 user-select-none">
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 user-select-none">
               <Link
                 to="/competitions"
-                className="nx-primary-cta w-full sm:w-auto px-8 py-4 text-sm font-bold text-[#140b07] bg-gradient-to-r from-[#ffd09c] via-[#eaa064] to-[#d58246] rounded-xl hover:brightness-110 transition-all shadow-[0_12px_36px_-12px_rgba(234,160,100,0.55)] flex items-center justify-center gap-2 group cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300"
+                className="w-full sm:w-auto px-7 py-3.5 text-sm font-semibold text-white bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 rounded-xl hover:from-violet-500 hover:to-indigo-500 transition-all shadow-[0_0_30px_-5px_rgba(139,92,246,0.6)] flex items-center justify-center gap-2 group cursor-pointer"
               >
                 <span>Explore Competitions</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -197,30 +197,22 @@ export const HomePage: React.FC = () => {
 
               <Link
                 to="/about"
-                className="w-full sm:w-auto px-7 py-4 text-sm font-medium text-[#d5e0e9] bg-[#0b1926]/80 border border-[#395268]/60 rounded-xl hover:border-[#88aac4] hover:bg-[#102337] hover:text-white transition-all flex items-center justify-center gap-2 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sky-300"
+                className="w-full sm:w-auto px-6 py-3.5 text-sm font-medium text-slate-200 bg-[#171426]/80 border border-violet-500/25 rounded-xl hover:border-violet-400 hover:text-white transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                <Sparkles className="w-4 h-4 text-[#efae76]" />
+                <Sparkles className="w-4 h-4 text-violet-400" />
                 <span>Discover NEXORA</span>
               </Link>
             </div>
 
-            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-x-5 gap-y-2 text-[10px] sm:text-xs font-mono uppercase tracking-[0.2em] text-[#9bb3c5] user-select-none" aria-label="NEXORA values">
-              <span>01 / Build</span>
-              <span className="text-[#d78d55]" aria-hidden="true">✦</span>
-              <span>02 / Compete</span>
-              <span className="text-[#d78d55]" aria-hidden="true">✦</span>
-              <span>03 / Innovate</span>
-            </div>
-
             {/* Institutional Note / Platform Announcement */}
             <div className="pt-4 flex items-center justify-center lg:justify-start gap-2 text-xs text-slate-400 user-select-none">
-              <span className="text-[#e5a66d] font-mono">Announcement:</span>
+              <span className="text-violet-400 font-mono">Announcement:</span>
               <span>{siteContent?.announcement || "Proposed platform pending formal faculty council ratification."}</span>
             </div>
           </div>
 
           {/* Right Column: Three.js Rotating Purple Orbital Sphere (Seamless blending into galaxy) */}
-          <div className="nx-home-hero-art lg:col-span-5 relative flex items-center justify-center pointer-events-none w-full">
+          <div className="lg:col-span-5 relative flex items-center justify-center pointer-events-none w-full">
             <div className="relative w-full aspect-square max-w-[500px] lg:max-w-[580px] xl:max-w-[620px] flex items-center justify-center overflow-visible">
               <CosmicHeroObject />
             </div>
