@@ -550,7 +550,7 @@ export const AdminPage: React.FC = () => {
     try {
       const [stats, allRegs, allEvents, allStudents, notifs, msgs, logs, tMembers, tMeta] = await Promise.all([
         dataService.getRealDashboardStats().catch((err: any) => {
-          setStatsError(err.message || 'Could not fetch database stats');
+          setStatsError(err.message || 'Could not fetch platform statistics');
           return null;
         }),
         dataService.getAllRegistrations().catch(() => []),
@@ -960,7 +960,7 @@ export const AdminPage: React.FC = () => {
       });
       loadDashboardData();
     } catch (err: any) {
-      showErrorToast(err.message || 'Failed to create competition in database.');
+      showErrorToast(err.message || 'Failed to create competition.');
     } finally {
       setLoading(false);
     }
@@ -1321,7 +1321,7 @@ export const AdminPage: React.FC = () => {
       await dataService.updateSiteContent(siteContent);
       showSuccessToast('Website copy published! Homepage, hero, and mission statements updated live.');
     } catch (err: any) {
-      showErrorToast(err.message || 'Failed to save website content to database.');
+      showErrorToast(err.message || 'Failed to save website content.');
     } finally {
       setSavingContent(false);
     }
@@ -3823,7 +3823,7 @@ export const AdminPage: React.FC = () => {
                 className="px-5 py-2 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                <span>Save Live to Database</span>
+                <span>Save Changes</span>
               </button>
             </div>
           </div>
