@@ -773,7 +773,7 @@ export function registerCmsEndpoints({
         academic_branch_name: data.academic_branch_name || 'Engineering',
         division: data.division || 'Division A',
         department_name: data.department_name || 'Technical Operations',
-        bio: data.bio?.trim() || 'NEXORA student organizer.',
+        bio: data.is_founder === true ? (data.bio?.trim() || '') : '',
         avatar_url: data.avatar_url?.trim() || '/images/team/mitesh_founder.jpg',
         enrollment_number: data.enrollment_number?.trim() || '',
         institution: data.institution?.trim() || 'Birla Vishvakarma Mahavidyalaya',
@@ -782,6 +782,7 @@ export function registerCmsEndpoints({
         is_featured: Boolean(data.is_featured),
         is_founder: Boolean(data.is_founder),
         enabled: data.enabled !== false,
+        visibility_approved: data.is_founder === true || data.visibility_approved === true,
         created_at: now,
         updated_at: now
       });
