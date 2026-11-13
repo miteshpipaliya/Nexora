@@ -85,22 +85,46 @@ export const STANDARD_TEAM_ROLES = [
     display_order: 1
   },
   {
-    key: 'faculty_guide',
+    key: 'faculty_1',
     role_name: 'Faculty Member',
-    default_name: 'Faculty Advisor & Mentor',
-    department_name: 'Department of Electronics Engineering',
-    academic_branch_name: 'Faculty Mentor',
-    division: 'Faculty Advisory Council',
+    default_name: '',
+    department_name: '',
+    academic_branch_name: '',
+    division: '',
     institution: 'Birla Vishvakarma Mahavidyalaya',
-    enrollment_number: 'FACULTY-BVM-01',
-    bio: 'Providing academic guidance, pedagogical alignment, institutional mentorship, and ethical oversight for NEXORA student technological initiatives.',
+    enrollment_number: '',
+    bio: '',
     avatar_url: '',
     is_founder: false,
-    display_order: 2,
-    faculty_designation: 'Associate Professor & Advisor',
-    faculty_cabin: 'BVM Room 204, Main Building',
-    faculty_research: 'VLSI Systems, Embedded Intelligence, Cloud Computing',
-    faculty_office_hours: 'Monday – Friday: 03:00 PM – 05:00 PM'
+    display_order: 2
+  },
+  {
+    key: 'faculty_2',
+    role_name: 'Faculty Member',
+    default_name: '',
+    department_name: '',
+    academic_branch_name: '',
+    division: '',
+    institution: 'Birla Vishvakarma Mahavidyalaya',
+    enrollment_number: '',
+    bio: '',
+    avatar_url: '',
+    is_founder: false,
+    display_order: 3
+  },
+  {
+    key: 'faculty_3',
+    role_name: 'Faculty Member',
+    default_name: '',
+    department_name: '',
+    academic_branch_name: '',
+    division: '',
+    institution: 'Birla Vishvakarma Mahavidyalaya',
+    enrollment_number: '',
+    bio: '',
+    avatar_url: '',
+    is_founder: false,
+    display_order: 4
   },
   {
     key: 'tech_ops',
@@ -187,6 +211,29 @@ export const STANDARD_TEAM_ROLES = [
     display_order: 8
   }
 ];
+
+// Official BVM undergraduate disciplines and 2025-26 postgraduate offerings.
+// Sources: bvmengineering.ac.in/common_page1.aspx?page_id=5 and the
+// BVM M.Tech 2025-26 admissions poster.
+const BVM_DEPARTMENTS = [
+  'B.Tech — Civil Engineering (CE)',
+  'B.Tech — Computer Engineering (CP)',
+  'B.Tech — Electrical Engineering (EE)',
+  'B.Tech — Electronics Engineering (EL)',
+  'B.Tech — Mechanical Engineering (ME)',
+  'B.Tech — Production Engineering (PE)',
+  'B.Tech — Information Technology (IT)',
+  'B.Tech — Electronics & Communication Engineering (EC)',
+  'M.Tech — Environmental Engineering',
+  'M.Tech — Construction Engineering & Management',
+  'M.Tech — Structural Engineering',
+  'M.Tech — Transportation Engineering',
+  'M.Tech — Infrastructure Engineering & Technology',
+  'M.Tech — Computer Engineering',
+  'M.Tech — Automation & Robotics',
+  'M.Tech — Electrical Engineering',
+  'M.Tech — Machine Design',
+] as const;
 
 export const AdminPage: React.FC = () => {
   const { user, isAdmin, elevatedAdminVerified, setElevatedAdminVerified, refreshAdminClaim } = useAuth();
@@ -1013,8 +1060,12 @@ export const AdminPage: React.FC = () => {
     try {
       const existing = teamMembers.find(m => m.role_key === roleDef.key || m.role_name === roleDef.role_name);
       if (existing) {
-        const nextEnabled = existing.enabled === false;
-        await dataService.updateTeamMember(existing.id, { enabled: nextEnabled });
+        const nextEnabled = existing.visibility_approved !== true || existing.enabled === false;
+        if (nextEnabled && (!existing.name?.trim() || !existing.department_name?.trim())) {
+          showErrorToast('Complete the name and department before publishing.');
+          return;
+        }
+        await dataService.updateTeamMember(existing.id, { enabled: nextEnabled, visibility_approved: nextEnabled });
         showSuccessToast(`Role "${roleDef.role_name}" is now ${nextEnabled ? 'LIVE on /team page' : 'DRAFT / HIDDEN'}.`);
       } else {
         const newMember: Partial<TeamMember> = {
@@ -1032,6 +1083,7 @@ export const AdminPage: React.FC = () => {
           is_founder: roleDef.is_founder || false,
           is_featured: roleDef.is_founder || false,
           enabled: true,
+          visibility_approved: true,
           ...(roleDef.faculty_designation ? {
             faculty_designation: roleDef.faculty_designation,
             faculty_cabin: roleDef.faculty_cabin,
@@ -1051,9 +1103,9 @@ export const AdminPage: React.FC = () => {
   };
 
   const handleToggleTeamMemberPublish = async (member: TeamMember) => {
-    const nextVal = member.enabled === false;
+    const nextVal = member.visibility_approved !== true || member.enabled === false;
     try {
-      await dataService.updateTeamMember(member.id, { enabled: nextVal });
+      await dataService.updateTeamMember(member.id, { enabled: nextVal, visibility_approved: nextVal });
       showSuccessToast(`Profile "${member.name}" is now ${nextVal ? 'LIVE on /team page' : 'DRAFT / HIDDEN'}.`);
       loadDashboardData();
     } catch (err: any) {
@@ -1149,17 +1201,26 @@ export const AdminPage: React.FC = () => {
 
   // TEAM CRUD ACTIONS (PHASE 5)
   const handleSaveTeamMember = async () => {
-    if (!newTeamMemberData.name?.trim()) {
+    if (!newTeamMemberData.name?.trim() || newTeamMemberData.name.trim().split(/\\s+/).length < 2) {
+      showErrorToast('Please enter both first name and surname.');
+      return;
+    }
+    if (!newTeamMemberData.department_name?.trim()) {
+      showErrorToast('Please select the BVM department.');
+      return;
+    }
+    if (!newTeamMemberData.role_key?.startsWith('faculty_') && !newTeamMemberData.is_founder && (!newTeamMemberData.division?.trim() || !newTeamMemberData.enrollment_number?.trim())) {
+      showErrorToast('Division and enrollment number are required for student roles.');
       showErrorToast('Member name is required.');
       return;
     }
     setLoading(true);
     try {
       if (editingTeamMember) {
-        await dataService.updateTeamMember(editingTeamMember.id, newTeamMemberData);
+        await dataService.updateTeamMember(editingTeamMember.id, { ...newTeamMemberData, is_founder: editingTeamMember.is_founder === true, visibility_approved: editingTeamMember.visibility_approved === true });
         showSuccessToast(`Updated team member "${newTeamMemberData.name}"!`);
       } else {
-        await dataService.createTeamMember(newTeamMemberData);
+        await dataService.createTeamMember({ ...newTeamMemberData, is_founder: false, enabled: false, visibility_approved: false });
         showSuccessToast(`Added team member "${newTeamMemberData.name}"!`);
       }
       setShowTeamMemberModal(false);
