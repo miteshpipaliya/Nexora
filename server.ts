@@ -1844,11 +1844,11 @@ apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/c
 
     const nowIso = new Date().toISOString();
     const result = await createRegistrationOnce(db, userId, cleanSlug, (ev, registrationId) => {
-      const referenceId = `NEX-${cleanSlug.slice(0, 4).toUpperCase()}-${Date.now().toString(36).toUpperCase().slice(-5)}`;
+      const referenceId = `NEX-${cleanSlug.slice(0, 4).toUpperCase()}-${registrationId.slice(-8).toUpperCase()}`;
       const isBvm = college.toLowerCase().includes('birla') || college.toLowerCase().includes('bvm');
       const bvmFee = ev?.bvm_fee ?? ev?.fee_per_participant ?? 50;
       const externalFee = ev?.external_fee ?? ev?.fee_per_participant ?? 70;
-      const feePaid = isBvm ? bvmFee : externalFee;
+      const expectedFee = isBvm ? bvmFee : externalFee;
       const memberDetails = Array.isArray(team_member_details) ? team_member_details : [];
       const memberNames = Array.isArray(team_members) ? team_members : [];
       return {
@@ -1872,9 +1872,9 @@ apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/c
         team_member_details: memberDetails,
         participant_count: memberDetails.length || memberNames.length || 1,
         registration_status: 'Confirmed',
-        payment_status: 'Completed',
-        calculated_fee: feePaid,
-        fee_paid: feePaid,
+        payment_status: 'Pending Verification',
+        calculated_fee: expectedFee,
+        fee_paid: 0,
         created_at: nowIso,
         updated_at: nowIso
       };
