@@ -61,34 +61,30 @@ export const TeamPage: React.FC = () => {
       ) : (
         <>
           {founder && (
-            <section aria-label="Founder" className="mx-auto w-full max-w-xl">
-              <div className="text-center text-[11px] text-amber-300/85 font-mono tracking-[.2em] uppercase mb-5">Founder · NEXORA</div>
-              <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-[#221a31] to-[#0d0c17] p-6 sm:p-8 border border-[#d4af37]/80 shadow-[0_18px_65px_-28px_rgba(212,175,55,.45)]">
-                <div className="absolute -top-20 -right-12 w-56 h-56 rounded-full bg-amber-400/5 blur-3xl pointer-events-none" />
-                <div className="flex justify-between items-center border-b border-amber-300/15 pb-5 relative">
+            <section aria-label="Founder" className="mx-auto w-full max-w-[470px]">
+              <div className="text-center text-[11px] text-violet-300/80 font-mono tracking-[.19em] uppercase mb-5">NEXORA DIGITAL CREDENTIAL · FOUNDER BADGE</div>
+              <article className="group relative overflow-hidden rounded-[25px] border border-[#d4af37]/75 bg-gradient-to-b from-[#211a36]/95 via-[#1a142c]/95 to-[#120f21]/95 px-7 pt-8 pb-6 shadow-[0_23px_60px_-25px_rgba(206,172,70,.24)] transition-transform duration-500 hover:-translate-y-1">
+                <header className="relative flex items-center justify-between border-b border-violet-400/15 pb-6">
                   <NexoraLogo size="sm" />
-                  <span className="flex gap-1.5 items-center bg-amber-400/10 border border-amber-400/25 rounded-full px-3 py-1 text-[11px] text-amber-200 font-semibold">
-                    <Crown className="h-3 w-3" /> FOUNDER
-                  </span>
-                </div>
-                <div className="flex gap-5 items-center py-6 relative">
-                  <div className="h-20 w-20 rounded-2xl overflow-hidden bg-violet-950/40 border border-amber-300/25 shrink-0 flex items-center justify-center text-xl text-amber-200 font-semibold">
-                    {founder.avatar_url && !avatarFailed
-                      ? <img src={founder.avatar_url} alt="" onError={() => setAvatarFailed(true)} className="w-full h-full object-cover" />
-                      : founder.name.slice(0, 2).toUpperCase()}
+                  <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/35 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-bold text-amber-200"><Crown className="h-3 w-3" /> FOUNDER</span>
+                </header>
+                <div className="flex items-center gap-5 py-7">
+                  <div className="h-[92px] w-[92px] shrink-0 overflow-hidden rounded-2xl border border-violet-500/65 bg-[#0a0811] shadow-[0_0_18px_-5px_rgba(153,80,255,.7)] flex items-center justify-center text-violet-200 font-bold">
+                    {founder.avatar_url && !avatarFailed ? <img src={founder.avatar_url} alt="" onError={() => setAvatarFailed(true)} className="w-full h-full object-cover"/> : founder.name.slice(0, 2).toUpperCase()}
                   </div>
                   <div className="min-w-0">
-                    <h2 className="text-xl sm:text-2xl text-white font-bold">{founder.name}</h2>
-                    <p className="text-sm text-amber-200/90 mt-1">{founder.role_name || 'Founder'}</p>
+                    <h2 className="text-2xl font-extrabold text-white break-words">{founder.name}</h2>
+                    <p className="mt-1 text-sm font-semibold text-violet-300">{founder.role_name || 'Founder'}</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-5 p-4 bg-black/25 rounded-xl border border-white/5 relative">
-                  <Detail label="Department" value={founder.department_name} />
+                <div className="grid grid-cols-2 gap-x-4 gap-y-4 rounded-xl border border-violet-400/10 bg-[#100d1d]/85 p-4">
+                  <Detail label="Department / Branch" value={founder.department_name} />
                   <Detail label="Division" value={founder.division} />
-                  <Detail label="Enrollment" value={founder.enrollment_number} />
+                  <Detail label="Enrollment No." value={founder.enrollment_number} />
                 </div>
-                {founder.bio?.trim() && <p className="text-sm text-slate-300 leading-relaxed border-t border-amber-300/10 mt-5 pt-5">{founder.bio}</p>}
-              </div>
+                {founder.bio?.trim() && <p className="border-b border-violet-500/10 py-5 text-sm leading-relaxed text-slate-400">{founder.bio}</p>}
+                <footer className="flex items-center justify-between gap-3 pt-5 font-mono text-[10px] tracking-wider text-violet-300/60"><span>NEXORA INITIATIVE</span><span>FOUNDER · VERIFIED PROFILE</span></footer>
+              </article>
             </section>
           )}
 
@@ -102,14 +98,14 @@ export const TeamPage: React.FC = () => {
                 {others.map(member => {
                   const faculty = member.role_key?.startsWith('faculty_') || member.role_name === 'Faculty Member';
                   return (
-                    <article key={member.id} className="rounded-2xl bg-[#171426]/90 border border-violet-500/20 p-6 space-y-5 hover:border-violet-500/40 transition-colors">
+                    <article key={member.id} className="group relative rounded-[24px] bg-gradient-to-b from-[#201936] to-[#120f22] border border-violet-500/25 p-6 space-y-5 shadow-[0_16px_45px_-25px_rgba(129,70,230,.3)] transition-all duration-300 hover:-translate-y-1 hover:border-violet-400/45">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-xs font-mono text-violet-300">{member.role_name || (faculty ? 'Faculty Member' : 'Team Member')}</span>
                         {faculty ? <GraduationCap className="h-5 w-5 text-violet-400" /> : <Users className="h-5 w-5 text-violet-400" />}
                       </div>
                       <h3 className="text-xl font-bold text-white break-words">{member.name}</h3>
-                      <div className="grid grid-cols-2 gap-4 border-t border-violet-500/15 pt-4">
-                        <Detail label="Department" value={member.department_name} />
+                      <div className="grid grid-cols-2 gap-4 rounded-xl bg-[#0d0b19]/70 border border-violet-500/10 p-4">
+                        <Detail label="Department / Branch" value={member.department_name} />
                         {!faculty && <Detail label="Division" value={member.division} />}
                         {!faculty && <Detail label="Enrollment" value={member.enrollment_number} />}
                       </div>
