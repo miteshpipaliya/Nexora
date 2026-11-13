@@ -4,32 +4,62 @@ import { dataService } from '../../services/dataService';
 import { TeamMember, TeamDepartment } from '../../types';
 import { NexoraLogo } from '../../components/ui/NexoraLogo';
 
+type PublicTeamCache = { members: TeamMember[]; departments: TeamDepartment[]; savedAt: number };
+const TEAM_CACHE_KEY = 'nexora-public-team-v1';
+const TEAM_CACHE_TTL = 15 * 60 * 1000;
+
+const readCachedTeam = (): PublicTeamCache | null => {
+  try {
+    const raw = sessionStorage.getItem(TEAM_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PublicTeamCache;
+    if (!Array.isArray(parsed.members) || !Array.isArray(parsed.departments)) return null;
+    if (Date.now() - parsed.savedAt > TEAM_CACHE_TTL) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
 export const TeamPage: React.FC = () => {
-  const [members, setMembers] = useState<TeamMember[]>([]);
-  const [departments, setDepartments] = useState<TeamDepartment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialCache] = useState(readCachedTeam);
+  const [members, setMembers] = useState<TeamMember[]>(() => initialCache?.members ?? []);
+  const [departments, setDepartments] = useState<TeamDepartment[]>(() => initialCache?.departments ?? []);
+  const [loading, setLoading] = useState(!initialCache);
+  const [loadError, setLoadError] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // 3D Card Hover Tilt state
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
   const [avatarError, setAvatarError] = useState(false);
 
   useEffect(() => {
-    loadTeamData();
-  }, []);
-
-  const loadTeamData = async () => {
-    try {
-      const data = await dataService.getPublicTeamData();
-      setMembers(data.members || []);
-      if (data.meta?.departments) {
-        setDepartments(data.meta.departments);
+    let active = true;
+    // Data is never invented: cached entries are previously retrieved public team members.
+    dataService.getPublicTeamData().then(data => {
+      if (!active) return;
+      const liveMembers = data.members ?? [];
+      const liveDepartments = data.meta?.departments ?? [];
+      setMembers(liveMembers);
+      setDepartments(liveDepartments);
+      setLoadError(false);
+      try {
+        sessionStorage.setItem(TEAM_CACHE_KEY, JSON.stringify({
+          members: liveMembers,
+          departments: liveDepartments,
+          savedAt: Date.now(),
+        } satisfies PublicTeamCache));
+      } catch {
+        // Storage can be unavailable; rendering must still succeed.
       }
-    } catch {
-      // Fallback
-    } finally {
-      setLoading(false);
-    }
-  };
+    }).catch(error => {
+      console.error('[TEAM] Unable to load public roster:', error);
+      if (active) setLoadError(true);
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [refreshKey]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -293,6 +323,19 @@ export const TeamPage: React.FC = () => {
             </div>
           )}
         </>
+      )}
+
+      {!loading && loadError && members.length === 0 && (
+        <div role="alert" className="rounded-2xl border border-violet-500/25 bg-[#171426]/80 px-6 py-8 text-center space-y-3">
+          <p className="text-slate-200">Team information is temporarily unavailable.</p>
+          <button type="button" onClick={() => { setLoading(true); setLoadError(false); setRefreshKey(key => key + 1); }}
+            className="px-5 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-medium">
+            Try again
+          </button>
+        </div>
+      )}
+      {!loading && !loadError && members.length === 0 && (
+        <p className="text-center text-slate-400">Team members will be displayed when the public roster is available.</p>
       )}
 
       {/* Faculty Mentorship Alignment Statement */}
