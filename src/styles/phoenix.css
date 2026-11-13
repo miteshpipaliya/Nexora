@@ -1,0 +1,163 @@
+/* All color-changing effects belong to the homepage preview, not the intro. */
+@property --phoenix-primary {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #A855F7;
+}
+@property --phoenix-secondary {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #D8B4FE;
+}
+@property --phoenix-glow {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #9333EA;
+}
+@property --phoenix-particle {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #C084FC;
+}
+@property --phoenix-aura {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(168, 85, 247, .30);
+}
+
+.phoenix-color-scene {
+  --phoenix-primary: #A855F7;
+  --phoenix-secondary: #D8B4FE;
+  --phoenix-glow: #9333EA;
+  --phoenix-aura: rgba(168, 85, 247, .30);
+  --phoenix-particle: #C084FC;
+  --phoenix-transition: 1500ms;
+  --phoenix-glow-intensity: .75;
+  --phoenix-glow-blur: 35px;
+  isolation: isolate;
+  transition:
+    --phoenix-primary var(--phoenix-transition) ease-in-out,
+    --phoenix-secondary var(--phoenix-transition) ease-in-out,
+    --phoenix-glow var(--phoenix-transition) ease-in-out,
+    --phoenix-particle var(--phoenix-transition) ease-in-out,
+    --phoenix-aura var(--phoenix-transition) ease-in-out;
+}
+
+.phoenix-color-aura {
+  position: absolute;
+  width: 88%;
+  height: 79%;
+  left: 6%;
+  top: 11%;
+  z-index: 0;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, var(--phoenix-aura) 0%, transparent 67%);
+  filter: blur(var(--phoenix-glow-blur));
+  pointer-events: none;
+  animation: phoenix-aura-breath 5.5s ease-in-out infinite;
+}
+.phoenix-color-halo {
+  position: absolute;
+  width: 78%;
+  height: 68%;
+  left: 11%;
+  top: 16%;
+  z-index: 0;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, color-mix(in srgb, var(--phoenix-glow) 15%, transparent), transparent 75%);
+  filter: blur(18px);
+  pointer-events: none;
+}
+.phoenix-color-image {
+  position: relative;
+  z-index: 3;
+  display: block;
+  width: 116%;
+  max-width: none;
+  height: auto;
+  max-height: min(82vh, 650px);
+  object-fit: contain;
+  user-select: none;
+  /* Original feather colors remain intact; the shadows supply energy color. */
+  filter:
+    drop-shadow(0 0 11px color-mix(in srgb, var(--phoenix-secondary) 45%, transparent))
+    drop-shadow(0 0 32px color-mix(in srgb, var(--phoenix-glow) 30%, transparent));
+  animation: phoenix-gentle-float 9s ease-in-out infinite;
+}
+.phoenix-color-orbit {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  width: 80%;
+  height: 62%;
+  border: 1px solid color-mix(in srgb, var(--phoenix-primary) 20%, transparent);
+  border-radius: 50%;
+  box-shadow: 0 0 15px color-mix(in srgb, var(--phoenix-glow) 10%, transparent);
+  pointer-events: none;
+  animation: phoenix-orbit-spin 42s linear infinite;
+}
+.phoenix-color-orbit.second {
+  width: 74%;
+  height: 70%;
+  animation-duration: 56s;
+  animation-direction: reverse;
+  opacity: .55;
+}
+.phoenix-color-spark {
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  height: 5px;
+  width: 5px;
+  border-radius: 50%;
+  background: var(--phoenix-secondary);
+  box-shadow: 0 0 10px 3px color-mix(in srgb, var(--phoenix-particle) 58%, transparent);
+}
+.phoenix-color-dust {
+  position: absolute;
+  z-index: 2;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--phoenix-particle);
+  opacity: .65;
+  box-shadow: 0 0 9px color-mix(in srgb, var(--phoenix-particle) 50%, transparent);
+  animation: phoenix-twinkle 5s ease-in-out infinite;
+  pointer-events: none;
+}
+.phoenix-color-dust:nth-of-type(even) { animation-delay: -2s; }
+
+@keyframes phoenix-aura-breath {
+  0%, 100% { transform: scale(.97); opacity: .65; }
+  50% { transform: scale(1.04); opacity: .9; }
+}
+@keyframes phoenix-gentle-float {
+  0%, 100% { transform: translateY(0) rotate(-.45deg); }
+  50% { transform: translateY(-10px) rotate(.45deg); }
+}
+@keyframes phoenix-orbit-spin {
+  from { transform: translate(-50%,-50%) rotate(-21deg); }
+  to { transform: translate(-50%,-50%) rotate(339deg); }
+}
+@keyframes phoenix-twinkle {
+  0%, 100% { opacity: .35; }
+  50% { opacity: .8; }
+}
+@media (max-width: 1024px) {
+  .phoenix-color-scene { --phoenix-glow-blur: 24px; }
+  .phoenix-color-image { width: 112%; }
+}
+@media (max-width: 640px) {
+  .phoenix-color-scene { --phoenix-glow-blur: 15px; }
+  .phoenix-color-image { width: 106%; filter: drop-shadow(0 0 12px color-mix(in srgb, var(--phoenix-glow) 24%, transparent)); }
+  .phoenix-color-dust:nth-of-type(n+5) { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .phoenix-color-scene,
+  .phoenix-color-aura,
+  .phoenix-color-image,
+  .phoenix-color-orbit,
+  .phoenix-color-dust { animation: none !important; transition: none !important; }
+  .phoenix-color-orbit { transform: translate(-50%, -50%) rotate(-21deg); }
+}
