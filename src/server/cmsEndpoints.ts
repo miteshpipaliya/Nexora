@@ -1,5 +1,6 @@
 import type { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
+import { isSafeImageLibraryUrl } from './imageValidation';
 import { toFiniteNumber } from '../shared/lib/numberUtils';
 
 export interface CmsEndpointsDependencies {
@@ -375,7 +376,7 @@ export function registerCmsEndpoints({
       res.json({ success: true, competition: competitionDoc });
     } catch (err: any) {
       console.error('[API CREATE COMPETITION ERROR]', err);
-      res.status(500).json({ error: err.message || 'Failed to save competition to database.' });
+      res.status(500).json({ error: 'Failed to save competition to database.' });
     }
   });
 
@@ -403,7 +404,7 @@ export function registerCmsEndpoints({
       res.json({ success: true, slug, competition: updateData });
     } catch (err: any) {
       console.error('[API UPDATE COMPETITION ERROR]', err);
-      res.status(500).json({ error: err.message || 'Failed to update competition.' });
+      res.status(500).json({ error: 'Failed to update competition.' });
     }
   });
 
@@ -422,7 +423,7 @@ export function registerCmsEndpoints({
       res.json({ success: true, deletedSlug: slug });
     } catch (err: any) {
       console.error('[API DELETE COMPETITION ERROR]', err);
-      res.status(500).json({ error: err.message || 'Failed to delete competition.' });
+      res.status(500).json({ error: 'Failed to delete competition.' });
     }
   });
 
@@ -485,7 +486,7 @@ export function registerCmsEndpoints({
       res.json({ success: true, notification: notifDoc });
     } catch (err: any) {
       console.error('[API PUBLISH NOTIFICATION ERROR]', err);
-      res.status(500).json({ error: err.message || 'Failed to publish broadcast notification.' });
+      res.status(500).json({ error: 'Failed to publish broadcast notification.' });
     }
   });
 
@@ -522,7 +523,7 @@ export function registerCmsEndpoints({
       res.json({ success: true, id, notification: notifDoc });
     } catch (err: any) {
       console.error('[API UPDATE NOTIFICATION ERROR]', err);
-      res.status(500).json({ error: err.message || 'Failed to update notification.' });
+      res.status(500).json({ error: 'Failed to update notification.' });
     }
   });
 
@@ -541,7 +542,7 @@ export function registerCmsEndpoints({
       res.json({ success: true, deletedId: id });
     } catch (err: any) {
       console.error('[API DELETE NOTIFICATION ERROR]', err);
-      res.status(500).json({ error: err.message || 'Failed to delete notification.' });
+      res.status(500).json({ error: 'Failed to delete notification.' });
     }
   });
 
@@ -581,8 +582,8 @@ export function registerCmsEndpoints({
   apiRouter.post('/admin/images', requireElevatedAdmin, async (req: Request, res: Response) => {
     try {
       const data = req.body;
-      if (!data.url || !data.url.trim()) {
-        res.status(400).json({ error: 'Image URL is required.' });
+      if (!isSafeImageLibraryUrl(data?.url)) {
+        res.status(400).json({ error: 'Use a valid HTTPS image URL, public asset path, or verified PNG/JPEG/WebP data URL.' });
         return;
       }
 
@@ -609,7 +610,7 @@ export function registerCmsEndpoints({
       res.json({ success: true, image: imgDoc });
     } catch (err: any) {
       console.error('[API ADD IMAGE ERROR]', err);
-      res.status(500).json({ error: err.message || 'Failed to save image to library.' });
+      res.status(500).json({ error: 'Failed to save image to library.' });
     }
   });
 
@@ -670,7 +671,7 @@ export function registerCmsEndpoints({
       res.json({ success: true, deletedId: id });
     } catch (err: any) {
       console.error('[API DELETE IMAGE ERROR]', err);
-      res.status(500).json({ error: err.message || 'Failed to delete image.' });
+      res.status(500).json({ error: 'Failed to delete image.' });
     }
   });
 
@@ -723,7 +724,7 @@ export function registerCmsEndpoints({
       res.json({ success: true, meta: updatedMeta });
     } catch (err: any) {
       console.error('[API UPDATE TEAM META ERROR]', err);
-      res.status(500).json({ error: err.message || 'Failed to save team metadata.' });
+      res.status(500).json({ error: 'Failed to save team metadata.' });
     }
   });
 
@@ -794,7 +795,7 @@ export function registerCmsEndpoints({
       res.json({ success: true, member: memberDoc });
     } catch (err: any) {
       console.error('[API CREATE TEAM MEMBER ERROR]', err);
-      res.status(500).json({ error: err.message || 'Failed to save team member.' });
+      res.status(500).json({ error: 'Failed to save team member.' });
     }
   });
 
@@ -820,7 +821,7 @@ export function registerCmsEndpoints({
       res.json({ success: true, id, member: updateDoc });
     } catch (err: any) {
       console.error('[API UPDATE TEAM MEMBER ERROR]', err);
-      res.status(500).json({ error: err.message || 'Failed to update team member.' });
+      res.status(500).json({ error: 'Failed to update team member.' });
     }
   });
 
@@ -839,7 +840,7 @@ export function registerCmsEndpoints({
       res.json({ success: true, deletedId: id });
     } catch (err: any) {
       console.error('[API DELETE TEAM MEMBER ERROR]', err);
-      res.status(500).json({ error: err.message || 'Failed to delete team member.' });
+      res.status(500).json({ error: 'Failed to delete team member.' });
     }
   });
 
