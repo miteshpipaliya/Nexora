@@ -3104,263 +3104,76 @@ export const AdminPage: React.FC = () => {
             </button>
           </div>
 
-          {/* Subtab 1: 7 Dedicated Leadership Profile Cards */}
+
           {teamSubTab === 'members' && (
-            <div className="space-y-8">
-              <div>
-                <div className="flex items-center justify-between pb-3 border-b border-violet-500/20">
-                  <div>
-                    <h3 className="text-sm font-bold text-white font-mono uppercase tracking-wider flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-violet-400" />
-                      <span>7 Core Leadership Roles (Live CMS Management)</span>
-                    </h3>
-                    <p className="text-xs text-slate-300 font-light mt-0.5">
-                      Dedicated management cards for all seven primary organizational positions. Toggle &quot;Go Live&quot; independently for each profile.
-                    </p>
-                  </div>
-                  <span className="text-[11px] font-mono text-violet-300 bg-violet-950 px-2.5 py-1 rounded-md border border-violet-500/30">
-                    7 Standard Roles
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6">
-                  {STANDARD_TEAM_ROLES.map((roleDef, idx) => {
-                    const existing = teamMembers.find(
-                      (m) => m.role_key === roleDef.key || m.role_name === roleDef.role_name
-                    );
-                    const isPublished = existing ? existing.enabled !== false : false;
-                    const avatarSrc = existing?.avatar_url || roleDef.avatar_url;
-
-                    return (
-                      <div
-                        key={roleDef.key}
-                        className={`p-6 rounded-2xl border transition-all flex flex-col justify-between space-y-4 ${
-                          roleDef.is_founder
-                            ? 'bg-gradient-to-br from-[#1c1433] to-[#141026] border-violet-500/40 shadow-xl'
-                            : isPublished
-                            ? 'bg-[#171426] border-violet-500/30 shadow-lg'
-                            : 'bg-[#12101e] border-slate-800 opacity-80'
-                        }`}
-                      >
-                        <div className="space-y-4">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex items-center gap-3.5">
-                              <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-violet-500/40 bg-[#0d0c15] shrink-0 shadow-md">
-                                {avatarSrc ? (
-                                  <img
-                                    src={avatarSrc}
-                                    alt={existing?.name || roleDef.default_name}
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                      (e.target as HTMLImageElement).src = '/images/team/mitesh_founder.jpg';
-                                    }}
-                                  />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center font-bold text-violet-300 font-mono text-base bg-violet-950/60">
-                                    {(existing?.name || roleDef.default_name).slice(0, 2).toUpperCase()}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-[10px] font-mono text-slate-500">#{idx + 1}</span>
-                                  <h3 className="text-base font-bold text-white">
-                                    {existing?.name || roleDef.default_name}
-                                  </h3>
-                                  {roleDef.is_founder && (
-                                    <span className="px-2 py-0.5 text-[10px] font-mono bg-violet-950 text-violet-300 border border-violet-500/40 rounded font-semibold">
-                                      Founder
-                                    </span>
-                                  )}
-                                  <span className={`px-2 py-0.5 text-[10px] font-mono rounded font-semibold border ${
-                                    isPublished
-                                      ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
-                                      : 'bg-amber-950 text-amber-300 border-amber-500/30'
-                                  }`}>
-                                    {isPublished ? 'LIVE ON /TEAM' : 'DRAFT'}
-                                  </span>
-                                </div>
-                                <div className="text-xs font-mono text-violet-400 font-semibold">
-                                  {roleDef.role_name}
-                                </div>
-                                <div className="text-[11px] text-slate-400 font-mono">
-                                  {existing?.department_name || roleDef.department_name} · {existing?.academic_branch_name || roleDef.academic_branch_name}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <p className="text-xs text-slate-300 leading-relaxed font-light">
-                            {existing?.bio || roleDef.bio}
-                          </p>
-
-                          {/* Faculty Specific Fields Display */}
-                          {roleDef.key === 'faculty_guide' && (
-                            <div className="p-3 bg-[#11101B] border border-violet-500/20 rounded-xl space-y-1.5 font-mono text-[11px]">
-                              <div className="flex justify-between text-slate-300">
-                                <span className="text-slate-500">Designation:</span>
-                                <span className="text-violet-300 font-semibold">{existing?.faculty_designation || roleDef.faculty_designation}</span>
-                              </div>
-                              <div className="flex justify-between text-slate-300">
-                                <span className="text-slate-500">Cabin / Office:</span>
-                                <span className="text-white">{existing?.faculty_cabin || roleDef.faculty_cabin}</span>
-                              </div>
-                              <div className="flex justify-between text-slate-300">
-                                <span className="text-slate-500">Research Focus:</span>
-                                <span className="text-violet-300 truncate max-w-[200px]">{existing?.faculty_research || roleDef.faculty_research}</span>
-                              </div>
-                              <div className="flex justify-between text-slate-300">
-                                <span className="text-slate-500">Office Hours:</span>
-                                <span className="text-emerald-400">{existing?.faculty_office_hours || roleDef.faculty_office_hours}</span>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Student Academic Details Grid */}
-                          {roleDef.key !== 'faculty_guide' && (
-                            <div className="grid grid-cols-3 gap-2 p-3 bg-[#11101B] rounded-xl text-center font-mono text-xs">
-                              <div>
-                                <span className="text-[10px] text-slate-500 block uppercase">Division</span>
-                                <span className="text-white">{existing?.division || roleDef.division || '—'}</span>
-                              </div>
-                              <div>
-                                <span className="text-[10px] text-slate-500 block uppercase">Enrollment</span>
-                                <span className="text-violet-300">{existing?.enrollment_number || roleDef.enrollment_number || '—'}</span>
-                              </div>
-                              <div>
-                                <span className="text-[10px] text-slate-500 block uppercase">Order</span>
-                                <span className="text-slate-300">{existing?.display_order || roleDef.display_order}</span>
-                              </div>
-                            </div>
-                          )}
+            <div className="space-y-5">
+              <h3 className="text-base font-bold text-white">Team & Faculty · Private Management</h3>
+              <p className="text-xs text-slate-400">Three faculty slots are available. Only the founder is public initially. Set order in Edit; publish other profiles individually.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {STANDARD_TEAM_ROLES.map(roleDef => {
+                  const existing = teamMembers.find(m => m.role_key === roleDef.key || (roleDef.key === 'founder' && m.is_founder));
+                  const founder = roleDef.key === 'founder';
+                  const faculty = roleDef.key.startsWith('faculty_');
+                  const live = founder || (existing?.enabled !== false && existing?.visibility_approved === true);
+                  return (
+                    <article key={roleDef.key} className={founder
+                      ? "p-5 rounded-2xl border border-[#d4af37]/80 bg-gradient-to-br from-[#241b31] to-[#100e1a] space-y-4"
+                      : "p-5 rounded-2xl border border-violet-500/20 bg-[#171426] space-y-4"}>
+                      <div className="flex justify-between items-start gap-3">
+                        <div>
+                          <p className="text-xs text-violet-300 font-mono">{roleDef.role_name}</p>
+                          <h4 className="font-bold text-white mt-1">{existing?.name || (founder ? roleDef.default_name : 'Private · Name not assigned')}</h4>
+                          <p className="text-xs text-slate-400 mt-1">{existing?.department_name || 'Choose department in Edit'}</p>
                         </div>
-
-                        {/* Card Actions: Dedicated Go Live / Publish Button & Edit Button */}
-                        <div className="pt-3 border-t border-violet-500/15 flex items-center justify-between gap-3">
-                          <span className="text-[11px] font-mono text-slate-400">
-                            {isPublished ? '● Profile Visible' : '○ Profile Hidden'}
-                          </span>
-
-                          <div className="flex items-center gap-2">
-                            {/* Independent Go Live / Publish Button */}
-                            <button
-                              type="button"
-                              onClick={() => handlePublishStandardRole(roleDef)}
-                              className={`px-3.5 py-1.5 text-xs font-mono font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer ${
-                                isPublished
-                                  ? 'bg-[#11101B] text-slate-300 hover:text-white border border-violet-500/25 hover:border-violet-400'
-                                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]'
-                              }`}
-                              title={isPublished ? 'Click to unpublish and hide profile' : 'Click to publish profile LIVE immediately'}
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>{isPublished ? 'Unpublish' : 'Go Live / Publish'}</span>
-                            </button>
-
-                            {/* Edit Details */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (existing) {
-                                  setEditingTeamMember(existing);
-                                  setNewTeamMemberData(existing);
-                                } else {
-                                  setEditingTeamMember(null);
-                                  setNewTeamMemberData({
-                                    name: roleDef.default_name,
-                                    role_key: roleDef.key,
-                                    role_name: roleDef.role_name,
-                                    academic_branch_name: roleDef.academic_branch_name,
-                                    division: roleDef.division,
-                                    department_name: roleDef.department_name,
-                                    bio: roleDef.bio,
-                                    avatar_url: roleDef.avatar_url || '/images/team/mitesh_founder.jpg',
-                                    enrollment_number: roleDef.enrollment_number,
-                                    institution: roleDef.institution,
-                                    display_order: roleDef.display_order,
-                                    is_founder: roleDef.is_founder || false,
-                                    is_featured: roleDef.is_founder || false,
-                                    enabled: true,
-                                    ...(roleDef.faculty_designation ? {
-                                      faculty_designation: roleDef.faculty_designation,
-                                      faculty_cabin: roleDef.faculty_cabin,
-                                      faculty_research: roleDef.faculty_research,
-                                      faculty_office_hours: roleDef.faculty_office_hours
-                                    } : {})
-                                  });
-                                }
-                                setShowTeamMemberModal(true);
-                              }}
-                              className="px-3 py-1.5 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-sm flex items-center gap-1 cursor-pointer"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                              <span>Edit</span>
-                            </button>
-                          </div>
-                        </div>
+                        <span className={live ? "text-[10px] text-emerald-300" : "text-[10px] text-amber-300"}>{live ? 'PUBLIC' : 'PRIVATE'}</span>
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className="flex gap-5 text-xs text-slate-400 border-t border-violet-500/10 pt-3">
+                        {!faculty && <span>Division: {existing?.division || '—'}</span>}
+                        {!faculty && <span>Enrollment: {existing?.enrollment_number || '—'}</span>}
+                        <span>Order: {existing?.display_order ?? roleDef.display_order}</span>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        {!founder && <button type="button" onClick={() => existing && void handleToggleTeamMemberPublish(existing)}
+                          disabled={!existing}
+                          className="px-3 py-2 text-xs rounded-lg border border-violet-500/30 text-violet-200 disabled:opacity-40">
+                          {live ? 'Unpublish' : 'Publish'}</button>}
+                        <button type="button" className="px-4 py-2 text-xs rounded-lg bg-violet-600 text-white" onClick={() => {
+                          setEditingTeamMember(existing || null);
+                          setNewTeamMemberData(existing || {
+                            name: founder ? roleDef.default_name : '',
+                            role_key: roleDef.key,
+                            role_name: roleDef.role_name,
+                            department_name: founder ? 'B.Tech — Electronics Engineering (EL)' : '',
+                            division: founder ? roleDef.division : '',
+                            enrollment_number: founder ? roleDef.enrollment_number : '',
+                            bio: founder ? roleDef.bio : '',
+                            display_order: roleDef.display_order,
+                            is_founder: founder, enabled: founder, visibility_approved: founder
+                          });
+                          setShowTeamMemberModal(true);
+                        }}>Edit</button>
+                      </div>
+                    </article>
+                  );
+                })}
+                {teamMembers.filter(m => !STANDARD_TEAM_ROLES.some(r => r.key === m.role_key) && !m.is_founder).map(member => (
+                  <article key={member.id} className="p-5 rounded-2xl border border-violet-500/20 bg-[#171426] space-y-3">
+                    <div className="flex justify-between gap-3">
+                      <div><p className="text-xs text-violet-300">{member.role_name}</p><h4 className="text-white font-bold">{member.name}</h4></div>
+                      <span className="text-xs text-slate-400">{member.visibility_approved ? 'PUBLIC' : 'PRIVATE'}</span>
+                    </div>
+                    <p className="text-xs text-slate-400">{member.department_name} · Order {member.display_order}</p>
+                    <div className="flex gap-2">
+                      <button type="button" className="px-3 py-2 text-xs border border-violet-500/25 rounded-lg text-violet-200"
+                        onClick={() => void handleToggleTeamMemberPublish(member)}>{member.visibility_approved ? 'Unpublish' : 'Publish'}</button>
+                      <button type="button" className="px-3 py-2 text-xs bg-violet-600 rounded-lg text-white"
+                        onClick={() => { setEditingTeamMember(member); setNewTeamMemberData(member); setShowTeamMemberModal(true); }}>Edit</button>
+                      <button type="button" className="px-3 py-2 text-xs border border-red-500/20 rounded-lg text-red-300"
+                        onClick={() => void handleDeleteTeamMember(member.id, member.name)}>Delete</button>
+                    </div>
+                  </article>
+                ))}
               </div>
-
-              {/* Additional Custom Members (Beyond the 7 standard roles) */}
-              {teamMembers.filter(m => !STANDARD_TEAM_ROLES.some(r => r.key === m.role_key || r.role_name === m.role_name)).length > 0 && (
-                <div className="space-y-4 pt-4 border-t border-violet-500/20">
-                  <h4 className="text-xs font-mono text-slate-400 uppercase tracking-wider">
-                    Additional Appointed Team Members
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {teamMembers
-                      .filter(m => !STANDARD_TEAM_ROLES.some(r => r.key === m.role_key || r.role_name === m.role_name))
-                      .map((member) => (
-                        <div
-                          key={member.id}
-                          className="p-6 rounded-2xl border border-violet-500/20 bg-[#171426] flex flex-col justify-between space-y-4"
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-12 h-12 rounded-xl overflow-hidden border border-violet-500/30 bg-[#0d0c15] shrink-0">
-                                {member.avatar_url ? (
-                                  <img src={member.avatar_url} alt={member.name} className="w-full h-full object-cover" />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center font-bold text-violet-300 font-mono text-sm">
-                                    {member.name.slice(0, 2).toUpperCase()}
-                                  </div>
-                                )}
-                              </div>
-                              <div>
-                                <h4 className="text-sm font-bold text-white">{member.name}</h4>
-                                <div className="text-xs text-violet-400 font-mono">{member.role_name}</div>
-                                <div className="text-[11px] text-slate-400 font-mono">{member.department_name}</div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingTeamMember(member);
-                                  setNewTeamMemberData(member);
-                                  setShowTeamMemberModal(true);
-                                }}
-                                className="p-2 text-violet-300 hover:text-white bg-violet-950/60 border border-violet-500/30 rounded-lg cursor-pointer"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteTeamMember(member.id, member.name)}
-                                className="p-2 text-red-400 hover:text-red-300 bg-red-950/40 border border-red-500/20 rounded-lg cursor-pointer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
