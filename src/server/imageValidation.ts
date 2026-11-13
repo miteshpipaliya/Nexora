@@ -12,12 +12,13 @@ export type InspectedImage =
   | { ok: true; mime: SafeImageMime; extension: '.png' | '.jpg' | '.webp'; bytes: Buffer }
   | { ok: false; error: string };
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+// Keep the encoded request beneath the 3 MB authenticated route limit.
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const MAX_DATA_URL_LENGTH = Math.ceil(MAX_IMAGE_BYTES * 4 / 3) + 64;
 
 export function inspectImageDataUrl(value: unknown): InspectedImage {
   if (typeof value !== 'string' || value.length > MAX_DATA_URL_LENGTH) {
-    return { ok: false, error: 'Image data is missing or exceeds the 5 MB limit.' };
+    return { ok: false, error: 'Image data is missing or exceeds the 2 MB limit.' };
   }
 
   const match = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
