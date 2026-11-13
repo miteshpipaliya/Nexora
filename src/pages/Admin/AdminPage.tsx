@@ -4230,216 +4230,86 @@ export const AdminPage: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================
-          MODAL: TEAM MEMBER (CREATE & EDIT CMS)
-      ======================================================== */}
+
+      {/* Team member editor: only the fields actually shown on public cards. */}
       {showTeamMemberModal && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl bg-[#171426] border border-violet-500/40 rounded-2xl p-6 space-y-5 shadow-2xl my-8">
-            <div className="flex items-center justify-between pb-3 border-b border-violet-500/20">
+          <div className="w-full max-w-lg bg-[#171426] border border-violet-500/35 rounded-2xl p-6 space-y-5 shadow-2xl my-8">
+            <div className="flex items-start justify-between">
               <div>
-                <h3 className="text-base font-bold text-white">
-                  {editingTeamMember ? `Edit Member: ${editingTeamMember.name}` : 'Add New Team Member'}
-                </h3>
-                <p className="text-xs text-slate-400 font-mono">
-                  Managed directly in Firestore CMS. Syncs immediately to /team.
-                </p>
+                <h3 className="text-lg font-bold text-white">{editingTeamMember ? 'Edit Team Card' : 'Create Team Card'}</h3>
+                <p className="text-xs text-slate-400 mt-1">Changes are stored privately until you choose Publish.</p>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowTeamMemberModal(false);
-                  setEditingTeamMember(null);
-                }}
-                className="text-slate-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <button type="button" onClick={() => { setShowTeamMemberModal(false); setEditingTeamMember(null); }}
+                aria-label="Close team editor" className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
             </div>
-
-            <div className="space-y-4 text-xs">
-              {/* Photo Selector using Image Library */}
+            <div className="space-y-4">
               <div>
-                <ImageSelector
-                  label="Profile Picture / Avatar"
-                  value={newTeamMemberData.avatar_url || ''}
-                  onChange={(url) => setNewTeamMemberData({ ...newTeamMemberData, avatar_url: url })}
-                  defaultCategory="Team"
-                />
+                <label className="block text-xs font-mono text-slate-300 mb-1">Role</label>
+                <input type="text" maxLength={80} value={newTeamMemberData.role_name || ''}
+                  onChange={e => setNewTeamMemberData({ ...newTeamMemberData, role_name: e.target.value })}
+                  className="w-full p-3 rounded-lg bg-[#08080D] text-white border border-violet-500/25"
+                  placeholder="e.g. Technical Lead or Faculty Member" />
               </div>
-
-              {/* Name & Role */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-300 font-mono mb-1">Full Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g., Mitesh Pipaliya"
-                    value={newTeamMemberData.name || ''}
-                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, name: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-300 font-mono mb-1">Team Role *</label>
-                  <select
-                    value={newTeamMemberData.role_name || ''}
-                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, role_name: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
-                  >
-                    {(teamMeta.roles || []).map((r) => (
-                      <option key={r.id} value={r.name}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Functional Department & Academic Branch */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-300 font-mono mb-1">Functional Department (Team Unit) *</label>
-                  <select
-                    value={newTeamMemberData.department_name || ''}
-                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, department_name: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
-                  >
-                    {(teamMeta.departments || []).map((d) => (
-                      <option key={d.id} value={d.name}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-300 font-mono mb-1">Academic Engineering Branch *</label>
-                  <select
-                    value={newTeamMemberData.academic_branch_name || ''}
-                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, academic_branch_name: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
-                  >
-                    {(teamMeta.branches || []).map((b) => (
-                      <option key={b.id} value={b.name}>
-                        {b.name} ({b.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Division & Enrollment Number */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-slate-300 font-mono mb-1">Classroom Division</label>
-                  <input
-                    type="text"
-                    maxLength={20}
-                    placeholder="e.g. Division A"
-                    value={newTeamMemberData.division || ''}
-                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, division: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-300 font-mono mb-1">Enrollment Number</label>
-                  <input
-                    type="text"
-                    placeholder="e.g., 23EL001"
-                    value={newTeamMemberData.enrollment_number || ''}
-                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, enrollment_number: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-300 font-mono mb-1">Display Order</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="999"
-                    value={newTeamMemberData.display_order ?? 10}
-                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, display_order: parseInt(e.target.value) || 10 })}
-                    className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white font-mono"
-                  />
-                </div>
-              </div>
-
-              {/* Institution */}
               <div>
-                <label className="block text-slate-300 font-mono mb-1">Institution</label>
-                <input
-                  type="text"
-                  placeholder="Birla Vishvakarma Mahavidyalaya"
-                  value={newTeamMemberData.institution || 'Birla Vishvakarma Mahavidyalaya'}
-                  onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, institution: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
-                />
+                <label className="block text-xs font-mono text-slate-300 mb-1">First Name + Surname *</label>
+                <input type="text" maxLength={120} required value={newTeamMemberData.name || ''}
+                  onChange={e => setNewTeamMemberData({ ...newTeamMemberData, name: e.target.value })}
+                  className="w-full p-3 rounded-lg bg-[#08080D] text-white border border-violet-500/25"
+                  placeholder="Full name (no placeholder identities)" />
               </div>
-
-              {/* Bio */}
               <div>
-                <label className="block text-slate-300 font-mono mb-1">Biography / Contributions</label>
-                <textarea
-                  rows={3}
-                  placeholder="Describe member focus, technical specialties, and platform responsibilities..."
-                  value={newTeamMemberData.bio || ''}
-                  onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, bio: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
-                />
+                <label className="block text-xs font-mono text-slate-300 mb-1">BVM Department / Degree *</label>
+                <select required value={newTeamMemberData.department_name || ''}
+                  onChange={e => setNewTeamMemberData({ ...newTeamMemberData, department_name: e.target.value })}
+                  className="w-full p-3 rounded-lg bg-[#08080D] text-white border border-violet-500/25">
+                  <option value="">Select BVM department</option>
+                  {newTeamMemberData.department_name && !BVM_DEPARTMENTS.some(d => d === newTeamMemberData.department_name) &&
+                    <option value={newTeamMemberData.department_name}>{newTeamMemberData.department_name} (existing)</option>}
+                  {BVM_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
               </div>
-
-              {/* Flags */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-[#11101B] border border-violet-500/20 rounded-xl">
-                <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={newTeamMemberData.is_founder || false}
-                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, is_founder: e.target.checked })}
-                    className="accent-violet-500 rounded"
-                  />
-                  <span>Founder Badge</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={newTeamMemberData.is_featured || false}
-                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, is_featured: e.target.checked })}
-                    className="accent-violet-500 rounded"
-                  />
-                  <span>Featured Member</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={newTeamMemberData.enabled !== false}
-                    onChange={(e) => setNewTeamMemberData({ ...newTeamMemberData, enabled: e.target.checked })}
-                    className="accent-violet-500 rounded"
-                  />
-                  <span>Published on /team</span>
-                </label>
+              {!newTeamMemberData.role_key?.startsWith('faculty_') && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-mono text-slate-300 mb-1">Division (type manually) *</label>
+                    <input type="text" maxLength={30} value={newTeamMemberData.division || ''}
+                      onChange={e => setNewTeamMemberData({ ...newTeamMemberData, division: e.target.value })}
+                      className="w-full p-3 rounded-lg bg-[#08080D] text-white border border-violet-500/25"
+                      placeholder="e.g. 11 or A" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-mono text-slate-300 mb-1">Enrollment Number *</label>
+                    <input type="text" maxLength={50} value={newTeamMemberData.enrollment_number || ''}
+                      onChange={e => setNewTeamMemberData({ ...newTeamMemberData, enrollment_number: e.target.value })}
+                      className="w-full p-3 rounded-lg bg-[#08080D] text-white border border-violet-500/25"
+                      placeholder="Enter manually" />
+                  </div>
+                </div>
+              )}
+              {newTeamMemberData.is_founder === true && (
+                <div>
+                  <label className="block text-xs font-mono text-amber-200 mb-1">Founder Biography</label>
+                  <textarea rows={4} maxLength={1800} value={newTeamMemberData.bio || ''}
+                    onChange={e => setNewTeamMemberData({ ...newTeamMemberData, bio: e.target.value })}
+                    className="w-full p-3 rounded-lg bg-[#08080D] text-white border border-amber-500/25"
+                    placeholder="Founder biography" />
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-mono text-slate-300 mb-1">Card Display Order (Admin Control)</label>
+                <input type="number" min={1} max={999} value={newTeamMemberData.display_order ?? 10}
+                  onChange={e => setNewTeamMemberData({ ...newTeamMemberData, display_order: Number(e.target.value) || 1 })}
+                  className="w-32 p-3 rounded-lg bg-[#08080D] text-white border border-violet-500/25" />
+                <p className="text-[11px] text-slate-500 mt-2">Lower numbers appear first. Founder stays in the featured position.</p>
               </div>
             </div>
-
-            <div className="pt-3 border-t border-violet-500/20 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowTeamMemberModal(false);
-                  setEditingTeamMember(null);
-                }}
-                className="px-4 py-2 text-xs font-mono text-slate-400 hover:text-white"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={loading}
-                onClick={handleSaveTeamMember}
-                className="px-5 py-2 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                <span>{editingTeamMember ? 'Save Changes' : 'Create Member'}</span>
+            <div className="flex justify-end gap-3 pt-4 border-t border-violet-500/15">
+              <button type="button" onClick={() => setShowTeamMemberModal(false)}
+                className="px-4 py-2 text-xs text-slate-300">Cancel</button>
+              <button type="button" disabled={loading} onClick={handleSaveTeamMember}
+                className="px-5 py-2 text-xs font-semibold bg-violet-600 text-white rounded-lg disabled:opacity-50">
+                {loading ? 'Saving…' : 'Save Card'}
               </button>
             </div>
           </div>
