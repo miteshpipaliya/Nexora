@@ -42,7 +42,7 @@ const mulberry32 = (seed: number) => () => {
 // Desktop star particles for the atmospheric background
 const DESKTOP_PARTICLES = (() => {
   const r = mulberry32(7);
-  return Array.from({ length: 180 }, () => ({
+  return Array.from({ length: 320 }, () => ({
     left: r() * 100,
     top: r() * 100,
     size: 0.6 + r() * 1.8,
@@ -174,62 +174,54 @@ const glassButton: React.CSSProperties = {
 
 const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
   <>
-    {/* Deep purple-black base background for full viewport coverage */}
-    <motion.div
+    {/* Reference-inspired charcoal night sky with a very restrained midnight-blue center. */}
+    <div
+      aria-hidden="true"
       style={{
         position: 'absolute',
         inset: 0,
         pointerEvents: 'none',
-        background: 'radial-gradient(ellipse at 30% 20%, #0b0a15 0%, #1a0f2a 30%, #2d1b4a 50%, #1a1036 70%, #0d0a20 100%)',
+        background:
+          'radial-gradient(ellipse 80% 70% at 51% 45%, #071528 0%, #06101c 37%, #03060c 72%, #010204 100%)',
       }}
     />
-    {/* Ambient purple glow drifting left */}
-    <motion.div
-      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(40% 50% at 15% 40%, rgba(109, 40, 217, 0.12), rgba(30, 16, 78, 0.08) 55%, transparent 70%)' }}
-      animate={{ x: [0, 30, 0] }}
-      transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        pointerEvents: 'none',
+        background:
+          'radial-gradient(ellipse 54% 57% at 52% 49%, rgba(17,47,75,0.16), transparent 78%)',
+      }}
     />
-    {/* Ambient lavender glow drifting right */}
-    <motion.div
-      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(45% 45% at 85% 65%, rgba(167, 139, 250, 0.1), rgba(196, 181, 253, 0.05) 55%, transparent 70%)' }}
-      animate={{ x: [0, -30, 0] }}
-      transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
-    />
-    {/* Subtle nebula overlay for depth */}
-    <motion.div
-      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse at 50% 50%, rgba(139, 92, 246, 0.06) 0%, rgba(30, 16, 78, 0.03) 50%, transparent 100%)' }}
-    />
-    {/* Star particles */}
-    {!reduced &&
-      DESKTOP_PARTICLES.map((p, i) => (
-        <motion.span
-          key={i}
-          style={{
-            position: 'absolute',
-            left: `${p.left}%`,
-            top: `${p.top}%`,
-            width: p.size,
-            height: p.size,
-            borderRadius: '50%',
-            background: '#C4B5FD',
-            opacity: p.alpha * 0.8,
-            boxShadow: p.size > 1 ? '0 0 6px rgba(196,181,253,0.4)' : 'none',
-          }}
-          initial={{ opacity: 0 }}
-          animate={{
-            opacity: [0, p.alpha * 0.8, 0],
-            y: [0, p.drift * 0.2],
-            scale: [0.8, 1.2, 0.9],
-          }}
-          transition={{
-            duration: p.dur,
-            delay: p.delay,
-            repeat: Infinity,
-            ease: 'easeInOut',
-            opacity: { duration: p.dur, delay: p.delay, repeat: Infinity, ease: 'easeInOut' },
-          }}
-        />
-      ))}
+    {/* Small distant copper embers rather than oversized violet stars. */}
+    {DESKTOP_PARTICLES.map((p, i) => (
+      <motion.span
+        key={i}
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: `${p.left}%`,
+          top: `${p.top}%`,
+          width: Math.min(2.1, p.size),
+          height: Math.min(2.1, p.size),
+          borderRadius: '50%',
+          background: i % 7 === 0 ? '#f5b56b' : i % 3 === 0 ? '#9c4c32' : '#d67b3f',
+          opacity: p.alpha * 0.65,
+          boxShadow: p.size > 1.4 ? '0 0 4px rgba(228,110,45,0.26)' : 'none',
+        }}
+        initial={false}
+        animate={
+          reduced
+            ? undefined
+            : { opacity: [p.alpha * 0.34, p.alpha * 0.75, p.alpha * 0.34], y: [0, p.drift * 0.14, 0] }
+        }
+        transition={
+          reduced ? undefined : { duration: p.twinkle + 5, delay: p.delay, repeat: Infinity, ease: 'easeInOut' }
+        }
+      />
+    ))}
   </>
 );
 
