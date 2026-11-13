@@ -78,7 +78,7 @@ export const TeamPage: React.FC = () => {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-4 rounded-xl border border-violet-400/10 bg-[#100d1d]/85 p-4">
-                  <Detail label="Department / Branch" value={founder.department_name} />
+                  <Detail label="Department / Branch" value={founder.academic_branch_name || founder.department_name} />
                   <Detail label="Division" value={founder.division} />
                   <Detail label="Enrollment No." value={founder.enrollment_number} />
                 </div>
