@@ -844,70 +844,49 @@ export function registerCmsEndpoints({
     }
   });
 
-  // Public endpoint for `/team` page (reads with fallback and hierarchical role ordering)
-  apiRouter.get('/team/public', async (req: Request, res: Response) => {
+  // Public roster is opt-in for every non-founder. Legacy non-founder records
+  // are PRIVATE until an administrator explicitly approves publication.
+  apiRouter.get('/team/public', async (_req: Request, res: Response) => {
+    const founderFallback = DEFAULT_TEAM_MEMBERS.filter((member: any) => member.is_founder);
+    const fallback = { success: true, members: founderFallback, meta: DEFAULT_TEAM_META };
     try {
       const db = await getAdminFirestore();
-      res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
-
-      if (!db) {
-        res.json({ success: true, members: DEFAULT_TEAM_MEMBERS, meta: DEFAULT_TEAM_META });
-        return;
-      }
-
+      res.setHeader('Cache-Control', 'no-store');
+      if (!db) return void res.json(fallback);
       const [membersSnap, metaSnap] = await Promise.all([
         db.collection('teamMembers').get(),
         db.collection('teamConfig').doc('meta').get()
       ]);
-
       const meta = metaSnap.exists ? metaSnap.data() : DEFAULT_TEAM_META;
-      const roleOrderMap = new Map<string, number>();
-      if (meta && Array.isArray(meta.roles)) {
-        meta.roles.forEach((r: any) => {
-          if (r.name) roleOrderMap.set(r.name.toLowerCase().trim(), toFiniteNumber(r.display_order, 99));
-        });
-      }
-
-      let members: any[] = [];
-      if (!membersSnap.empty) {
-        members = membersSnap.docs
-          .map((d: any) => {
-            const data = d.data();
-            // Whitelist safe public fields only (B-05) - omit sensitive details like enrollment_number
-            return {
-              id: d.id,
-              name: data.name || '',
-              role_name: data.role_name || '',
-              academic_branch_name: data.academic_branch_name || '',
-              division: data.division || '',
-              department_name: data.department_name || '',
-              bio: data.bio || '',
-              avatar_url: data.avatar_url || '/images/team/mitesh_founder.jpg',
-              social_links: data.social_links || {},
-              display_order: toFiniteNumber(data.display_order, 99),
-              is_featured: Boolean(data.is_featured),
-              is_founder: Boolean(data.is_founder),
-              enabled: data.enabled !== false
-            };
-          })
-          .filter((m: any) => m.enabled !== false);
-      } else {
-        members = DEFAULT_TEAM_MEMBERS;
-      }
-
-      members.sort((a: any, b: any) => {
-        if (a.is_founder) return -1;
-        if (b.is_founder) return 1;
-        const roleA = roleOrderMap.get((a.role_name || '').toLowerCase().trim()) ?? 99;
-        const roleB = roleOrderMap.get((b.role_name || '').toLowerCase().trim()) ?? 99;
-        if (roleA !== roleB) return roleA - roleB;
-        return toFiniteNumber(a.display_order, 999) - toFiniteNumber(b.display_order, 999);
-      });
-
+      const members = membersSnap.empty ? founderFallback : membersSnap.docs
+        .map((snapshot: any) => ({ id: snapshot.id, ...snapshot.data() }))
+        .filter((member: any) => member.enabled !== false &&
+          (member.is_founder === true || member.visibility_approved === true) &&
+          typeof member.name === 'string' && member.name.trim().length > 0)
+        .map((member: any) => ({
+          id: String(member.id),
+          name: String(member.name).slice(0, 120),
+          role_name: String(member.role_name || '').slice(0, 100),
+          department_name: String(member.department_name || '').slice(0, 140),
+          division: String(member.division || '').slice(0, 40),
+          enrollment_number: member.is_founder || member.visibility_approved === true
+            ? String(member.enrollment_number || '').slice(0, 60) : '',
+          bio: member.is_founder ? String(member.bio || '').slice(0, 1800) : '',
+          avatar_url: typeof member.avatar_url === 'string' ? member.avatar_url : '',
+          display_order: toFiniteNumber(member.display_order, 99),
+          is_founder: member.is_founder === true,
+          is_faculty: String(member.role_key || '').startsWith('faculty_'),
+          enabled: true,
+        }));
+      members.sort((a: any, b: any) =>
+        Number(b.is_founder) - Number(a.is_founder) ||
+        a.display_order - b.display_order ||
+        a.name.localeCompare(b.name)
+      );
       res.json({ success: true, members, meta });
-    } catch (err: any) {
-      console.warn('[TEAM PUBLIC] Error serving public team data:', err?.message || err);
-      res.json({ success: true, members: DEFAULT_TEAM_MEMBERS, meta: DEFAULT_TEAM_META });
+    } catch (error) {
+      console.warn('[TEAM PUBLIC] Roster unavailable:', error);
+      res.json(fallback);
     }
   });
 }
