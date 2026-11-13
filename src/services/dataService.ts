@@ -816,19 +816,14 @@ class NexoraDataService {
     try {
       const res = await safeApiFetch<{
         initialized: boolean;
-      }>('/api/admin/auth/status', { method: 'POST' });
+      }>('/api/admin/auth/status', { method: 'GET' });
 
       // If server returned false, check authoritative Firestore directly
       if (!res.initialized) {
         try {
           const confSnap = await getDoc(doc(db, 'systemConfig', 'status'));
           if (confSnap.exists() && confSnap.data()?.initialized) {
-            safeApiFetch('/api/admin/auth/status', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ clientConfirmedInitialized: true })
-            }).catch(() => {});
-            return { initialized: true };
+return { initialized: true };
           }
         } catch (clientFsErr) {
           console.warn('[ADMIN STATUS] Firestore client check fallback:', clientFsErr);
