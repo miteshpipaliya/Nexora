@@ -1,3 +1,4 @@
+import { inspectImageDataUrl } from './src/server/imageValidation';
 import express from 'express';
 import crypto from 'crypto';
 import path from 'path';
@@ -1639,7 +1640,7 @@ apiRouter.get('/admin/email-diagnostics', requireElevatedAdmin, async (req, res)
     } catch (cfgErr: any) {
       res.status(503).json({
         configured: false,
-        error: cfgErr.message,
+        error: 'Email diagnostic configuration is unavailable.',
         code: cfgErr.code || 'EMAIL_NOT_CONFIGURED'
       });
       return;
@@ -2028,13 +2029,12 @@ apiRouter.post('/admin/upload-image', requireElevatedAdmin, (req, res) => {
       return;
     }
 
-    const matches = imageBase64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-    if (!matches || matches.length !== 3) {
-      res.status(400).json({ error: 'Invalid data URL base64 format.' });
+    const inspected = inspectImageDataUrl(imageBase64);
+    if (!inspected.ok) {
+      res.status(400).json({ error: inspected.error });
       return;
     }
-
-    const ext = matches[1].includes('png') ? '.png' : matches[1].includes('webp') ? '.webp' : '.jpg';
+    const ext = inspected.extension;
     const uploadDir = path.resolve(__dirname, 'public', 'images', 'uploaded');
     try {
       if (!fs.existsSync(uploadDir)) {
@@ -2048,7 +2048,7 @@ apiRouter.post('/admin/upload-image', requireElevatedAdmin, (req, res) => {
     const targetPath = path.join(uploadDir, safeName);
 
     try {
-      fs.writeFileSync(targetPath, Buffer.from(matches[2], 'base64'));
+      fs.writeFileSync(targetPath, inspected.bytes);
       recordAudit('IMAGE_UPLOADED', `Uploaded image: ${safeName}`);
       res.json({
         success: true,
@@ -2337,12 +2337,12 @@ app.use(apiRouter);
 
 // Structured JSON 404 handler for any unhandled /api/* route to guarantee never returning HTML
 app.use('/api', (req, res) => {
-  res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl || req.url}` });
+  res.status(404).json({ error: 'API route not found.' });
 });
 
 if (isServerless) {
   app.use('*', (req, res) => {
-    res.status(404).json({ error: `Route not found on API server: ${req.method} ${req.originalUrl || req.url}` });
+    res.status(404).json({ error: 'API route not found.' });
   });
 }
 
