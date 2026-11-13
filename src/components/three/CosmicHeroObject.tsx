@@ -1,10 +1,12 @@
 import React from 'react';
 import { motion, useReducedMotion } from 'motion/react';
+import '../../styles/featherPhoenix.css';
 
 /**
  * Preview variant: the original NEXORA phoenix replaces the Three.js hero object.
  * Uses the same existing transparent phoenix asset as the cinematic intro.
- * No WebGL, texture downloads, or changes to the intro/fog sequence.
+ * A mask-clipped feather shimmer is the only new effect in this branch.
+ * No WebGL, color cycling, or changes to the intro/fog sequence.
  */
 export const CosmicHeroObject: React.FC = () => {
   const reduced = useReducedMotion();
@@ -52,27 +54,19 @@ export const CosmicHeroObject: React.FC = () => {
         </>
       )}
 
-      {/* Responsive wingspan is intentionally generous. The original transparent
-          image contains the delicate halo and orbit details seen in the reference. */}
-      <motion.img
-        src="/images/intro/NEXORA%20LOGO.png?v=3"
-        alt=""
-        draggable={false}
-        decoding="async"
-        loading="eager"
-        className="relative z-10 block w-[116%] max-w-none sm:w-[118%] lg:w-[130%] h-auto max-h-[min(82vh,650px)] object-contain select-none"
-        style={{
-          filter: 'drop-shadow(0 0 12px rgba(200,158,255,0.48)) drop-shadow(0 0 38px rgba(118,54,210,0.28))',
-          willChange: reduced ? 'auto' : 'transform',
-        }}
-        initial={false}
-        animate={reduced ? undefined : {
-          y: [0, -11, 0],
-          rotate: [-0.65, 0.65, -0.65],
-          scale: [0.99, 1.015, 0.99],
-        }}
-        transition={reduced ? undefined : { duration: 9, repeat: Infinity, ease: 'easeInOut' }}
-      />
+      {/* The original asset is untouched; a CSS alpha mask clips a gentle
+          reflection to its feather silhouette. No recoloring or image motion. */}
+      <div className="feather-phoenix-art relative z-10" aria-hidden="true">
+        <img
+          src="/images/intro/NEXORA%20LOGO.png?v=3"
+          alt=""
+          draggable={false}
+          decoding="async"
+          loading="eager"
+          className="feather-phoenix-img"
+        />
+        {!reduced && <span className="feather-phoenix-shimmer" />}
+      </div>
     </div>
   );
 };
