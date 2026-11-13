@@ -130,7 +130,13 @@ service cloud.firestore {
 
     // Team Members (C-06: Enabled only for public, all for admin)
     match /teamMembers/{memberId} {
-      allow read: if (resource != null && resource.data.enabled == true) || isAdmin();
+      // Non-founder team profiles stay private until explicitly published.
+      allow read: if isAdmin() || (
+        resource != null &&
+        resource.data.enabled == true &&
+        (resource.data.get('is_founder', false) == true ||
+         resource.data.get('visibility_approved', false) == true)
+      );
       allow create, update, delete: if isAdmin();
     }
 
