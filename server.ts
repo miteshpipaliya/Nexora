@@ -1619,7 +1619,7 @@ apiRouter.post(['/admin/auth/lock', '/admin/lock'], async (req, res) => {
 });
 
 // 9b. Brevo Email Diagnostics & Test Email (WP7)
-apiRouter.get('/admin/email-diagnostics', async (req, res) => {
+apiRouter.get('/admin/email-diagnostics', requireElevatedAdmin, async (req, res) => {
   try {
     const sessionToken = req.cookies?.['nexora_admin_session']
       || (req.headers['x-admin-session'] as string)
@@ -1700,7 +1700,7 @@ apiRouter.get('/admin/email-diagnostics', async (req, res) => {
   }
 });
 
-apiRouter.post('/admin/send-test-email', async (req, res) => {
+apiRouter.post('/admin/send-test-email', requireElevatedAdmin, async (req, res) => {
   try {
     const sessionToken = req.cookies?.['nexora_admin_session']
       || (req.headers['x-admin-session'] as string)
