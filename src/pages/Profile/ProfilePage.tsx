@@ -21,6 +21,7 @@ import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import { RegistrationRecord, UserProfile } from '../../types';
 import { IndianPhoneInput } from '../../components/common/IndianPhoneInput';
+import { RegistrationTicket } from '../../components/common/RegistrationTicket';
 import {
   validateIndianMobile,
   normalizeIndianMobile,
@@ -32,6 +33,7 @@ export const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
 
   const [registrations, setRegistrations] = useState<RegistrationRecord[]>([]);
+  const [ticketRecord, setTicketRecord] = useState<RegistrationRecord | null>(null);
   const [loadingRegs, setLoadingRegs] = useState(true);
   const [registrationsError, setRegistrationsError] = useState<string | null>(null);
   const [emailVerificationSent, setEmailVerificationSent] = useState(false);
@@ -282,13 +284,7 @@ export const ProfilePage: React.FC = () => {
             </div>
           </div>
 
-          <div className="p-3 bg-violet-950/40 border border-violet-500/20 rounded-xl text-[11px] text-slate-400 leading-relaxed font-mono">
-            <span className="text-violet-300 font-semibold flex items-center gap-1.5 mb-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Firebase Cloud Connected
-            </span>
-            Academic identity is securely persisted in Cloud Firestore and verified across BVM &amp; collegiate competition rosters.
-          </div>
+
         </div>
 
         {/* Right Column: Edit Profile or Quick Overview */}
@@ -475,7 +471,7 @@ export const ProfilePage: React.FC = () => {
                 NEXORA Account Password
               </h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Your password for signing in to your NEXORA account. Managed by Firebase Authentication.
+                Your password for signing in to your NEXORA account.
               </p>
             </div>
 
@@ -538,7 +534,7 @@ export const ProfilePage: React.FC = () => {
               My Competition Entries
             </h2>
             <p className="text-xs text-slate-400 font-mono mt-0.5">
-              Verified registrations on file: {registrations.length}
+              Saved registrations: {registrations.length}
             </p>
           </div>
           <Link
@@ -585,7 +581,12 @@ export const ProfilePage: React.FC = () => {
             {registrations.map((reg) => (
               <div
                 key={reg.id}
-                className="p-6 rounded-2xl bg-[#171426] border border-violet-500/25 space-y-4 flex flex-col justify-between"
+                role="button"
+                tabIndex={0}
+                aria-label={`View registration ticket for ${reg.event_title}`}
+                onClick={() => setTicketRecord(reg)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTicketRecord(reg); } }}
+                className="cursor-pointer hover:border-violet-400/60 transition-colors p-6 rounded-2xl bg-[#171426] border border-violet-500/25 space-y-4 flex flex-col justify-between"
               >
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs font-mono">
@@ -622,13 +623,14 @@ export const ProfilePage: React.FC = () => {
                 <div className="pt-4 border-t border-violet-500/15 flex items-center justify-between">
                   <Link
                     to={`/competitions/${reg.event_slug}`}
+                    onClick={e => e.stopPropagation()}
                     className="text-xs font-medium text-violet-400 hover:text-violet-300 flex items-center gap-1"
                   >
                     <span>View Competition Guide</span>
                     <ExternalLink className="w-3 h-3" />
                   </Link>
                   <span className="text-[11px] text-slate-500 font-mono">
-                    Confirmed Record
+                    View Ticket
                   </span>
                 </div>
               </div>
@@ -636,6 +638,14 @@ export const ProfilePage: React.FC = () => {
           </div>
         )}
       </div>
+      {ticketRecord && (
+        <div className="fixed inset-0 z-[70] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
+          role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setTicketRecord(null); }}>
+          <div role="dialog" aria-modal="true" aria-label="NEXORA registration ticket" className="w-full max-w-lg my-10">
+            <RegistrationTicket registration={ticketRecord} onClose={() => setTicketRecord(null)} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
