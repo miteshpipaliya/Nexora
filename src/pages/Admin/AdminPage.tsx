@@ -74,7 +74,7 @@ export const STANDARD_TEAM_ROLES = [
     key: 'founder',
     role_name: 'Founder & Lead Architect',
     default_name: 'Mitesh Pipaliya',
-    department_name: 'Platform Engineering & Architecture',
+    department_name: 'B.Tech — Electronics Engineering (EL)',
     academic_branch_name: 'Electronics Engineering',
     division: 'Division A',
     institution: 'Birla Vishvakarma Mahavidyalaya',
@@ -1214,10 +1214,10 @@ export const AdminPage: React.FC = () => {
     setLoading(true);
     try {
       if (editingTeamMember) {
-        await dataService.updateTeamMember(editingTeamMember.id, { ...newTeamMemberData, is_founder: editingTeamMember.is_founder === true, visibility_approved: editingTeamMember.visibility_approved === true });
+        await dataService.updateTeamMember(editingTeamMember.id, { ...newTeamMemberData, is_founder: editingTeamMember.is_founder === true, visibility_approved: editingTeamMember.is_founder === true, bio: editingTeamMember.is_founder ? newTeamMemberData.bio : '' });
         showSuccessToast(`Updated team member "${newTeamMemberData.name}"!`);
       } else {
-        await dataService.createTeamMember({ ...newTeamMemberData, is_founder: newTeamMemberData.role_key === 'founder', enabled: newTeamMemberData.role_key === 'founder', visibility_approved: newTeamMemberData.role_key === 'founder' });
+        await dataService.createTeamMember({ ...newTeamMemberData, is_founder: false, enabled: false, visibility_approved: false, bio: '' });
         showSuccessToast(`Added team member "${newTeamMemberData.name}"!`);
       }
       setShowTeamMemberModal(false);
@@ -2995,7 +2995,7 @@ export const AdminPage: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold text-white tracking-tight">Team &amp; Organizational Architecture CMS</h2>
-              <p className="text-xs text-slate-400">Manage executive organizers, team roles, academic engineering branches, divisions, and functional departments.</p>
+              <p className="text-xs text-slate-400">Manage private team cards, three faculty positions, departments and ordering. Only the founder appears publicly.</p>
             </div>
             
             <div className="flex items-center gap-3">
@@ -3015,12 +3015,12 @@ export const AdminPage: React.FC = () => {
                     setEditingTeamMember(null);
                     setNewTeamMemberData({
                       name: '',
-                      role_name: teamMeta.roles?.[0]?.name || 'Executive Member',
-                      academic_branch_name: teamMeta.branches?.[0]?.name || 'Electronics Engineering',
-                      division: teamMeta.divisions?.[0]?.name || 'Division A',
-                      department_name: teamMeta.departments?.[0]?.name || 'Platform Engineering & Architecture',
+                      role_name: 'Team Member',
+                      academic_branch_name: '',
+                      division: '',
+                      department_name: '',
                       bio: '',
-                      avatar_url: '/images/team/mitesh_founder.jpg',
+                      avatar_url: '',
                       enrollment_number: '',
                       institution: 'Birla Vishvakarma Mahavidyalaya',
                       display_order: (teamMembers.length + 1),
@@ -3056,13 +3056,13 @@ export const AdminPage: React.FC = () => {
           {teamSubTab === 'members' && (
             <div className="space-y-5">
               <h3 className="text-base font-bold text-white">Team & Faculty · Private Management</h3>
-              <p className="text-xs text-slate-400">Three faculty slots are available. Only the founder is public initially. Set order in Edit; publish other profiles individually.</p>
+              <p className="text-xs text-slate-400">Three private faculty slots are reserved. Set each card's order in Edit; all other cards remain private until a future release.</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {STANDARD_TEAM_ROLES.map(roleDef => {
+                {[...STANDARD_TEAM_ROLES].sort((a, b) => (teamMembers.find(m => m.role_key === a.key)?.display_order ?? a.display_order) - (teamMembers.find(m => m.role_key === b.key)?.display_order ?? b.display_order)).map(roleDef => {
                   const existing = teamMembers.find(m => m.role_key === roleDef.key || (roleDef.key === 'founder' && m.is_founder));
                   const founder = roleDef.key === 'founder';
                   const faculty = roleDef.key.startsWith('faculty_');
-                  const live = founder || (existing?.enabled !== false && existing?.visibility_approved === true);
+                  const live = founder;
                   return (
                     <article key={roleDef.key} className={founder
                       ? "p-5 rounded-2xl border border-[#d4af37]/80 bg-gradient-to-br from-[#241b31] to-[#100e1a] space-y-4"
@@ -3081,7 +3081,7 @@ export const AdminPage: React.FC = () => {
                         <span>Order: {existing?.display_order ?? roleDef.display_order}</span>
                       </div>
                       <div className="flex justify-end gap-2">
-                        {!founder && <button type="button" onClick={() => existing && void handleToggleTeamMemberPublish(existing)}
+                        {false && !founder && <button type="button" onClick={() => existing && void handleToggleTeamMemberPublish(existing)}
                           disabled={!existing}
                           className="px-3 py-2 text-xs rounded-lg border border-violet-500/30 text-violet-200 disabled:opacity-40">
                           {live ? 'Unpublish' : 'Publish'}</button>}
@@ -3104,16 +3104,15 @@ export const AdminPage: React.FC = () => {
                     </article>
                   );
                 })}
-                {teamMembers.filter(m => !STANDARD_TEAM_ROLES.some(r => r.key === m.role_key) && !m.is_founder).map(member => (
+                {teamMembers.filter(m => !STANDARD_TEAM_ROLES.some(r => r.key === m.role_key) && !m.is_founder).sort((a,b) => (a.display_order ?? 99) - (b.display_order ?? 99)).map(member => (
                   <article key={member.id} className="p-5 rounded-2xl border border-violet-500/20 bg-[#171426] space-y-3">
                     <div className="flex justify-between gap-3">
                       <div><p className="text-xs text-violet-300">{member.role_name}</p><h4 className="text-white font-bold">{member.name}</h4></div>
-                      <span className="text-xs text-slate-400">{member.visibility_approved ? 'PUBLIC' : 'PRIVATE'}</span>
+                      <span className="text-xs text-amber-300">PRIVATE</span>
                     </div>
                     <p className="text-xs text-slate-400">{member.department_name} · Order {member.display_order}</p>
                     <div className="flex gap-2">
-                      <button type="button" className="px-3 py-2 text-xs border border-violet-500/25 rounded-lg text-violet-200"
-                        onClick={() => void handleToggleTeamMemberPublish(member)}>{member.visibility_approved ? 'Unpublish' : 'Publish'}</button>
+                      
                       <button type="button" className="px-3 py-2 text-xs bg-violet-600 rounded-lg text-white"
                         onClick={() => { setEditingTeamMember(member); setNewTeamMemberData(member); setShowTeamMemberModal(true); }}>Edit</button>
                       <button type="button" className="px-3 py-2 text-xs border border-red-500/20 rounded-lg text-red-300"
