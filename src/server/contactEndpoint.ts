@@ -12,60 +12,8 @@ interface ContactEndpointDeps {
   founderEmail: string;
 }
 
-// In-memory rate limiting fallbacks (in addition to Firestore rate limits)
-interface RateRecord {
-  count: number;
-  resetAt: number;
-}
-const ipRateLimits = new Map<string, RateRecord>();
-const emailRateLimits = new Map<string, RateRecord>();
-let globalDailyCount = 0;
-let globalResetAt = Date.now() + 24 * 60 * 60 * 1000;
-
-function checkInMemoryRateLimit(ipHash: string, email: string): { allowed: boolean; retryAfter?: number } {
-  const now = Date.now();
-
-  // Global daily cap (max 200 per day)
-  if (now > globalResetAt) {
-    globalDailyCount = 0;
-    globalResetAt = now + 24 * 60 * 60 * 1000;
-  }
-  if (globalDailyCount >= 200) {
-    return { allowed: false, retryAfter: Math.ceil((globalResetAt - now) / 1000) };
-  }
-
-  // IP rate limit: 3 per 10 minutes
-  const ipRec = ipRateLimits.get(ipHash);
-  if (ipRec && now < ipRec.resetAt) {
-    if (ipRec.count >= 3) {
-      return { allowed: false, retryAfter: Math.ceil((ipRec.resetAt - now) / 1000) };
-    }
-  } else {
-    ipRateLimits.set(ipHash, { count: 0, resetAt: now + 10 * 60 * 1000 });
-  }
-
-  // Email rate limit: 5 per 24 hours
-  const emailRec = emailRateLimits.get(emailHashKey(email));
-  if (emailRec && now < emailRec.resetAt) {
-    if (emailRec.count >= 5) {
-      return { allowed: false, retryAfter: Math.ceil((emailRec.resetAt - now) / 1000) };
-    }
-  } else {
-    emailRateLimits.set(emailHashKey(email), { count: 0, resetAt: now + 24 * 60 * 60 * 1000 });
-  }
-
-  return { allowed: true };
-}
-
-function recordRateLimitConsumption(ipHash: string, email: string) {
-  globalDailyCount++;
-  const ipRec = ipRateLimits.get(ipHash);
-  if (ipRec) ipRec.count++;
-  const emailKey = emailHashKey(email);
-  const emailRec = emailRateLimits.get(emailKey);
-  if (emailRec) emailRec.count++;
-}
-
+// Per-IP, per-email, and daily limits are enforced in a Firestore transaction
+// below so limits cannot be bypassed by switching serverless instances.
 function emailHashKey(email: string): string {
   return email.toLowerCase().trim();
 }
@@ -159,16 +107,6 @@ export function registerContactEndpoints(deps: ContactEndpointDeps) {
         .digest('hex')
         .slice(0, 32);
 
-      // In-memory rate limiting check
-      const rateLimitCheck = checkInMemoryRateLimit(ipHash, cleanEmail);
-      if (!rateLimitCheck.allowed) {
-        res.status(429).json({
-          error: 'Too many messages sent. Please try again later.',
-          retryAfterSeconds: rateLimitCheck.retryAfter || 600
-        });
-        return;
-      }
-
       // 3. Persistent Firestore Storage
       const db = await getAdminFirestore();
       if (!db) {
@@ -182,19 +120,6 @@ export function registerContactEndpoints(deps: ContactEndpointDeps) {
         : `msg_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 
       const messageRef = db.collection('contactMessages').doc(submissionId);
-      const existing = await messageRef.get().catch(() => null);
-
-      if (existing && existing.exists) {
-        // Idempotent duplicate: return success without duplicate emails
-        res.status(200).json({
-          success: true,
-          id: submissionId,
-          duplicate: true,
-          message: 'Your message has been received. The NEXORA team will review it.'
-        });
-        return;
-      }
-
       const nowIso = new Date().toISOString();
       const messageDoc = {
         id: submissionId,
@@ -209,8 +134,62 @@ export function registerContactEndpoints(deps: ContactEndpointDeps) {
         ip_hash: ipHash
       };
 
-      await messageRef.set(messageDoc);
-      recordRateLimitConsumption(ipHash, cleanEmail);
+      const limitCollection = db.collection('contactRateLimits');
+      const ipCounter = limitCollection.doc(`ip_${ipHash}`);
+      const emailCounter = limitCollection.doc(`email_${emailHashKey(cleanEmail)}`);
+      const globalCounter = limitCollection.doc('daily_global');
+      const now = Date.now();
+
+      const outcome = await db.runTransaction(async (transaction: any) => {
+        // Firestore requires all reads before any writes.
+        const [existing, ipSnap, emailSnap, globalSnap] = await Promise.all([
+          transaction.get(messageRef),
+          transaction.get(ipCounter),
+          transaction.get(emailCounter),
+          transaction.get(globalCounter)
+        ]);
+        if (existing.exists) return { status: 'duplicate' as const };
+
+        const limits = [
+          { ref: ipCounter, snap: ipSnap, max: 3, windowMs: 10 * 60 * 1000 },
+          { ref: emailCounter, snap: emailSnap, max: 5, windowMs: 24 * 60 * 60 * 1000 },
+          { ref: globalCounter, snap: globalSnap, max: 200, windowMs: 24 * 60 * 60 * 1000 }
+        ];
+        let retryAfterSeconds = 0;
+        const counters = limits.map((limit) => {
+          const current = limit.snap.exists ? limit.snap.data() : null;
+          const resetAt = current && Number(current.resetAt) > now
+            ? Number(current.resetAt) : now + limit.windowMs;
+          const count = resetAt === Number(current?.resetAt) ? Number(current?.count || 0) : 0;
+          if (count >= limit.max) {
+            retryAfterSeconds = Math.max(retryAfterSeconds, Math.ceil((resetAt - now) / 1000));
+          }
+          return { ref: limit.ref, count, resetAt };
+        });
+        if (retryAfterSeconds) return { status: 'rate_limited' as const, retryAfterSeconds };
+
+        transaction.create(messageRef, messageDoc);
+        for (const counter of counters) {
+          transaction.set(counter.ref, { count: counter.count + 1, resetAt: counter.resetAt });
+        }
+        return { status: 'stored' as const };
+      });
+
+      if (outcome.status === 'duplicate') {
+        res.status(200).json({
+          success: true, id: submissionId, duplicate: true,
+          message: 'Your message has been received. The NEXORA team will review it.'
+        });
+        return;
+      }
+      if (outcome.status === 'rate_limited') {
+        res.set('Retry-After', String(outcome.retryAfterSeconds));
+        res.status(429).json({
+          error: 'Too many messages sent. Please try again later.',
+          retryAfterSeconds: outcome.retryAfterSeconds
+        });
+        return;
+      }
 
       // 4. Dispatch Email Notification via Brevo
       const notifyEmail = process.env.CONTACT_NOTIFY_EMAIL?.trim() || founderEmail;
