@@ -853,10 +853,11 @@ interface AdminSessionRecord {
   revoked?: boolean;
 }
 
-async function createAdminSessionRecord(email: string, expiresAt: number): Promise<string> {
-  const sessionId = crypto.randomBytes(24).toString('hex');
+async function createAdminSessionRecord(email: string, expiresAt: number, sessionId: string): Promise<string> {
+  if (!sessionId || !/^[a-f0-9]{32}$/i.test(sessionId)) throw new ConfigError('Invalid admin session identifier.');
   const db = await getAdminFirestore();
-  if (db) {
+  if (!db) throw new ConfigError('Administrator session storage is unavailable.');
+  {
     await db.collection('_admin_sessions').doc(sessionId).set({
       sessionId,
       email: email.toLowerCase().trim(),
@@ -886,9 +887,8 @@ async function validateAdminSessionRecord(sessionId: string): Promise<{ valid: b
 
 async function revokeAdminSession(sessionId: string): Promise<void> {
   const db = await getAdminFirestore();
-  if (db) {
-    await db.collection('_admin_sessions').doc(sessionId).update({ revoked: true });
-  }
+  if (!db) throw new ConfigError('Administrator session storage is unavailable.');
+  await db.collection('_admin_sessions').doc(sessionId).update({ revoked: true });
 }
 
 async function revokeAllAdminSessionsForEmail(email: string): Promise<void> {
@@ -915,16 +915,13 @@ async function isSessionRevoked(jti: string): Promise<boolean> {
 }
 
 async function revokeJti(jti: string, reason: string): Promise<void> {
-  try {
-    const db = await getAdminFirestore();
-    if (db) {
-      await db.collection('_revoked_sessions').doc(jti).set({
-        jti,
-        revokedAt: Date.now(),
-        reason
-      });
-    }
-  } catch {}
+  const db = await getAdminFirestore();
+  if (!db) throw new ConfigError('Administrator revocation storage is unavailable.');
+  await db.collection('_revoked_sessions').doc(jti).set({
+    jti,
+    revokedAt: Date.now(),
+    reason
+  });
 }
 
 // Helper to set HttpOnly, Secure, SameSite=Strict admin session cookie (no cookie-parser dependency)
@@ -1188,7 +1185,7 @@ apiRouter.post(['/admin/auth/setup-password', '/admin/setup-password'], async (r
     } as any);
 
     const jti = (JSON.parse(Buffer.from(sessionToken.split('.')[0], 'base64url').toString('utf8')) as any).jti;
-    await createAdminSessionRecord(FOUNDER_EMAIL, expiresAt);
+    await createAdminSessionRecord(FOUNDER_EMAIL, expiresAt, jti);
 
     setAdminSessionCookie(res, sessionToken, expiresAt);
     recordAudit('ADMIN_SESSION_CREATED', 'Elevated admin session issued via HttpOnly cookie after password setup.');
@@ -1362,7 +1359,7 @@ apiRouter.post(['/admin/auth/verify-admin-otp', '/admin/auth/verify-otp', '/admi
     } as any);
 
     const jti = (JSON.parse(Buffer.from(sessionToken.split('.')[0], 'base64url').toString('utf8')) as any).jti;
-    await createAdminSessionRecord(FOUNDER_EMAIL, expiresAt);
+    await createAdminSessionRecord(FOUNDER_EMAIL, expiresAt, jti);
 
     setAdminSessionCookie(res, sessionToken, expiresAt);
     recordAudit('ADMIN_ACCESS_GRANTED', 'Founder completed OTP verification. Elevated session issued via HttpOnly cookie (15 min).');
