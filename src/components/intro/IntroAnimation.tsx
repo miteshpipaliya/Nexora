@@ -190,7 +190,7 @@ const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
       transition={reduced ? undefined : { duration: 22, repeat: Infinity, ease: 'easeInOut' }}
     />
     {/* Sparse, subdued starlight scattered across the entire viewport. */}
-    {DESKTOP_PARTICLES.filter((_, i) => [4, 22, 51, 89, 136, 174, 217, 260].includes(i)).map((p, i) => (
+    {DESKTOP_PARTICLES.filter((_, i) => [4, 22, 51, 89, 136, 174, 217].includes(i)).map((p, i) => (
       <motion.span key={i} aria-hidden="true" style={{
         position: 'absolute',
         left: `${p.left}%`, top: `${p.top}%`,
@@ -275,6 +275,15 @@ const TypingLine: React.FC<{ text: string }> = ({ text }) => {
 const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () => void }> = ({ reduced, launching, onStart }) => {
   const [touch] = useState(isTouchDevice);
   const label = (touch ? 'TAP' : 'CLICK') + ' LOGO TO START EXPERIENCE';
+
+  // A click on the already-visible HTML boot gate is queued until React's
+  // real clickable logo mounts; no oversized interim logo or lost click.
+  useEffect(() => {
+    if (document.documentElement.dataset.nxIntroPending === '1') {
+      delete document.documentElement.dataset.nxIntroPending;
+      onStart();
+    }
+  }, [onStart]);
 
   // Enter / Space also starts it (keyboard users)
   useEffect(() => {

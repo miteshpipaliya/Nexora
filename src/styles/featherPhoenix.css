@@ -1,0 +1,73 @@
+/*
+ * FEATHER PHOENIX — 2D transparency-clipped light reflection.
+ * Original artwork pixels are not modified, recolored or transformed.
+ * A narrow lavender-white specular sweep is masked by the same PNG alpha.
+ */
+.feather-phoenix-art {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 116%;
+  max-width: none;
+  line-height: 0;
+  isolation: isolate;
+  filter:
+    drop-shadow(0 0 8px rgba(200,158,255,.22))
+    drop-shadow(0 0 22px rgba(118,54,210,.11));
+}
+.feather-phoenix-img {
+  display: block;
+  width: 100%;
+  max-height: min(82vh,650px);
+  height: auto;
+  object-fit: contain;
+  user-select: none;
+  filter: brightness(.89) saturate(.94);
+}
+.feather-phoenix-shimmer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* Clip the moving highlight exactly to the phoenix alpha silhouette. */
+  -webkit-mask-image: url('/images/intro/NEXORA%20LOGO.png?v=3');
+  mask-image: url('/images/intro/NEXORA%20LOGO.png?v=3');
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  background-image: linear-gradient(
+    109deg,
+    transparent 24%,
+    rgba(193,162,255,.035) 37%,
+    rgba(229,215,255,.12) 46%,
+    rgba(248,241,255,.19) 49%,
+    rgba(220,198,255,.16) 53%,
+    rgba(171,122,244,.035) 63%,
+    transparent 76%
+  );
+  background-size: 275% 100%;
+  background-position: 115% 50%;
+  mix-blend-mode: screen;
+  opacity: .66;
+  animation: feather-phoenix-sweep 9s cubic-bezier(.34, .05, .6, 1) infinite;
+  will-change: background-position;
+}
+/* The sweep occupies about 40% of each cycle, followed by a long visual rest. */
+@keyframes feather-phoenix-sweep {
+  0%, 10% { background-position: 115% 50%; opacity: 0; }
+  16% { opacity: .66; }
+  46% { background-position: -15% 50%; opacity: .82; }
+  54%, 100% { background-position: -15% 50%; opacity: 0; }
+}
+@media (min-width: 640px) {
+  .feather-phoenix-art { width: 118%; }
+}
+@media (min-width: 1024px) {
+  .feather-phoenix-art { width: 130%; }
+}
+@media (max-width: 640px) {
+  .feather-phoenix-shimmer { opacity: .55; animation-duration: 11s; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .feather-phoenix-shimmer { display: none; animation: none; }
+}

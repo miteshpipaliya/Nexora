@@ -25,6 +25,27 @@ class IntroBoundary extends React.Component<
   }
 }
 
+const ReactIntroReady: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  useEffect(() => {
+    const frame1 = requestAnimationFrame(() => {
+      const frame2 = requestAnimationFrame(() => {
+        // Reveal the styled React tree only after the intro has mounted.
+        const root = document.getElementById('root');
+        if (root) root.style.visibility = 'visible';
+        document.documentElement.classList.add('nx-intro-ready');
+        document.getElementById('nx-first-paint-gate')?.remove();
+      });
+      frameRef.current = frame2;
+    });
+    const frameRef = { current: 0 };
+    return () => {
+      cancelAnimationFrame(frame1);
+      cancelAnimationFrame(frameRef.current);
+    };
+  }, []);
+  return <>{children}</>;
+};
+
 export const IntroWrapper: React.FC = () => {
   const [isDesktop] = useState(() => isDesktopDevice());
   const [showIntro, setShowIntro] = useState(
@@ -32,12 +53,17 @@ export const IntroWrapper: React.FC = () => {
   );
   const introActive = isDesktop && showIntro;
 
-  // The static HTML gate covers the first paint until React can render the
-  // actual intro (or the mobile homepage). Remove only once React has committed.
+  // Hand off the first-paint gate only after the lazy intro has committed
+  // and the browser has had a frame to paint it. Never expose a blank fallback.
+  // Mobile/tablet remove the desktop-only gate immediately.
   useEffect(() => {
-    const bootGate = document.getElementById('nx-first-paint-gate');
-    if (bootGate) bootGate.remove();
-  }, []);
+    if (!isDesktop || !introActive) {
+      const root = document.getElementById('root');
+      if (root) root.style.visibility = 'visible';
+      document.getElementById('nx-first-paint-gate')?.remove();
+      document.documentElement.classList.add('nx-intro-ready');
+    }
+  }, [isDesktop, introActive]);
 
 
   const handleComplete = useCallback(() => {
@@ -57,6 +83,8 @@ export const IntroWrapper: React.FC = () => {
     };
   }, [introActive]);
 
+  // Called by a child inside Suspense, so it cannot fire before the intro
+  // module is loaded and the start gate is actually mounted.
   // On mobile and tablet, render the homepage immediately with no intro UI.
   if (!isDesktop) return <App />;
 
@@ -123,7 +151,9 @@ export const IntroWrapper: React.FC = () => {
           }
         >
           <IntroBoundary onError={handleComplete}>
-            <DesktopIntro autoPlay onComplete={handleComplete} />
+            <ReactIntroReady>
+              <DesktopIntro autoPlay onComplete={handleComplete} />
+            </ReactIntroReady>
           </IntroBoundary>
         </React.Suspense>
       )}
