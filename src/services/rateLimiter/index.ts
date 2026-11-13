@@ -1,5 +1,5 @@
 import { DocumentData, collection, doc, getDoc, setDoc, writeBatch, query, where, getDocs, updateDoc } from 'firebase/firestore';
-import { db } from './firebase';
+import { db } from '../firebase';
 import type { Request, Response, NextFunction } from 'express';
 
 // Rate limit configurations per endpoint category
