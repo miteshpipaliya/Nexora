@@ -1592,7 +1592,7 @@ apiRouter.all(['/admin/auth/session', '/admin/session'], async (req, res) => {
 apiRouter.post(['/admin/auth/lock', '/admin/lock'], async (req, res) => {
   const token = req.cookies?.['nexora_admin_session']
     || (req.headers['x-admin-session'] as string)
-    || (req.headers.authorization?.replace(/^Bearer\\s+/i, ''));
+    || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
 
   if (!token) {
     clearAdminSessionCookie(res);
