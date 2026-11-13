@@ -11,7 +11,7 @@ interface RegistrationTicketProps {
 // UI state only; no payment success is implied before a verified gateway callback.
 export const RegistrationTicket: React.FC<RegistrationTicketProps> = ({ registration, onClose }) => {
   const [copied, setCopied] = useState(false);
-  const id = registration.competition_id || registration.reference_id || registration.id;
+  const id = registration.reference_id || registration.id;
   const registeredAt = new Date(registration.created_at);
   const validDate = !Number.isNaN(registeredAt.getTime());
   const copyId = async () => {
