@@ -276,6 +276,15 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
   const [touch] = useState(isTouchDevice);
   const label = (touch ? 'TAP' : 'CLICK') + ' LOGO TO START EXPERIENCE';
 
+  // A click on the already-visible HTML boot gate is queued until React's
+  // real clickable logo mounts; no oversized interim logo or lost click.
+  useEffect(() => {
+    if (document.documentElement.dataset.nxIntroPending === '1') {
+      delete document.documentElement.dataset.nxIntroPending;
+      onStart();
+    }
+  }, [onStart]);
+
   // Enter / Space also starts it (keyboard users)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
