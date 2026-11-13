@@ -92,3 +92,26 @@ input, textarea, select, [contenteditable="true"], .allow-select, .selectable-co
 ::-webkit-scrollbar-thumb:hover {
   background: #393454;
 }
+
+/* Premium registration confirmation: one restrained light sweep, then a pause.
+   No continuous flashing; all movement is disabled for reduced-motion users. */
+@keyframes nexora-ticket-arrival {
+  from { opacity: 0; transform: translateY(16px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes nexora-ticket-light {
+  0%, 15% { transform: translateX(-180%) rotate(12deg); opacity: 0; }
+  25% { opacity: .28; }
+  42%, 100% { transform: translateX(210%) rotate(12deg); opacity: 0; }
+}
+.nexora-registration-ticket {
+  animation: nexora-ticket-arrival .65s cubic-bezier(.18,.75,.22,1) both;
+}
+.nexora-ticket-sheen {
+  width: 45%;
+  background: linear-gradient(90deg, transparent, rgba(217,190,255,.16), transparent);
+  animation: nexora-ticket-light 8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nexora-registration-ticket, .nexora-ticket-sheen { animation: none !important; }
+}
