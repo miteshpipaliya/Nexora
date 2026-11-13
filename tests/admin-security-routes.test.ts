@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import crypto from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 
@@ -7,6 +8,7 @@ describe('administrator security routes', () => {
   let baseUrl: string;
 
   beforeAll(async () => {
+    process.env.OTP_HMAC_SECRET = 'this-is-a-local-only-test-secret-at-least-32-characters';
     const { app } = await import('../server.ts');
     await new Promise<void>((resolve) => {
       server = app.listen(0, '127.0.0.1', resolve);
@@ -96,6 +98,59 @@ describe('administrator security routes', () => {
     expect(response.status).toBe(401);
     const data = await response.json();
     expect(JSON.stringify(data)).not.toContain('SyntaxError');
+  });
+
+  it('rejects a validly signed but unissued/stolen administrator session without a Firestore session record', async () => {
+    const payload = {
+      email: 'unknown@example.test',
+      purpose: 'admin-session',
+      exp: Date.now() + 10 * 60_000,
+      jti: crypto.randomBytes(16).toString('hex'),
+    };
+    const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const signature = crypto.createHmac('sha256', process.env.OTP_HMAC_SECRET!)
+      .update(encoded).digest('base64url');
+    const unissuedToken = `${encoded}.${signature}`;
+
+    const sessionResponse = await fetch(`${baseUrl}/api/admin/auth/session`, {
+      headers: { 'x-admin-session': unissuedToken },
+    });
+    expect(sessionResponse.status).toBe(200);
+    await expect(sessionResponse.json()).resolves.toMatchObject({ authenticated: false });
+
+    const privilegedResponse = await fetch(`${baseUrl}/api/admin/images`, {
+      headers: { 'x-admin-session': unissuedToken },
+    });
+    expect(privilegedResponse.status).toBe(401);
+  });
+
+  it('rejects tampered session tokens and a forged founder account claim', async () => {
+    const payload = {
+      email: 'founder@example.test',
+      purpose: 'admin-session',
+      exp: Date.now() + 600_000,
+      jti: crypto.randomBytes(16).toString('hex'),
+    };
+    const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const forged = `${encoded}.invalid-signature`;
+    const response = await fetch(`${baseUrl}/api/admin/auth/session`, {
+      headers: { 'x-admin-session': forged },
+    });
+    await expect(response.json()).resolves.toMatchObject({ authenticated: false });
+  });
+
+  it('rejects an untrusted Origin even with a trusted Referer on admin POST requests', async () => {
+    const response = await fetch(`${baseUrl}/api/admin/auth/lock`, {
+      method: 'POST',
+      headers: {
+        origin: 'https://evil.example.test',
+        referer: 'https://www.nexora-bvm.online/admin',
+        'content-type': 'application/json',
+      },
+      body: '{}',
+    });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: 'CSRF token validation failed.' });
   });
 
 });
