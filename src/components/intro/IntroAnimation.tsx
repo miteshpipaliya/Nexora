@@ -316,7 +316,7 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
       {/* white-violet flash when the logo is clicked */}
       {launching && (
         <motion.div
-          style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1, background: 'radial-gradient(circle at 50% 45%, rgba(237,233,254,0.95), rgba(139,92,246,0.4) 38%, transparent 70%)' }}
+          style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1, background: 'radial-gradient(circle at 50% 45%, rgba(244,219,187,0.9), rgba(40,94,130,0.36) 38%, transparent 70%)' }}
           initial={{ opacity: 0 }}
           animate={{ opacity: [0, 0.8, 0] }}
           transition={{ duration: LAUNCH_MS / 1000, ease: 'easeOut' }}
@@ -533,7 +533,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                 {!reduced && (
                   <>
                     <motion.div
-                      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(circle at 50% 50%, rgba(196,181,253,0.55), transparent 55%)' }}
+                      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(circle at 50% 50%, rgba(158,191,210,0.35), transparent 55%)' }}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: [0, 0.5, 0] }}
                       transition={{ delay: 1.4, duration: 0.7, ease: 'easeOut' }}
@@ -541,7 +541,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                     {[0, 0.18].map((d, i) => (
                       <div key={i} style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
                         <motion.div
-                          style={{ width: 300, height: 300, borderRadius: '50%', border: '1.5px solid rgba(167,139,250,0.75)' }}
+                          style={{ width: 300, height: 300, borderRadius: '50%', border: '1.5px solid rgba(135,174,196,0.65)' }}
                           initial={{ scale: 0.2, opacity: 0 }}
                           animate={{ scale: 3.4, opacity: [0, 0.8, 0] }}
                           transition={{ delay: 1.4 + d, duration: 1.7, ease: 'easeOut' }}
@@ -554,7 +554,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                 {/* central purple glow */}
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
                   <motion.div
-                    style={{ width: 640, height: 640, maxWidth: '95vw', maxHeight: '95vw', background: 'radial-gradient(circle, rgba(139, 92, 246, 0.38) 0%, transparent 65%)' }}
+                    style={{ width: 640, height: 640, maxWidth: '95vw', maxHeight: '95vw', background: 'radial-gradient(circle, rgba(22, 62, 97, 0.32) 0%, transparent 65%)' }}
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: [0, 0.9, 0.45, 0.85, 0.5], scale: [0.8, 1.15, 1, 1.12, 1.05] }}
                     transition={{ duration: SCENE_S, delay: 0.3, ease: 'easeInOut' }}
@@ -575,13 +575,13 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                       {!reduced && (
                         <>
                           <motion.div
-                            style={{ position: 'absolute', inset: '-9%', borderRadius: '50%', border: '2px solid transparent', borderTopColor: 'rgba(196,181,253,0.95)', borderRightColor: 'rgba(139,92,246,0.35)' }}
+                            style={{ position: 'absolute', inset: '-9%', borderRadius: '50%', border: '2px solid transparent', borderTopColor: 'rgba(235,171,105,0.95)', borderRightColor: 'rgba(83,139,175,0.35)' }}
                             initial={{ opacity: 0, rotate: 0 }}
                             animate={{ opacity: 1, rotate: 360 }}
                             transition={{ opacity: { delay: 1.4, duration: 0.6 }, rotate: { repeat: Infinity, duration: 3.2, ease: 'linear' } }}
                           />
                           <motion.div
-                            style={{ position: 'absolute', inset: '-18%', borderRadius: '50%', border: '1.5px solid transparent', borderBottomColor: 'rgba(167,139,250,0.7)', borderLeftColor: 'rgba(139,92,246,0.25)' }}
+                            style={{ position: 'absolute', inset: '-18%', borderRadius: '50%', border: '1.5px solid transparent', borderBottomColor: 'rgba(132,177,200,0.7)', borderLeftColor: 'rgba(224,143,78,0.24)' }}
                             initial={{ opacity: 0, rotate: 0 }}
                             animate={{ opacity: 1, rotate: -360 }}
                             transition={{ opacity: { delay: 1.6, duration: 0.6 }, rotate: { repeat: Infinity, duration: 5.2, ease: 'linear' } }}
@@ -592,7 +592,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                         src={MAIN_LOGO}
                         alt="NEXORA logo"
                         draggable={false}
-                        style={{ display: 'block', width: '100%', height: 'auto', filter: 'drop-shadow(0 0 26px rgba(139,92,246,0.6))' }}
+                        style={{ display: 'block', width: '100%', height: 'auto', filter: 'drop-shadow(0 0 26px rgba(52,105,145,0.48))' }}
                         initial={{ x: reduced ? 0 : 160, opacity: 0, scale: reduced ? 1 : 0.9 }}
                         animate={{ x: 0, opacity: 1, scale: 1 }}
                         transition={{ delay: reduced ? 0 : 0.4, duration: reduced ? 0.5 : 1.0, ease: EASE }}
@@ -644,7 +644,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                         fontSize: 'clamp(10px, 1.4vw, 14px)',
                         fontFamily: 'var(--font-display, system-ui, sans-serif)',
                         fontWeight: 500,
-                        textShadow: '0 0 12px rgba(139,92,246,0.6)',
+                        textShadow: '0 0 12px rgba(54,112,150,0.55)',
                         letterSpacing: isMobileDevice ? '0.1em' : '0.3em',
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
