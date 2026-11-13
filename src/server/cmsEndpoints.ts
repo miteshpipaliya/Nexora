@@ -876,6 +876,7 @@ export function registerCmsEndpoints({
           avatar_url: typeof member.avatar_url === 'string' ? member.avatar_url : '',
           display_order: toFiniteNumber(member.display_order, 99),
           is_founder: member.is_founder === true,
+          visibility_approved: member.visibility_approved === true,
           is_faculty: String(member.role_key || '').startsWith('faculty_'),
           enabled: true,
         }));
