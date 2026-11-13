@@ -13,14 +13,14 @@ import {
   signInWithPhoneNumber,
   ConfirmationResult
 } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getFirestore, doc, getDocFromServer, runTransaction } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import productionFirebaseConfig from '../../firebase-applet-config.json';
 import { resolveFirebaseConfig } from './firebaseConfig';
 
 const firebaseConfig = resolveFirebaseConfig(
   productionFirebaseConfig,
-  import.meta.env,
+  import.meta.env ?? {},
   ''
 );
 
