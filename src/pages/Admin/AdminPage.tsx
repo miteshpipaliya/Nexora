@@ -1199,7 +1199,7 @@ export const AdminPage: React.FC = () => {
 
   // TEAM CRUD ACTIONS (PHASE 5)
   const handleSaveTeamMember = async () => {
-    if (!newTeamMemberData.name?.trim() || newTeamMemberData.name.trim().split(/\\s+/).length < 2) {
+    if (!newTeamMemberData.name?.trim() || newTeamMemberData.name.trim().split(/\s+/).length < 2) {
       showErrorToast('Please enter both first name and surname.');
       return;
     }
