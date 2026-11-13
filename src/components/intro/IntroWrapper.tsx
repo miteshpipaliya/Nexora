@@ -87,7 +87,7 @@ export const IntroWrapper: React.FC = () => {
     );
   // This prevents the "black screen" gap after the fog zoom because the homepage
   // is already rendered, layered, and ready. The intro sits on top as a fixed
-  overlay that fades away when the fog zoom finishes.
+  // overlay that fades away when the fog zoom finishes.
   const introActive = showIntro && isDesktop;
 
   // Prevent homepage flash on initial load by keeping it invisible while intro plays.
