@@ -449,7 +449,7 @@ apiRouter.post(['/auth/send-email-otp', '/auth/forgot-password/request-otp', '/a
     console.error('Error in /auth/send-email-otp:', err.message || err);
     const status = err instanceof StudentOtpRateLimitError ? 429 : err instanceof StudentOtpStorageError ? 503 : err.status || (err.code === 'EMAIL_NOT_CONFIGURED' ? 503 : 500);
     res.status(status).json({ 
-      error: err instanceof StudentOtpRateLimitError ? err.message : err instanceof StudentOtpStorageError ? 'Verification service is temporarily unavailable.' : 'Failed to dispatch verification code via email.',
+      error: err instanceof StudentOtpRateLimitError ? 'Too many verification requests. Please retry later.' : err instanceof StudentOtpStorageError ? 'Verification service is temporarily unavailable.' : 'Failed to dispatch verification code via email.',
       ...(err instanceof StudentOtpRateLimitError ? { waitSeconds: err.waitSeconds } : {}),
       code: err.code || (err instanceof StudentOtpStorageError ? 'OTP_STORAGE_UNAVAILABLE' : 'EMAIL_DISPATCH_FAILED'),
       actionableHint: status === 429 ? undefined : 'Please retry later or contact support if the problem continues.'
@@ -1126,7 +1126,7 @@ apiRouter.post(['/admin/auth/request-setup-otp', '/admin/request-setup-otp'], as
     const rateLimited = err instanceof AdminOtpRateLimitError;
     const unavailable = err instanceof ConfigError || err instanceof AdminOtpStorageError;
     res.status(rateLimited ? 429 : unavailable ? 503 : 500).json({
-      error: rateLimited ? err.message : unavailable ? 'Administrator OTP storage is unavailable.' : 'Failed to dispatch setup OTP via email.',
+      error: rateLimited ? 'Too many verification requests. Please retry later.' : unavailable ? 'Administrator OTP storage is unavailable.' : 'Failed to dispatch setup OTP via email.',
       ...(rateLimited ? { waitSeconds: err.waitSeconds } : {})
     });
   }
@@ -1323,7 +1323,7 @@ apiRouter.post(['/admin/auth/resend-admin-otp', '/admin/auth/resend-otp', '/admi
     const rateLimited = err instanceof AdminOtpRateLimitError;
     const unavailable = err instanceof ConfigError || err instanceof AdminOtpStorageError;
     res.status(rateLimited ? 429 : unavailable ? 503 : 500).json({
-      error: rateLimited ? err.message : unavailable ? 'Administrator OTP storage is unavailable.' : 'Failed to resend administrator OTP.',
+      error: rateLimited ? 'Too many verification requests. Please retry later.' : unavailable ? 'Administrator OTP storage is unavailable.' : 'Failed to resend administrator OTP.',
       ...(rateLimited ? { waitSeconds: err.waitSeconds } : {})
     });
   }
@@ -1437,7 +1437,7 @@ apiRouter.post(['/admin/auth/forgot-password/request-otp', '/admin/forgot-passwo
     const rateLimited = err instanceof AdminOtpRateLimitError;
     const unavailable = err instanceof ConfigError || err instanceof AdminOtpStorageError;
     res.status(rateLimited ? 429 : unavailable ? 503 : 500).json({
-      error: rateLimited ? err.message : unavailable ? 'Administrator OTP storage is unavailable.' : 'Failed to dispatch administrator recovery code.',
+      error: rateLimited ? 'Too many verification requests. Please retry later.' : unavailable ? 'Administrator OTP storage is unavailable.' : 'Failed to dispatch administrator recovery code.',
       ...(rateLimited ? { waitSeconds: err.waitSeconds } : {})
     });
   }
@@ -1533,7 +1533,7 @@ apiRouter.post(['/admin/auth/forgot-password/reset-password', '/admin/forgot-pas
   } catch (err: any) {
     console.error('Error resetting admin password:', err);
     res.status(err instanceof ConfigError ? 503 : 500).json({
-      error: err instanceof ConfigError ? err.message : 'Failed to reset Admin Security Password.'
+      error: err instanceof ConfigError ? 'Administrator configuration is temporarily unavailable.' : 'Failed to reset Admin Security Password.'
     });
   }
 });
@@ -1890,7 +1890,12 @@ apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/c
   } catch (err: any) {
     if (err instanceof RegistrationStoreError) {
       const status = err.code === 'COMPETITION_COMING_SOON' ? 403 : 400;
-      res.status(status).json({ error: err.message, code: err.code });
+      const safeMessages: Record<string, string> = {
+        COMPETITION_COMING_SOON: 'Registrations are not open for this competition.',
+        REGISTRATION_CLOSED: 'Registration for this competition is closed.',
+        COMPETITION_FULL: 'This competition has reached capacity.'
+      };
+      res.status(status).json({ error: safeMessages[err.code] || 'Registration could not be completed.', code: err.code });
       return;
     }
     console.error('[REGISTRATION CREATE ERROR]', err?.code || err?.name || 'unknown_error');
