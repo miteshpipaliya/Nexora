@@ -14,10 +14,6 @@ interface ContactEndpointDeps {
 
 // Per-IP, per-email, and daily limits are enforced in a Firestore transaction
 // below so limits cannot be bypassed by switching serverless instances.
-function emailHashKey(email: string): string {
-  return email.toLowerCase().trim();
-}
-
 function cleanPlainText(input: string): string {
   // Strip control characters while preserving standard whitespace
   return input.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').trim();
@@ -136,7 +132,7 @@ export function registerContactEndpoints(deps: ContactEndpointDeps) {
 
       const limitCollection = db.collection('contactRateLimits');
       const ipCounter = limitCollection.doc(`ip_${ipHash}`);
-      const emailCounter = limitCollection.doc(`email_${emailHashKey(cleanEmail)}`);
+      const emailCounter = limitCollection.doc(`email_${crypto.createHmac('sha256', getHmacSecret()).update(`contact_email:${cleanEmail}`).digest('hex')}`);
       const globalCounter = limitCollection.doc('daily_global');
       const now = Date.now();
 
