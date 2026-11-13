@@ -1209,7 +1209,6 @@ export const AdminPage: React.FC = () => {
     }
     if (!newTeamMemberData.role_key?.startsWith('faculty_') && (!newTeamMemberData.division?.trim() || !newTeamMemberData.enrollment_number?.trim())) {
       showErrorToast('Division and enrollment number are required for student roles.');
-      showErrorToast('Member name is required.');
       return;
     }
     setLoading(true);
@@ -1218,7 +1217,7 @@ export const AdminPage: React.FC = () => {
         await dataService.updateTeamMember(editingTeamMember.id, { ...newTeamMemberData, is_founder: editingTeamMember.is_founder === true, visibility_approved: editingTeamMember.visibility_approved === true });
         showSuccessToast(`Updated team member "${newTeamMemberData.name}"!`);
       } else {
-        await dataService.createTeamMember({ ...newTeamMemberData, is_founder: false, enabled: false, visibility_approved: false });
+        await dataService.createTeamMember({ ...newTeamMemberData, is_founder: newTeamMemberData.role_key === 'founder', enabled: newTeamMemberData.role_key === 'founder', visibility_approved: newTeamMemberData.role_key === 'founder' });
         showSuccessToast(`Added team member "${newTeamMemberData.name}"!`);
       }
       setShowTeamMemberModal(false);
