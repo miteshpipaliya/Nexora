@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { inspectImageDataUrl, isSafeImageLibraryUrl } from '../src/server/imageValidation';
+import sharp from 'sharp';
+import { inspectImageDataUrl, isSafeImageLibraryUrl, decodeAndSanitizeImage } from '../src/server/imageValidation';
 
 const asDataUrl = (mime: string, bytes: Buffer) => `data:${mime};base64,${bytes.toString('base64')}`;
 
@@ -48,4 +49,33 @@ describe('Image upload signature validation', () => {
       '/\\evil.example/image.png', 'https://user:pass@example.com/image.jpg'
     ]) expect(isSafeImageLibraryUrl(unsafe)).toBe(false);
   });
+  it('rejects signature-correct but truncated fake PNG files during real decoding', async () => {
+    const inspected = inspectImageDataUrl(asDataUrl('image/png', png));
+    expect(inspected.ok).toBe(true);
+    if (inspected.ok) expect(await decodeAndSanitizeImage(inspected)).toBeNull();
+  });
+
+  it('decodes a real image, strips metadata, and re-encodes safely', async () => {
+    const source = await sharp({
+      create: { width: 12, height: 8, channels: 4, background: '#8050d9' }
+    }).png().withMetadata({ density: 300 }).toBuffer();
+    const inspected = inspectImageDataUrl(asDataUrl('image/png', source));
+    expect(inspected.ok).toBe(true);
+    if (!inspected.ok) return;
+    const sanitized = await decodeAndSanitizeImage(inspected);
+    expect(sanitized).toBeTruthy();
+    const result = await sharp(sanitized!).metadata();
+    expect(result).toMatchObject({ format: 'png', width: 12, height: 8 });
+    expect(result.density).not.toBe(300);
+  });
+
+  it('rejects an image whose decoded pixel count exceeds the limit', async () => {
+    const source = await sharp({
+      create: { width: 4096, height: 4096, channels: 3, background: '#9861dd' }
+    }).png().toBuffer();
+    const inspected = inspectImageDataUrl(asDataUrl('image/png', source));
+    expect(inspected.ok).toBe(true);
+    if (inspected.ok) expect(await decodeAndSanitizeImage(inspected)).toBeNull();
+  });
+
 });
