@@ -1924,16 +1924,33 @@ apiRouter.post('/admin/logout-session', async (req, res) => {
   const token = req.cookies?.['nexora_admin_session']
     || req.body?.sessionToken
     || (req.headers['x-admin-session'] as string);
-  if (token) {
-    elevatedAdminSessions.delete(token);
-    const payload = verifySignedToken(token, 'admin-session');
-    if (payload?.jti) {
-      await revokeAdminSession(payload.jti).catch(() => {});
-      await revokeJti(payload.jti, 'logout').catch(() => {});
-    }
+
+  if (!token) {
     clearAdminSessionCookie(res);
+    res.json({ success: true, revoked: false });
+    return;
   }
-  res.json({ success: true });
+
+  const payload = verifySignedToken(token, 'admin-session');
+  if (!payload?.jti) {
+    clearAdminSessionCookie(res);
+    res.status(401).json({ success: false, error: 'Administrator session was not valid.' });
+    return;
+  }
+
+  try {
+    await revokeAdminSession(payload.jti);
+    await revokeJti(payload.jti, 'logout');
+    elevatedAdminSessions.delete(token);
+    clearAdminSessionCookie(res);
+    res.json({ success: true, revoked: true });
+  } catch (error) {
+    console.error('[ADMIN LOGOUT] Persistent session revocation failed:', error);
+    res.status(503).json({
+      success: false,
+      error: 'Could not confirm administrator session revocation. Please retry.'
+    });
+  }
 });
 
 // ==========================================
