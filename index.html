@@ -72,7 +72,8 @@
          It is absent on touch/tablet and when intro was already completed. */
       #nx-first-paint-gate { display:none; }
       @media (min-width:1025px) and (hover:hover) and (pointer:fine) {
-        html:not(.nx-intro-done) #nx-first-paint-gate {
+        html:not(.nx-intro-done):not(.nx-intro-ready) #root { visibility: hidden; }
+        html:not(.nx-intro-done):not(.nx-intro-ready) #nx-first-paint-gate {
           display:flex; position:fixed; inset:0; z-index:100001;
           flex-direction:column; align-items:center; justify-content:center;
           gap:clamp(8px,2vh,24px); overflow:hidden; pointer-events:none;
@@ -91,6 +92,13 @@
   <body class="bg-[#08080D] text-[#F8FAFC] min-h-screen antialiased selection:bg-[#8B5CF6]/30 selection:text-[#F8FAFC]">
     <div id="nx-first-paint-gate" aria-hidden="true">
       <div style="position:absolute;inset:-14%;background:radial-gradient(ellipse 34% 41% at 19% 27%,rgba(68,20,112,.23),transparent 82%),radial-gradient(ellipse 38% 36% at 82% 72%,rgba(71,31,120,.19),transparent 85%);filter:blur(30px)"></div>
+      <i aria-hidden="true" style="position:absolute;left:11%;top:18%;width:2px;height:2px;border-radius:50%;background:rgba(225,208,255,0.82);box-shadow:0 0 4px rgba(186,152,239,.35)"></i>
+      <i aria-hidden="true" style="position:absolute;left:27%;top:69%;width:1.5px;height:1.5px;border-radius:50%;background:rgba(225,208,255,0.63);box-shadow:0 0 4px rgba(186,152,239,.35)"></i>
+      <i aria-hidden="true" style="position:absolute;left:40%;top:28%;width:1.5px;height:1.5px;border-radius:50%;background:rgba(225,208,255,0.82);box-shadow:0 0 4px rgba(186,152,239,.35)"></i>
+      <i aria-hidden="true" style="position:absolute;left:58%;top:81%;width:2px;height:2px;border-radius:50%;background:rgba(225,208,255,0.63);box-shadow:0 0 4px rgba(186,152,239,.35)"></i>
+      <i aria-hidden="true" style="position:absolute;left:72%;top:17%;width:1.5px;height:1.5px;border-radius:50%;background:rgba(225,208,255,0.82);box-shadow:0 0 4px rgba(186,152,239,.35)"></i>
+      <i aria-hidden="true" style="position:absolute;left:87%;top:56%;width:1.5px;height:1.5px;border-radius:50%;background:rgba(225,208,255,0.63);box-shadow:0 0 4px rgba(186,152,239,.35)"></i>
+      <i aria-hidden="true" style="position:absolute;left:94%;top:29%;width:2px;height:2px;border-radius:50%;background:rgba(225,208,255,0.82);box-shadow:0 0 4px rgba(186,152,239,.35)"></i>
       <img src="/images/intro/NEXORA%20LOGO.png?v=3" alt="" fetchpriority="high" style="position:relative;width:clamp(180px,30vw,280px);height:auto;filter:drop-shadow(0 0 26px rgba(145,88,227,.6))"/>
       <div style="position:relative;font:clamp(10px,1.15vw,14px) monospace;letter-spacing:.18em;color:#ddd6fe">&gt; CLICK LOGO TO START EXPERIENCE</div>
     </div>
