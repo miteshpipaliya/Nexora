@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { isDesktopDevice } from './device/DeviceDetector';
 import { shouldPlayIntro, markIntroCompleted } from './shared/IntroCompletion';
 import App from '../../App';
@@ -103,7 +104,7 @@ export const IntroWrapper: React.FC = () => {
       >
         <App />
       </main>
-      {introActive && (
+      {introActive && createPortal(
         <React.Suspense
           fallback={
             <div
@@ -155,7 +156,8 @@ export const IntroWrapper: React.FC = () => {
               <DesktopIntro autoPlay onComplete={handleComplete} />
             </ReactIntroReady>
           </IntroBoundary>
-        </React.Suspense>
+        </React.Suspense>,
+        document.body
       )}
     </>
   );
