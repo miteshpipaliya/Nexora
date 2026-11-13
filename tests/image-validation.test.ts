@@ -66,7 +66,9 @@ describe('Image upload signature validation', () => {
     expect(sanitized).toBeTruthy();
     const result = await sharp(sanitized!).metadata();
     expect(result).toMatchObject({ format: 'png', width: 12, height: 8 });
-    expect(result.density).not.toBe(300);
+    expect(result.exif).toBeUndefined();
+    expect(result.icc).toBeUndefined();
+    expect(result.xmp).toBeUndefined();
   });
 
   it('rejects an image whose decoded pixel count exceeds the limit', async () => {
