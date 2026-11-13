@@ -1462,7 +1462,7 @@ export const AdminPage: React.FC = () => {
             </span>
           </div>
           <div className="flex items-center justify-between text-slate-400 font-mono">
-            <span>Layer 3: Brevo OTP:</span>
+            <span>Layer 3: Email Verification:</span>
             <span className="text-slate-500">Dual Authorization</span>
           </div>
         </div>
@@ -1629,7 +1629,7 @@ export const AdminPage: React.FC = () => {
               <span className="text-[10px] font-mono text-amber-400 uppercase tracking-wider block">Password Recovery</span>
               <h3 className="text-base font-bold text-white">Enter Recovery Code</h3>
               <p className="text-xs text-slate-400">
-                A 6-digit recovery code has been dispatched via Brevo to founder email.
+                A six-digit recovery code was sent to the verified administrator email.
               </p>
             </div>
 
@@ -2393,7 +2393,7 @@ export const AdminPage: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold text-white tracking-tight">Participant Registrations</h2>
-              <p className="text-xs text-slate-400">Total verified participant records in Firestore: <span className="text-white font-bold">{registrations.length}</span></p>
+              <p className="text-xs text-slate-400">Total verified participant records: <span className="text-white font-bold">{registrations.length}</span></p>
             </div>
             <button
               type="button"
@@ -2552,7 +2552,7 @@ export const AdminPage: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold text-white tracking-tight">Verified Student Directory</h2>
-              <p className="text-xs text-slate-400">Total registered student profiles in Firestore: <span className="text-white font-bold">{students.length}</span></p>
+              <p className="text-xs text-slate-400">Total registered student profiles: <span className="text-white font-bold">{students.length}</span></p>
             </div>
             <button
               type="button"
@@ -2795,7 +2795,7 @@ export const AdminPage: React.FC = () => {
         <div className="space-y-6">
           <div>
             <h2 className="text-xl font-bold text-white tracking-tight">Visitor Inquiries &amp; Contact Inbox</h2>
-            <p className="text-xs text-slate-400">Messages sent via the contact form. Reply directly via in-app storage or Brevo email.</p>
+            <p className="text-xs text-slate-400">Messages sent through NEXORA. Reply directly in the app or by email.</p>
           </div>
 
           {messages.length === 0 ? (
@@ -2894,7 +2894,7 @@ export const AdminPage: React.FC = () => {
         <div className="space-y-6">
           <div>
             <h2 className="text-xl font-bold text-white tracking-tight">Website Content Management System (CMS)</h2>
-            <p className="text-xs text-slate-400">Edits persist in Firestore &apos;siteContent/public&apos; document and propagate across all visitor sessions.</p>
+            <p className="text-xs text-slate-400">Published changes appear throughout the NEXORA website.</p>
           </div>
 
           <div className="p-6 bg-[#171426] border border-violet-500/25 rounded-2xl space-y-4">
@@ -2980,7 +2980,7 @@ export const AdminPage: React.FC = () => {
                 className="px-6 py-2.5 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {savingContent ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
-                <span>Publish Website Copy to Firestore</span>
+                <span>Publish Website Content</span>
               </button>
             </div>
           </div>
@@ -3306,7 +3306,7 @@ export const AdminPage: React.FC = () => {
             <div className="flex items-center justify-between pb-3 border-b border-violet-500/20">
               <div>
                 <h3 className="text-base font-bold text-white">Create New Flagship Competition</h3>
-                <p className="text-[11px] text-slate-400 font-mono">Will be written directly to Firestore &apos;events&apos; collection</p>
+                <p className="text-[11px] text-slate-400 font-mono">A new competition will be saved securely.</p>
               </div>
               <button
                 type="button"
@@ -3565,7 +3565,7 @@ export const AdminPage: React.FC = () => {
                 className="px-5 py-2 text-xs font-semibold text-white bg-violet-600 rounded-xl hover:bg-violet-500 transition-colors shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                <span>Save Competition to Firestore</span>
+                <span>Save Competition</span>
               </button>
             </div>
           </div>
@@ -3581,7 +3581,7 @@ export const AdminPage: React.FC = () => {
             <div className="flex items-center justify-between pb-3 border-b border-violet-500/20">
               <div>
                 <h3 className="text-base font-bold text-white">Edit {editingEvent.title}</h3>
-                <p className="text-[11px] text-slate-400 font-mono">Writing updates to Firestore /events/{editingEvent.slug}</p>
+                <p className="text-[11px] text-slate-400 font-mono">Saving updates to {editingEvent.slug}</p>
               </div>
               <button
                 type="button"
@@ -4042,7 +4042,7 @@ export const AdminPage: React.FC = () => {
                       onChange={() => setReplyChannel('email')}
                       className="accent-violet-500"
                     />
-                    <span>Email dispatch via Brevo (Sends real email)</span>
+                    <span>Send an email reply to this address</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer text-slate-300">
                     <input
