@@ -161,7 +161,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       stopPresenceHeartbeat(user?.id);
-      dataService.clearElevatedAdminSession();
+      await dataService.clearElevatedAdminSession().catch((err) => {
+        console.error('[ADMIN LOCK] Failed to revoke session on logout:', err);
+      });
       setElevatedAdminVerified(false);
       await dataService.logout();
       setUser(null);
