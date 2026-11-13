@@ -283,6 +283,8 @@ export interface TeamMember {
   display_order: number;
   is_featured: boolean;
   is_founder?: boolean;
+  /** Only an explicit admin publish may expose a non-founder profile publicly. */
+  visibility_approved?: boolean;
   enabled: boolean;
   created_at: string;
   updated_at: string;
