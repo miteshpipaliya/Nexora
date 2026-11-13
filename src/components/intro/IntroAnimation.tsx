@@ -367,7 +367,7 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
             minHeight: 'clamp(200px, 40vw, 340px)',
             touchAction: 'manipulation',
           }}
-          initial={{ opacity: 0, scale: 0.88 }}
+          initial={{ opacity: 1, scale: 1 }}
           animate={launching ? { opacity: 1, scale: 1.25 } : { opacity: 1, scale: 1 }}
           transition={launching ? { duration: LAUNCH_MS / 1000, ease: 'easeIn' } : { duration: 1.2, ease: EASE }}
           whileHover={launching ? undefined : { scale: 1.06 }}
@@ -457,7 +457,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
         stopLater(2300); // let the "arrive" chord and wind ring out
       }
       setVisible(false); // reveal: overlay fades out, AnimatePresence then calls complete()
-      window.setTimeout(complete, fast ? 800 : reduced ? 1000 : 2600); // safety net if the exit animation never reports back
+      window.setTimeout(complete, fast ? 800 : reduced ? 1000 : 200); // safety net if the exit animation never reports back
     },
     [fadeOutAndStop, stopLater, complete, reduced]
   );
