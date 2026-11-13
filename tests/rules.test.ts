@@ -456,4 +456,12 @@ describe('Firestore Security Rules Test Suite (firestore.rules)', () => {
       expect(model.canAccess('userPresence', 'user_tiks_g', 'list', adminCtx)).toBe(true);
     });
   });
+  it('explicitly denies all client access to administrator records and contact throttle counters', () => {
+    const rules = fs.readFileSync(path.join(process.cwd(), 'firestore.rules'), 'utf8');
+    for (const collection of ['_admin_admins', '_admin_sessions', 'contactRateLimits']) {
+      expect(rules).toContain(`match /${collection}/{docId} {
+      allow read, write: if false;
+    }`);
+    }
+  });
 });
