@@ -1,3 +1,4 @@
+import { inspectImageDataUrl } from './src/server/imageValidation';
 import express from 'express';
 import crypto from 'crypto';
 import path from 'path';
@@ -40,7 +41,13 @@ export class ConfigError extends Error {
 
 export const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '100kb' }));
+// Keep a strict JSON cap for ordinary requests. The authenticated image-upload
+// route installs its own larger parser *after* admin-session authorization.
+const generalJsonParser = express.json({ limit: '100kb' });
+app.use((req, res, next) => {
+  if (req.method === 'POST' && req.path === '/api/admin/upload-image') return next();
+  return generalJsonParser(req, res, next);
+});
 
 // ==========================================
 // CORS CONFIGURATION (P1-07 fix)
@@ -442,7 +449,7 @@ apiRouter.post(['/auth/send-email-otp', '/auth/forgot-password/request-otp', '/a
     console.error('Error in /auth/send-email-otp:', err.message || err);
     const status = err instanceof StudentOtpRateLimitError ? 429 : err instanceof StudentOtpStorageError ? 503 : err.status || (err.code === 'EMAIL_NOT_CONFIGURED' ? 503 : 500);
     res.status(status).json({ 
-      error: err instanceof StudentOtpRateLimitError ? err.message : err instanceof StudentOtpStorageError ? 'Verification service is temporarily unavailable.' : 'Failed to dispatch verification code via email.',
+      error: err instanceof StudentOtpRateLimitError ? 'Too many verification requests. Please retry later.' : err instanceof StudentOtpStorageError ? 'Verification service is temporarily unavailable.' : 'Failed to dispatch verification code via email.',
       ...(err instanceof StudentOtpRateLimitError ? { waitSeconds: err.waitSeconds } : {}),
       code: err.code || (err instanceof StudentOtpStorageError ? 'OTP_STORAGE_UNAVAILABLE' : 'EMAIL_DISPATCH_FAILED'),
       actionableHint: status === 429 ? undefined : 'Please retry later or contact support if the problem continues.'
@@ -1119,7 +1126,7 @@ apiRouter.post(['/admin/auth/request-setup-otp', '/admin/request-setup-otp'], as
     const rateLimited = err instanceof AdminOtpRateLimitError;
     const unavailable = err instanceof ConfigError || err instanceof AdminOtpStorageError;
     res.status(rateLimited ? 429 : unavailable ? 503 : 500).json({
-      error: rateLimited ? err.message : unavailable ? 'Administrator OTP storage is unavailable.' : 'Failed to dispatch setup OTP via email.',
+      error: rateLimited ? 'Too many verification requests. Please retry later.' : unavailable ? 'Administrator OTP storage is unavailable.' : 'Failed to dispatch setup OTP via email.',
       ...(rateLimited ? { waitSeconds: err.waitSeconds } : {})
     });
   }
@@ -1316,7 +1323,7 @@ apiRouter.post(['/admin/auth/resend-admin-otp', '/admin/auth/resend-otp', '/admi
     const rateLimited = err instanceof AdminOtpRateLimitError;
     const unavailable = err instanceof ConfigError || err instanceof AdminOtpStorageError;
     res.status(rateLimited ? 429 : unavailable ? 503 : 500).json({
-      error: rateLimited ? err.message : unavailable ? 'Administrator OTP storage is unavailable.' : 'Failed to resend administrator OTP.',
+      error: rateLimited ? 'Too many verification requests. Please retry later.' : unavailable ? 'Administrator OTP storage is unavailable.' : 'Failed to resend administrator OTP.',
       ...(rateLimited ? { waitSeconds: err.waitSeconds } : {})
     });
   }
@@ -1430,7 +1437,7 @@ apiRouter.post(['/admin/auth/forgot-password/request-otp', '/admin/forgot-passwo
     const rateLimited = err instanceof AdminOtpRateLimitError;
     const unavailable = err instanceof ConfigError || err instanceof AdminOtpStorageError;
     res.status(rateLimited ? 429 : unavailable ? 503 : 500).json({
-      error: rateLimited ? err.message : unavailable ? 'Administrator OTP storage is unavailable.' : 'Failed to dispatch administrator recovery code.',
+      error: rateLimited ? 'Too many verification requests. Please retry later.' : unavailable ? 'Administrator OTP storage is unavailable.' : 'Failed to dispatch administrator recovery code.',
       ...(rateLimited ? { waitSeconds: err.waitSeconds } : {})
     });
   }
@@ -1526,7 +1533,7 @@ apiRouter.post(['/admin/auth/forgot-password/reset-password', '/admin/forgot-pas
   } catch (err: any) {
     console.error('Error resetting admin password:', err);
     res.status(err instanceof ConfigError ? 503 : 500).json({
-      error: err instanceof ConfigError ? err.message : 'Failed to reset Admin Security Password.'
+      error: err instanceof ConfigError ? 'Administrator configuration is temporarily unavailable.' : 'Failed to reset Admin Security Password.'
     });
   }
 });
@@ -1639,7 +1646,7 @@ apiRouter.get('/admin/email-diagnostics', requireElevatedAdmin, async (req, res)
     } catch (cfgErr: any) {
       res.status(503).json({
         configured: false,
-        error: cfgErr.message,
+        error: 'Email diagnostic configuration is unavailable.',
         code: cfgErr.code || 'EMAIL_NOT_CONFIGURED'
       });
       return;
@@ -1883,7 +1890,12 @@ apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/c
   } catch (err: any) {
     if (err instanceof RegistrationStoreError) {
       const status = err.code === 'COMPETITION_COMING_SOON' ? 403 : 400;
-      res.status(status).json({ error: err.message, code: err.code });
+      const safeMessages: Record<string, string> = {
+        COMPETITION_COMING_SOON: 'Registrations are not open for this competition.',
+        REGISTRATION_CLOSED: 'Registration for this competition is closed.',
+        COMPETITION_FULL: 'This competition has reached capacity.'
+      };
+      res.status(status).json({ error: safeMessages[err.code] || 'Registration could not be completed.', code: err.code });
       return;
     }
     console.error('[REGISTRATION CREATE ERROR]', err?.code || err?.name || 'unknown_error');
@@ -1923,16 +1935,33 @@ apiRouter.post('/admin/logout-session', async (req, res) => {
   const token = req.cookies?.['nexora_admin_session']
     || req.body?.sessionToken
     || (req.headers['x-admin-session'] as string);
-  if (token) {
-    elevatedAdminSessions.delete(token);
-    const payload = verifySignedToken(token, 'admin-session');
-    if (payload?.jti) {
-      await revokeAdminSession(payload.jti).catch(() => {});
-      await revokeJti(payload.jti, 'logout').catch(() => {});
-    }
+
+  if (!token) {
     clearAdminSessionCookie(res);
+    res.json({ success: true, revoked: false });
+    return;
   }
-  res.json({ success: true });
+
+  const payload = verifySignedToken(token, 'admin-session');
+  if (!payload?.jti) {
+    clearAdminSessionCookie(res);
+    res.status(401).json({ success: false, error: 'Administrator session was not valid.' });
+    return;
+  }
+
+  try {
+    await revokeAdminSession(payload.jti);
+    await revokeJti(payload.jti, 'logout');
+    elevatedAdminSessions.delete(token);
+    clearAdminSessionCookie(res);
+    res.json({ success: true, revoked: true });
+  } catch (error) {
+    console.error('[ADMIN LOGOUT] Persistent session revocation failed:', error);
+    res.status(503).json({
+      success: false,
+      error: 'Could not confirm administrator session revocation. Please retry.'
+    });
+  }
 });
 
 // ==========================================
@@ -2020,7 +2049,7 @@ apiRouter.get('/admin/audit-logs', requireElevatedAdmin, (req, res) => {
 });
 
 // Image Upload Endpoint (stores in /public/images/uploaded)
-apiRouter.post('/admin/upload-image', requireElevatedAdmin, (req, res) => {
+apiRouter.post('/admin/upload-image', requireElevatedAdmin, express.json({ limit: '3mb' }), (req, res) => {
   try {
     const { imageBase64, filename = 'image.jpg' } = req.body;
     if (!imageBase64 || typeof imageBase64 !== 'string') {
@@ -2028,13 +2057,12 @@ apiRouter.post('/admin/upload-image', requireElevatedAdmin, (req, res) => {
       return;
     }
 
-    const matches = imageBase64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-    if (!matches || matches.length !== 3) {
-      res.status(400).json({ error: 'Invalid data URL base64 format.' });
+    const inspected = inspectImageDataUrl(imageBase64);
+    if (!inspected.ok) {
+      res.status(400).json({ error: inspected.error });
       return;
     }
-
-    const ext = matches[1].includes('png') ? '.png' : matches[1].includes('webp') ? '.webp' : '.jpg';
+    const ext = inspected.extension;
     const uploadDir = path.resolve(__dirname, 'public', 'images', 'uploaded');
     try {
       if (!fs.existsSync(uploadDir)) {
@@ -2048,7 +2076,7 @@ apiRouter.post('/admin/upload-image', requireElevatedAdmin, (req, res) => {
     const targetPath = path.join(uploadDir, safeName);
 
     try {
-      fs.writeFileSync(targetPath, Buffer.from(matches[2], 'base64'));
+      fs.writeFileSync(targetPath, inspected.bytes);
       recordAudit('IMAGE_UPLOADED', `Uploaded image: ${safeName}`);
       res.json({
         success: true,
@@ -2337,12 +2365,12 @@ app.use(apiRouter);
 
 // Structured JSON 404 handler for any unhandled /api/* route to guarantee never returning HTML
 app.use('/api', (req, res) => {
-  res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl || req.url}` });
+  res.status(404).json({ error: 'API route not found.' });
 });
 
 if (isServerless) {
   app.use('*', (req, res) => {
-    res.status(404).json({ error: `Route not found on API server: ${req.method} ${req.originalUrl || req.url}` });
+    res.status(404).json({ error: 'API route not found.' });
   });
 }
 

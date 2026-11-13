@@ -267,7 +267,7 @@ export async function getBrevoDiagnostics(): Promise<BrevoDiagnostics> {
       senderVerified: false,
       domainAuthenticated: false,
       transactionalEnabled: false,
-      error: `Connection error during diagnostics: ${err?.message || 'Network failure'}`
+      error: 'Email provider diagnostics are temporarily unavailable.'
     };
   }
 }
