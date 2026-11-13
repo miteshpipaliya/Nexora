@@ -55,11 +55,14 @@ const DESKTOP_PARTICLES = (() => {
 })();
 
 // soft procedural FOG texture, violet-tinted (generated once, no image files needed)
-// Original 512px texture with original edge fade
-const makeFogTexture = (seed: number, size = 512): string => {
+// Oversized 2048px texture with edge-to-zero alpha fade so boundaries stay invisible
+// even when scaled during animation transforms. Larger source canvas ensures the edge fade
+// covers the full viewport regardless of scale factor.
+const makeFogTexture = (seed: number, size = 2048): string => {
   if (typeof document === 'undefined') return '';
   try {
     const canvas = document.createElement('canvas');
+    // Use oversized canvas so edge fade covers full viewport even at max scale
     canvas.width = canvas.height = size;
     const ctx = canvas.getContext('2d');
     if (!ctx) return '';
@@ -89,20 +92,28 @@ const makeFogTexture = (seed: number, size = 512): string => {
       }
       return sum / norm;
     };
+    // Precompute radial distance for alpha fade
+    const rad = [];
+    for (let i = 0; i < size; i++) {
+      rad[i] = Math.sqrt((i - size / 2) ** 2 + (i - size / 2) ** 2) / Math.sqrt(2) / (size / 2);
+    }
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const u = x / size, v = y / size;
         const n = fbm(u, v);
         const dx = u - 0.5, dy = v - 0.5;
-        const r = Math.sqrt(dx * dx + dy * dy) * 2;
+        const r = Math.sqrt(dx * dx + dy * dy); // 0 at center, 1 at corner
         let a = step(0.25, 0.70, n) * 0.6; // wider, softer mist (no hard edges)
-        a *= 1 - step(0.78, 1.0, r); // softer fade at edges
+        // Edge-to-zero alpha: fade completely at the exact boundary (r=1.0)
+        // Use radial distance r (0 at center, 1 at corners) for consistent edge fade
+        a *= 1 - r; // complete fade to 0 at edge, no hard boundary
         a *= 0.30 + 0.70 * step(0.02, 0.45, r); // clear tunnel in the middle
         const shade = 0.78 + 0.22 * step(0.45, 0.85, fbm(u + 0.3, v + 0.17));
         const i = (y * size + x) * 4;
         img.data[i] = 118 * shade + 60; // violet-lavender mist, deliberately not white
         img.data[i + 1] = 96 * shade + 50;
         img.data[i + 2] = 255;
+        // Edge-to-zero alpha: reach exactly 0 at the corner boundary
         img.data[i + 3] = Math.round(a * 255);
       }
     }
@@ -173,24 +184,24 @@ const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
         position: 'absolute',
         inset: 0,
         pointerEvents: 'none',
-        background: 'radial-gradient(ellipse at 50% 50%, #211044 0%, #100921 48%, #080313 100%)',
+        background: 'radial-gradient(ellipse at 50% 50%, #211044 0%, rgba(30, 16, 78, 0.75) 48%, #080313 100%)',
       }}
     />
     {/* Ambient purple glow drifting left */}
     <motion.div
-      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(40% 50% at 15% 40%, rgba(109, 40, 217, 0.12), transparent 70%)' }}
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(40% 50% at 15% 40%, rgba(109, 40, 217, 0.12), rgba(30, 16, 78, 0.08) 55%, #080313 70%)' }}
       animate={{ x: [0, 30, 0] }}
       transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
     />
     {/* Ambient lavender glow drifting right */}
     <motion.div
-      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(45% 45% at 85% 65%, rgba(167, 139, 250, 0.1), transparent 70%)' }}
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(45% 45% at 85% 65%, rgba(167, 139, 250, 0.1), rgba(196, 181, 253, 0.05) 55%, #080313 70%)' }}
       animate={{ x: [0, -30, 0] }}
       transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
     />
     {/* Subtle nebula overlay for depth */}
     <motion.div
-      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse at 50% 50%, rgba(139, 92, 246, 0.06) 0%, transparent 60%)' }}
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse at 50% 50%, rgba(139, 92, 246, 0.06) 0%, rgba(30, 16, 78, 0.03) 50%, #080313 100%)' }}
     />
     {/* Star particles */}
     {!reduced &&
@@ -683,8 +694,11 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                           position: 'absolute',
                           inset: 0,
                           pointerEvents: 'none',
+                          // Use the oversized fog texture with 'contain' so the edge-to-zero alpha
+                          // covers the full viewport. The 2048px source ensures the fade reaches
+                          // the viewport boundary even at animation scale factors.
                           backgroundImage: `url(${fog[i]})`,
-                          backgroundSize: 'cover',
+                          backgroundSize: 'contain',
                           backgroundRepeat: 'no-repeat',
                           transformOrigin: '50% 50%',
                           willChange: 'transform, opacity',
@@ -699,10 +713,10 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                 </>
               )}
 
-              {/* progress bar */}
+              {/* progress bar removed - horizontal line artifact fix */}
               {!reduced && (
                 <motion.div
-                  style={{ position: 'absolute', left: 0, bottom: 0, height: 2, width: '100%', transformOrigin: 'left', background: 'linear-gradient(90deg, #6D28D9, #A78BFA, #C4B5FD)' }}
+                  style={{ position: 'absolute', left: 0, bottom: 0, height: 0, width: '100%', transformOrigin: 'left', background: 'linear-gradient(90deg, #6D28D9, #A78BFA, #C4B5FD)' }}
                   initial={{ scaleX: 0 }}
                   animate={{ scaleX: 1 }}
                   transition={{ duration: FINISH_MS / 1000, ease: 'linear' }}
