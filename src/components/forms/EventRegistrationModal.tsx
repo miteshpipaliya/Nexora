@@ -250,7 +250,7 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
-      <div className={`relative w-full ${confirmedRecord ? "max-w-[870px]" : "max-w-2xl"} bg-[#08080D] border border-violet-500/35 rounded-2xl shadow-2xl my-6 overflow-hidden`>
+      <div className={`relative w-full ${confirmedRecord ? "max-w-[870px]" : "max-w-2xl"} bg-[#08080D] border border-violet-500/35 rounded-2xl shadow-2xl my-6 overflow-hidden`}>
         
         {/* Modal Top Bar */}
         <div className="p-6 border-b border-violet-500/20 bg-[#11101B]/90 flex items-center justify-between">
