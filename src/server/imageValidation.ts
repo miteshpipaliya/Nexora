@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 /**
  * Validate declared image media type AND actual binary signature.
  * Never accept SVG/HTML, arbitrary data URLs, or user-selected file extensions.
@@ -71,5 +72,39 @@ export function isSafeImageLibraryUrl(value: unknown): value is string {
       !/[\\\u0000-\u001f]/.test(trimmed);
   } catch {
     return false;
+  }
+}
+
+/**
+ * Decode and re-encode untrusted raster images before storing or returning
+ * them. Signature checks alone cannot detect malformed/truncated images or
+ * malicious metadata; re-encoding strips ancillary metadata from uploads.
+ */
+export async function decodeAndSanitizeImage(
+  inspected: Extract<InspectedImage, { ok: true }>
+): Promise<Buffer | null> {
+  try {
+    const decoder = sharp(inspected.bytes, {
+      failOn: 'warning',
+      limitInputPixels: 16_000_000,
+      animated: false,
+      sequentialRead: true,
+    });
+    const metadata = await decoder.metadata();
+    if (!metadata.width || !metadata.height ||
+        metadata.width * metadata.height > 16_000_000 ||
+        metadata.pages && metadata.pages !== 1 ||
+        metadata.format !== inspected.mime.slice('image/'.length).replace('jpeg', 'jpeg')) {
+      return null;
+    }
+    // Never preserve EXIF, embedded profiles, ICC metadata or other chunks.
+    const sanitized = await decoder.rotate().toFormat(
+      inspected.mime === 'image/png' ? 'png'
+        : inspected.mime === 'image/webp' ? 'webp' : 'jpeg',
+    ).toBuffer();
+    return sanitized.length > 0 && sanitized.length <= 2 * 1024 * 1024
+      ? sanitized : null;
+  } catch {
+    return null;
   }
 }
