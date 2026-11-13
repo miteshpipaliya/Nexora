@@ -149,7 +149,7 @@ export const STANDARD_TEAM_ROLES = [
     division: 'Division B',
     institution: 'Birla Vishvakarma Mahavidyalaya',
     enrollment_number: '23CP088',
-    bio: 'Drives client and server-side feature implementations, real-time Firestore listeners, automated test coverage, and responsive frontend performance.',
+    bio: 'Drives client and server-side feature implementations, real-time secure storage listeners, automated test coverage, and responsive frontend performance.',
     avatar_url: '',
     is_founder: false,
     display_order: 4
@@ -1084,12 +1084,6 @@ export const AdminPage: React.FC = () => {
           is_featured: roleDef.is_founder || false,
           enabled: true,
           visibility_approved: true,
-          ...(roleDef.faculty_designation ? {
-            faculty_designation: roleDef.faculty_designation,
-            faculty_cabin: roleDef.faculty_cabin,
-            faculty_research: roleDef.faculty_research,
-            faculty_office_hours: roleDef.faculty_office_hours
-          } : {})
         };
         await dataService.createTeamMember(newMember);
         showSuccessToast(`Published "${roleDef.role_name}" profile LIVE to website!`);
@@ -1104,6 +1098,10 @@ export const AdminPage: React.FC = () => {
 
   const handleToggleTeamMemberPublish = async (member: TeamMember) => {
     const nextVal = member.visibility_approved !== true || member.enabled === false;
+    if (nextVal && (!member.name?.trim() || !member.department_name?.trim())) {
+      showErrorToast('Enter a real name and department before publishing.');
+      return;
+    }
     try {
       await dataService.updateTeamMember(member.id, { enabled: nextVal, visibility_approved: nextVal });
       showSuccessToast(`Profile "${member.name}" is now ${nextVal ? 'LIVE on /team page' : 'DRAFT / HIDDEN'}.`);
@@ -1209,7 +1207,7 @@ export const AdminPage: React.FC = () => {
       showErrorToast('Please select the BVM department.');
       return;
     }
-    if (!newTeamMemberData.role_key?.startsWith('faculty_') && !newTeamMemberData.is_founder && (!newTeamMemberData.division?.trim() || !newTeamMemberData.enrollment_number?.trim())) {
+    if (!newTeamMemberData.role_key?.startsWith('faculty_') && (!newTeamMemberData.division?.trim() || !newTeamMemberData.enrollment_number?.trim())) {
       showErrorToast('Division and enrollment number are required for student roles.');
       showErrorToast('Member name is required.');
       return;
@@ -3055,55 +3053,6 @@ export const AdminPage: React.FC = () => {
               )}
             </div>
           </div>
-
-          {/* Sub Tabs */}
-          <div className="flex items-center gap-2 border-b border-violet-500/20 pb-2 overflow-x-auto">
-            <button
-              type="button"
-              onClick={() => setTeamSubTab('members')}
-              className={`px-4 py-2 text-xs font-mono rounded-xl transition-all whitespace-nowrap ${
-                teamSubTab === 'members'
-                  ? 'bg-violet-600 text-white font-bold shadow-md'
-                  : 'bg-[#171426] text-slate-400 hover:text-white border border-violet-500/15'
-              }`}
-            >
-              Team Members ({teamMembers.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setTeamSubTab('roles')}
-              className={`px-4 py-2 text-xs font-mono rounded-xl transition-all whitespace-nowrap ${
-                teamSubTab === 'roles'
-                  ? 'bg-violet-600 text-white font-bold shadow-md'
-                  : 'bg-[#171426] text-slate-400 hover:text-white border border-violet-500/15'
-              }`}
-            >
-              Roles ({teamMeta.roles?.length || 0})
-            </button>
-            <button
-              type="button"
-              onClick={() => setTeamSubTab('branches')}
-              className={`px-4 py-2 text-xs font-mono rounded-xl transition-all whitespace-nowrap ${
-                teamSubTab === 'branches'
-                  ? 'bg-violet-600 text-white font-bold shadow-md'
-                  : 'bg-[#171426] text-slate-400 hover:text-white border border-violet-500/15'
-              }`}
-            >
-              Academic Branches ({teamMeta.branches?.length || 0})
-            </button>
-            <button
-              type="button"
-              onClick={() => setTeamSubTab('departments')}
-              className={`px-4 py-2 text-xs font-mono rounded-xl transition-all whitespace-nowrap ${
-                teamSubTab === 'departments'
-                  ? 'bg-violet-600 text-white font-bold shadow-md'
-                  : 'bg-[#171426] text-slate-400 hover:text-white border border-violet-500/15'
-              }`}
-            >
-              Departments ({teamMeta.departments?.length || 0})
-            </button>
-          </div>
-
 
           {teamSubTab === 'members' && (
             <div className="space-y-5">
