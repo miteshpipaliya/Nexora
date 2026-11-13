@@ -1737,6 +1737,7 @@ return { initialized: true };
       is_featured: Boolean(data.is_featured),
       is_founder: Boolean(data.is_founder),
       enabled: data.enabled !== false,
+      visibility_approved: Boolean(data.visibility_approved) && Boolean(data.enabled),
       created_at: now,
       updated_at: now
     };
@@ -1809,8 +1810,8 @@ return { initialized: true };
       ]);
       const members = memberSnapshot.docs
         .map(record => ({ id: record.id, ...record.data() } as TeamMember))
-        .filter(m => m.enabled !== false)
-        .sort((a, b) => (a.display_order || 99) - (b.display_order || 99));
+        .filter(m => m.enabled !== false && (m.is_founder === true || m.visibility_approved === true))
+        .sort((a, b) => Number(Boolean(b.is_founder)) - Number(Boolean(a.is_founder)) || (a.display_order ?? 99) - (b.display_order ?? 99));
       return { members, meta: metaSnapshot.exists() ? metaSnapshot.data() : {} };
     };
 
