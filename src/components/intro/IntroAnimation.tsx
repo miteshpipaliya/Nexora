@@ -182,7 +182,7 @@ const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
         inset: 0,
         pointerEvents: 'none',
         background:
-          'radial-gradient(ellipse 85% 75% at 50% 46%, #25123d 0%, #130a24 40%, #080510 72%, #020105 100%)',
+          'radial-gradient(ellipse 85% 75% at 50% 46%, #190e2c 0%, #10091d 40%, #07040e 72%, #020105 100%)',
       }}
     />
     {/* Nebula light: soft fades only, never opaque rectangles or side bands. */}
@@ -193,7 +193,7 @@ const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
         inset: '-8%',
         pointerEvents: 'none',
         background:
-          'radial-gradient(ellipse 40% 50% at 24% 35%, rgba(101,44,174,0.18), transparent 80%), radial-gradient(ellipse 44% 50% at 75% 62%, rgba(123,63,211,0.17), transparent 82%)',
+          'radial-gradient(ellipse 40% 50% at 24% 35%, rgba(101,44,174,0.12), transparent 80%), radial-gradient(ellipse 44% 50% at 75% 62%, rgba(123,63,211,0.11), transparent 82%)',
       }}
       animate={reduced ? undefined : { x: [0, 12, 0], opacity: [0.75, 1, 0.75] }}
       transition={reduced ? undefined : { duration: 18, repeat: Infinity, ease: 'easeInOut' }}
@@ -205,7 +205,7 @@ const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
         inset: 0,
         pointerEvents: 'none',
         background:
-          'radial-gradient(ellipse 50% 35% at 47% 52%, rgba(157,86,243,0.09), transparent 86%)',
+          'radial-gradient(ellipse 50% 35% at 47% 52%, rgba(157,86,243,0.055), transparent 86%)',
       }}
     />
     {/* Sparse pinprick stars with purple/lavender focus and a few warm distant sparks. */}
