@@ -80,4 +80,11 @@ describe('administrator security routes', () => {
     expect(JSON.stringify(data)).not.toContain('SyntaxError');
   });
 
+  it('requires a persisted elevated session for email diagnostics and test sends', async () => {
+    const diagnostics = await fetch(`${baseUrl}/api/admin/email-diagnostics`);
+    expect(diagnostics.status).toBe(401);
+    const testSend = await fetch(`${baseUrl}/api/admin/send-test-email`, { method: 'POST' });
+    expect(testSend.status).toBe(401);
+  });
+
 });
