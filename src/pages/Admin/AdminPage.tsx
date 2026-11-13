@@ -1204,7 +1204,7 @@ export const AdminPage: React.FC = () => {
       return;
     }
     if (!newTeamMemberData.department_name?.trim()) {
-      showErrorToast('Please select the BVM department.');
+      showErrorToast('Please select a BVM department or course.');
       return;
     }
     if (!newTeamMemberData.role_key?.startsWith('faculty_') && (!newTeamMemberData.division?.trim() || !newTeamMemberData.enrollment_number?.trim())) {
@@ -4191,13 +4191,17 @@ export const AdminPage: React.FC = () => {
                 aria-label="Close team editor" className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
             </div>
             <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-mono text-slate-300 mb-1">Role</label>
-                <input type="text" maxLength={80} value={newTeamMemberData.role_name || ''}
-                  onChange={e => setNewTeamMemberData({ ...newTeamMemberData, role_name: e.target.value })}
-                  className="w-full p-3 rounded-lg bg-[#08080D] text-white border border-violet-500/25"
-                  placeholder="e.g. Technical Lead or Faculty Member" />
-              </div>
+              {newTeamMemberData.role_key?.startsWith('faculty_') ? (
+                <div className="text-xs font-mono text-violet-300 rounded-lg border border-violet-500/25 bg-violet-500/5 p-3">Faculty Member · Private</div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-mono text-slate-300 mb-1">Role</label>
+                  <input type="text" maxLength={80} value={newTeamMemberData.role_name || ''}
+                    onChange={e => setNewTeamMemberData({ ...newTeamMemberData, role_name: e.target.value })}
+                    className="w-full p-3 rounded-lg bg-[#08080D] text-white border border-violet-500/25"
+                    placeholder="Enter role manually" />
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-mono text-slate-300 mb-1">First Name + Surname *</label>
                 <input type="text" maxLength={120} required value={newTeamMemberData.name || ''}
