@@ -50,6 +50,17 @@ service cloud.firestore {
     // INTERNAL SECURITY COLLECTIONS (STRICTLY DENY-ALL TO CLIENTS)
     // Server Admin SDK accesses these directly, bypassing rules
     // ========================================================
+    // Server-only administrator identities and session records. These are
+    // protected by Admin SDK authorizations; no Firebase client can access them.
+    match /_admin_admins/{docId} {
+      allow read, write: if false;
+    }
+    match /_admin_sessions/{docId} {
+      allow read, write: if false;
+    }
+    match /contactRateLimits/{docId} {
+      allow read, write: if false;
+    }
     match /_admin_security/{docId} {
       allow read, write: if false;
     }
