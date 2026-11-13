@@ -41,7 +41,13 @@ export class ConfigError extends Error {
 
 export const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '100kb' }));
+// Keep a strict JSON cap for ordinary requests. The authenticated image-upload
+// route installs its own larger parser *after* admin-session authorization.
+const generalJsonParser = express.json({ limit: '100kb' });
+app.use((req, res, next) => {
+  if (req.method === 'POST' && req.path === '/api/admin/upload-image') return next();
+  return generalJsonParser(req, res, next);
+});
 
 // ==========================================
 // CORS CONFIGURATION (P1-07 fix)
@@ -2038,7 +2044,7 @@ apiRouter.get('/admin/audit-logs', requireElevatedAdmin, (req, res) => {
 });
 
 // Image Upload Endpoint (stores in /public/images/uploaded)
-apiRouter.post('/admin/upload-image', requireElevatedAdmin, (req, res) => {
+apiRouter.post('/admin/upload-image', requireElevatedAdmin, express.json({ limit: '3mb' }), (req, res) => {
   try {
     const { imageBase64, filename = 'image.jpg' } = req.body;
     if (!imageBase64 || typeof imageBase64 !== 'string') {
