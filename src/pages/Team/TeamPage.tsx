@@ -6,7 +6,7 @@ import { NexoraLogo } from '../../components/ui/NexoraLogo';
 
 // Never persist a private CMS roster in a public browser cache.
 const publicOnly = (members: TeamMember[]): TeamMember[] => members
-  .filter(m => m.enabled !== false && (m.is_founder === true || m.visibility_approved === true))
+  .filter(m => m.enabled !== false && m.is_founder === true)
   .sort((a, b) => Number(Boolean(b.is_founder)) - Number(Boolean(a.is_founder)) ||
     (a.display_order ?? 99) - (b.display_order ?? 99) || a.name.localeCompare(b.name));
 
