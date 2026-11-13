@@ -45,7 +45,7 @@ function checkInMemoryRateLimit(ipHash: string, email: string): { allowed: boole
   }
 
   // Email rate limit: 5 per 24 hours
-  const emailRec = emailRateLimits.get(email);
+  const emailRec = emailRateLimits.get(emailHashKey(email));
   if (emailRec && now < emailRec.resetAt) {
     if (emailRec.count >= 5) {
       return { allowed: false, retryAfter: Math.ceil((emailRec.resetAt - now) / 1000) };
@@ -84,7 +84,8 @@ const contactRequestSchema = z.object({
   message: z.string(),
   submissionId: z.string().max(128).optional(),
   website: z.string().max(100).optional(), // Honeypot
-  hp: z.string().max(100).optional() // Honeypot alias
+  hp: z.string().max(100).optional(), // Honeypot alias
+  honeypot: z.string().max(100).optional() // Public contact form field
 });
 
 export function registerContactEndpoints(deps: ContactEndpointDeps) {
@@ -116,7 +117,7 @@ export function registerContactEndpoints(deps: ContactEndpointDeps) {
       const body = parseResult.data;
 
       // Honeypot detection (silent 200 acceptance without storing or sending email)
-      if ((body.website && body.website.trim().length > 0) || (body.hp && body.hp.trim().length > 0)) {
+      if ((body.website && body.website.trim().length > 0) || (body.hp && body.hp.trim().length > 0) || (body.honeypot && body.honeypot.trim().length > 0)) {
         res.status(200).json({
           success: true,
           id: body.submissionId || `msg_${Date.now()}`,
