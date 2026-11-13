@@ -32,30 +32,32 @@ export const GlobalGalaxyBackground: React.FC = () => {
 
     // Responsive star count
     const isMobile = width < 768;
-    const starCount = isMobile ? 170 : 400;
+    const starCount = isMobile ? 140 : 320;
 
-    // Warm, tiny ember stars against charcoal/navy space — no violet wash.
+    // Star color palette: silver-white, muted lavender, occasional violet
     const colors = [
-      'rgba(240, 177, 103, ',
-      'rgba(204, 112, 57, ',
-      'rgba(156, 73, 43, ',
-      'rgba(254, 209, 147, ',
-      'rgba(116, 139, 153, ',
-      'rgba(228, 129, 66, '
+      'rgba(248, 250, 252, ', // silver-white
+      'rgba(226, 232, 240, ', // cool silver
+      'rgba(216, 180, 254, ', // soft lavender
+      'rgba(196, 181, 253, ', // muted lavender
+      'rgba(167, 139, 250, ', // subtle purple
+      'rgba(139, 92, 246, '   // electric violet point
     ];
 
     const stars: Star[] = [];
 
     const createStar = (): Star => {
       const z = Math.random() * 0.9 + 0.1;
-      const colorIndex = Math.floor(Math.random() * colors.length);
+      const colorIndex = Math.random() > 0.85 
+        ? (Math.random() > 0.5 ? 4 : 5) 
+        : Math.floor(Math.random() * 4);
 
       return {
         x: Math.random() * width,
         y: Math.random() * height,
         z,
-        radius: (Math.random() * 1.15 + 0.25) * z,
-        baseAlpha: Math.random() * 0.45 + 0.22,
+        radius: (Math.random() * 1.1 + 0.4) * z,
+        baseAlpha: Math.random() * 0.5 + 0.25,
         twinkleSpeed: Math.random() * 0.02 + 0.005,
         twinkleOffset: Math.random() * Math.PI * 2,
         color: colors[colorIndex],
@@ -121,22 +123,38 @@ export const GlobalGalaxyBackground: React.FC = () => {
       mouseY += (targetMouseY - mouseY) * 0.04;
 
       // 1. Draw near-black deep space background #08080D
-      ctx.fillStyle = '#020408';
+      ctx.fillStyle = '#08080D';
       ctx.fillRect(0, 0, width, height);
 
-      // 2. Diffuse midnight-blue haze; black edges and no purple tint.
-      const center = ctx.createRadialGradient(
-        width * 0.52 + mouseX * 0.15,
-        height * 0.43 + mouseY * 0.15,
-        0,
-        width * 0.52,
-        height * 0.43,
-        Math.max(width * 0.69, height * 0.74)
+      // 2. Faint purple nebula gradients
+      // Top-right subtle nebula
+      const grad1 = ctx.createRadialGradient(
+        width * 0.8 + mouseX * 0.3,
+        height * 0.25 + mouseY * 0.3,
+        10,
+        width * 0.8,
+        height * 0.25,
+        width * 0.55
       );
-      center.addColorStop(0, 'rgba(11, 34, 59, 0.62)');
-      center.addColorStop(0.42, 'rgba(5, 20, 37, 0.4)');
-      center.addColorStop(1, 'rgba(2, 4, 8, 0)');
-      ctx.fillStyle = center;
+      grad1.addColorStop(0, 'rgba(59, 19, 99, 0.14)');
+      grad1.addColorStop(0.5, 'rgba(30, 11, 56, 0.07)');
+      grad1.addColorStop(1, 'rgba(8, 8, 13, 0)');
+      ctx.fillStyle = grad1;
+      ctx.fillRect(0, 0, width, height);
+
+      // Bottom-left subtle nebula
+      const grad2 = ctx.createRadialGradient(
+        width * 0.15 - mouseX * 0.2,
+        height * 0.75 - mouseY * 0.2,
+        10,
+        width * 0.15,
+        height * 0.75,
+        width * 0.5
+      );
+      grad2.addColorStop(0, 'rgba(43, 14, 76, 0.11)');
+      grad2.addColorStop(0.6, 'rgba(20, 8, 38, 0.05)');
+      grad2.addColorStop(1, 'rgba(8, 8, 13, 0)');
+      ctx.fillStyle = grad2;
       ctx.fillRect(0, 0, width, height);
 
       // 3. Render stars with depth, twinkle, and gentle drift
@@ -197,7 +215,7 @@ export const GlobalGalaxyBackground: React.FC = () => {
       <canvas
         ref={canvasRef}
         className="block w-full h-full"
-        style={{ background: '#020408' }}
+        style={{ background: '#08080D' }}
       />
     </div>
   );
