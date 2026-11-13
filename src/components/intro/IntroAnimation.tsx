@@ -190,7 +190,7 @@ const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
       transition={reduced ? undefined : { duration: 22, repeat: Infinity, ease: 'easeInOut' }}
     />
     {/* Sparse, subdued starlight scattered across the entire viewport. */}
-    {DESKTOP_PARTICLES.filter((_, i) => i % 3 === 0).map((p, i) => (
+    {DESKTOP_PARTICLES.filter((_, i) => [4, 22, 51, 89, 136, 174, 217, 260].includes(i)).map((p, i) => (
       <motion.span key={i} aria-hidden="true" style={{
         position: 'absolute',
         left: `${p.left}%`, top: `${p.top}%`,
