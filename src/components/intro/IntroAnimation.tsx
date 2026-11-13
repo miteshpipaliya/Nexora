@@ -42,7 +42,7 @@ const mulberry32 = (seed: number) => () => {
 // Desktop star particles for the atmospheric background
 const DESKTOP_PARTICLES = (() => {
   const r = mulberry32(7);
-  return Array.from({ length: 320 }, () => ({
+  return Array.from({ length: 280 }, () => ({
     left: r() * 100,
     top: r() * 100,
     size: 0.6 + r() * 1.8,
@@ -174,7 +174,7 @@ const glassButton: React.CSSProperties = {
 
 const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
   <>
-    {/* Reference-inspired charcoal night sky with a very restrained midnight-blue center. */}
+    {/* Purple-focused deep-space backdrop, isolated to the desktop intro. */}
     <div
       aria-hidden="true"
       style={{
@@ -182,8 +182,21 @@ const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
         inset: 0,
         pointerEvents: 'none',
         background:
-          'radial-gradient(ellipse 80% 70% at 51% 45%, #071528 0%, #06101c 37%, #03060c 72%, #010204 100%)',
+          'radial-gradient(ellipse 85% 75% at 50% 46%, #25123d 0%, #130a24 40%, #080510 72%, #020105 100%)',
       }}
+    />
+    {/* Nebula light: soft fades only, never opaque rectangles or side bands. */}
+    <motion.div
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        inset: '-8%',
+        pointerEvents: 'none',
+        background:
+          'radial-gradient(ellipse 40% 50% at 24% 35%, rgba(101,44,174,0.18), transparent 80%), radial-gradient(ellipse 44% 50% at 75% 62%, rgba(123,63,211,0.17), transparent 82%)',
+      }}
+      animate={reduced ? undefined : { x: [0, 12, 0], opacity: [0.75, 1, 0.75] }}
+      transition={reduced ? undefined : { duration: 18, repeat: Infinity, ease: 'easeInOut' }}
     />
     <div
       aria-hidden="true"
@@ -192,10 +205,10 @@ const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
         inset: 0,
         pointerEvents: 'none',
         background:
-          'radial-gradient(ellipse 54% 57% at 52% 49%, rgba(17,47,75,0.16), transparent 78%)',
+          'radial-gradient(ellipse 50% 35% at 47% 52%, rgba(157,86,243,0.09), transparent 86%)',
       }}
     />
-    {/* Small distant copper embers rather than oversized violet stars. */}
+    {/* Sparse pinprick stars with purple/lavender focus and a few warm distant sparks. */}
     {DESKTOP_PARTICLES.map((p, i) => (
       <motion.span
         key={i}
@@ -204,22 +217,24 @@ const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
           position: 'absolute',
           left: `${p.left}%`,
           top: `${p.top}%`,
-          width: Math.min(2.1, p.size),
-          height: Math.min(2.1, p.size),
+          width: Math.min(p.size, 1.8),
+          height: Math.min(p.size, 1.8),
           borderRadius: '50%',
-          background: i % 7 === 0 ? '#f5b56b' : i % 3 === 0 ? '#9c4c32' : '#d67b3f',
+          background: i % 13 === 0 ? '#dea772' : i % 5 === 0 ? '#e1d3fa' : '#a885df',
           opacity: p.alpha * 0.65,
-          boxShadow: p.size > 1.4 ? '0 0 4px rgba(228,110,45,0.26)' : 'none',
+          boxShadow: p.size > 1.2 ? '0 0 5px rgba(176,132,239,0.26)' : 'none',
         }}
         initial={false}
-        animate={
-          reduced
-            ? undefined
-            : { opacity: [p.alpha * 0.34, p.alpha * 0.75, p.alpha * 0.34], y: [0, p.drift * 0.14, 0] }
-        }
-        transition={
-          reduced ? undefined : { duration: p.twinkle + 5, delay: p.delay, repeat: Infinity, ease: 'easeInOut' }
-        }
+        animate={reduced ? undefined : {
+          opacity: [p.alpha * 0.36, p.alpha * 0.78, p.alpha * 0.36],
+          y: [0, p.drift * 0.09, 0],
+        }}
+        transition={reduced ? undefined : {
+          duration: p.twinkle + 6,
+          delay: p.delay,
+          repeat: Infinity,
+          ease: 'easeInOut',
+        }}
       />
     ))}
   </>
@@ -316,7 +331,7 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
       {/* white-violet flash when the logo is clicked */}
       {launching && (
         <motion.div
-          style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1, background: 'radial-gradient(circle at 50% 45%, rgba(244,219,187,0.9), rgba(40,94,130,0.36) 38%, transparent 70%)' }}
+          style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1, background: 'radial-gradient(circle at 50% 45%, rgba(237,233,254,0.95), rgba(139,92,246,0.4) 38%, transparent 70%)' }}
           initial={{ opacity: 0 }}
           animate={{ opacity: [0, 0.8, 0] }}
           transition={{ duration: LAUNCH_MS / 1000, ease: 'easeOut' }}
@@ -533,7 +548,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                 {!reduced && (
                   <>
                     <motion.div
-                      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(circle at 50% 50%, rgba(158,191,210,0.35), transparent 55%)' }}
+                      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(circle at 50% 50%, rgba(196,181,253,0.55), transparent 55%)' }}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: [0, 0.5, 0] }}
                       transition={{ delay: 1.4, duration: 0.7, ease: 'easeOut' }}
@@ -541,7 +556,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                     {[0, 0.18].map((d, i) => (
                       <div key={i} style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
                         <motion.div
-                          style={{ width: 300, height: 300, borderRadius: '50%', border: '1.5px solid rgba(135,174,196,0.65)' }}
+                          style={{ width: 300, height: 300, borderRadius: '50%', border: '1.5px solid rgba(167,139,250,0.75)' }}
                           initial={{ scale: 0.2, opacity: 0 }}
                           animate={{ scale: 3.4, opacity: [0, 0.8, 0] }}
                           transition={{ delay: 1.4 + d, duration: 1.7, ease: 'easeOut' }}
@@ -554,7 +569,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                 {/* central purple glow */}
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
                   <motion.div
-                    style={{ width: 640, height: 640, maxWidth: '95vw', maxHeight: '95vw', background: 'radial-gradient(circle, rgba(22, 62, 97, 0.32) 0%, transparent 65%)' }}
+                    style={{ width: 640, height: 640, maxWidth: '95vw', maxHeight: '95vw', background: 'radial-gradient(circle, rgba(139, 92, 246, 0.38) 0%, transparent 65%)' }}
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: [0, 0.9, 0.45, 0.85, 0.5], scale: [0.8, 1.15, 1, 1.12, 1.05] }}
                     transition={{ duration: SCENE_S, delay: 0.3, ease: 'easeInOut' }}
@@ -575,13 +590,13 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                       {!reduced && (
                         <>
                           <motion.div
-                            style={{ position: 'absolute', inset: '-9%', borderRadius: '50%', border: '2px solid transparent', borderTopColor: 'rgba(235,171,105,0.95)', borderRightColor: 'rgba(83,139,175,0.35)' }}
+                            style={{ position: 'absolute', inset: '-9%', borderRadius: '50%', border: '2px solid transparent', borderTopColor: 'rgba(196,181,253,0.95)', borderRightColor: 'rgba(139,92,246,0.35)' }}
                             initial={{ opacity: 0, rotate: 0 }}
                             animate={{ opacity: 1, rotate: 360 }}
                             transition={{ opacity: { delay: 1.4, duration: 0.6 }, rotate: { repeat: Infinity, duration: 3.2, ease: 'linear' } }}
                           />
                           <motion.div
-                            style={{ position: 'absolute', inset: '-18%', borderRadius: '50%', border: '1.5px solid transparent', borderBottomColor: 'rgba(132,177,200,0.7)', borderLeftColor: 'rgba(224,143,78,0.24)' }}
+                            style={{ position: 'absolute', inset: '-18%', borderRadius: '50%', border: '1.5px solid transparent', borderBottomColor: 'rgba(167,139,250,0.7)', borderLeftColor: 'rgba(139,92,246,0.25)' }}
                             initial={{ opacity: 0, rotate: 0 }}
                             animate={{ opacity: 1, rotate: -360 }}
                             transition={{ opacity: { delay: 1.6, duration: 0.6 }, rotate: { repeat: Infinity, duration: 5.2, ease: 'linear' } }}
@@ -592,7 +607,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                         src={MAIN_LOGO}
                         alt="NEXORA logo"
                         draggable={false}
-                        style={{ display: 'block', width: '100%', height: 'auto', filter: 'drop-shadow(0 0 26px rgba(52,105,145,0.48))' }}
+                        style={{ display: 'block', width: '100%', height: 'auto', filter: 'drop-shadow(0 0 26px rgba(139,92,246,0.6))' }}
                         initial={{ x: reduced ? 0 : 160, opacity: 0, scale: reduced ? 1 : 0.9 }}
                         animate={{ x: 0, opacity: 1, scale: 1 }}
                         transition={{ delay: reduced ? 0 : 0.4, duration: reduced ? 0.5 : 1.0, ease: EASE }}
@@ -644,7 +659,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
                         fontSize: 'clamp(10px, 1.4vw, 14px)',
                         fontFamily: 'var(--font-display, system-ui, sans-serif)',
                         fontWeight: 500,
-                        textShadow: '0 0 12px rgba(54,112,150,0.55)',
+                        textShadow: '0 0 12px rgba(139,92,246,0.6)',
                         letterSpacing: isMobileDevice ? '0.1em' : '0.3em',
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
