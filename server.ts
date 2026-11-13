@@ -45,14 +45,13 @@ app.use(express.json({ limit: '100kb' }));
 // ==========================================
 // CORS CONFIGURATION (P1-07 fix)
 // ==========================================
+const isProductionCORS = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
 const ALLOWED_ORIGINS = [
   process.env.FRONTEND_URL,
   process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
-  process.env.VERCEL_ENV?.trim() === 'production' ? 'https://www.nexora-bvm.online' : undefined,
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
+  'https://www.nexora-bvm.online',
+  'https://nexora-bvm.online',
+  ...(!isProductionCORS ? ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', 'http://127.0.0.1:3000'] : []),
 ].filter(Boolean) as string[];
 
 app.use((req, res, next) => {
@@ -443,10 +442,10 @@ apiRouter.post(['/auth/send-email-otp', '/auth/forgot-password/request-otp', '/a
     console.error('Error in /auth/send-email-otp:', err.message || err);
     const status = err instanceof StudentOtpRateLimitError ? 429 : err instanceof StudentOtpStorageError ? 503 : err.status || (err.code === 'EMAIL_NOT_CONFIGURED' ? 503 : 500);
     res.status(status).json({ 
-      error: err instanceof StudentOtpRateLimitError ? err.message : err instanceof StudentOtpStorageError ? 'Verification service is temporarily unavailable.' : err.message || 'Failed to dispatch verification code via email.',
+      error: err instanceof StudentOtpRateLimitError ? err.message : err instanceof StudentOtpStorageError ? 'Verification service is temporarily unavailable.' : 'Failed to dispatch verification code via email.',
       ...(err instanceof StudentOtpRateLimitError ? { waitSeconds: err.waitSeconds } : {}),
       code: err.code || (err instanceof StudentOtpStorageError ? 'OTP_STORAGE_UNAVAILABLE' : 'EMAIL_DISPATCH_FAILED'),
-      actionableHint: err.actionableHint
+      actionableHint: status === 429 ? undefined : 'Please retry later or contact support if the problem continues.'
     });
   }
 });
@@ -1722,7 +1721,7 @@ apiRouter.post('/admin/send-test-email', async (req, res) => {
     await sendBrevoOtpEmail(FOUNDER_EMAIL, testOtp, 'signup');
     res.json({ success: true, message: `Test verification email dispatched to ${FOUNDER_EMAIL}.` });
   } catch (err: any) {
-    res.status(err.status || 500).json({ error: err.message || 'Failed to send test email', code: err.code });
+    res.status(err?.status === 429 ? 429 : 503).json({ error: 'Failed to send test email.' });
   }
 });
 
