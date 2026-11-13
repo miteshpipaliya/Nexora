@@ -49,7 +49,7 @@ export const IntroWrapper: React.FC = () => {
   // Render App immediately on phone/tablet without any intro overlay.
   // On desktop, App is mounted permanently beneath the intro overlay.
   const isMobile = !isDesktop;
-  const introActive = isDesktop ? showIntro : !showIntro;
+  const introActive = isDesktop && showIntro;
 
   return isDesktop ? (
     <>
