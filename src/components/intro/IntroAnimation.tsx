@@ -180,7 +180,7 @@ const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
         position: 'absolute',
         inset: 0,
         pointerEvents: 'none',
-        background: 'radial-gradient(ellipse at 50% 50%, #211044 0%, #130a2a 48%, #080313 100%)',
+        background: 'radial-gradient(ellipse at 30% 20%, #0b0a15 0%, #1a0f2a 30%, #2d1b4a 50%, #1a1036 70%, #0d0a20 100%)',
       }}
     />
     {/* Ambient purple glow drifting left */}
