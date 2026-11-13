@@ -23,10 +23,10 @@ export const CosmicHeroObject: React.FC = () => {
         className="absolute top-1/2 left-1/2 w-[86%] h-[80%] rounded-full"
         style={{
           transform: 'translate(-50%, -50%)',
-          background: 'radial-gradient(ellipse at center, rgba(112,53,200,0.20) 0%, rgba(73,31,128,0.08) 40%, transparent 72%)',
-          filter: 'blur(42px)',
+          background: 'radial-gradient(ellipse at center, rgba(112,53,200,0.105) 0%, rgba(73,31,128,0.045) 40%, transparent 72%)',
+          filter: 'blur(34px)',
         }}
-        animate={reduced ? undefined : { opacity: [0.65, 0.90, 0.65], scale: [0.96, 1.04, 0.96] }}
+        animate={reduced ? undefined : { opacity: [0.55, 0.72, 0.55], scale: [0.96, 1.04, 0.96] }}
         transition={reduced ? undefined : { duration: 8, repeat: Infinity, ease: 'easeInOut' }}
       />
 
@@ -40,7 +40,7 @@ export const CosmicHeroObject: React.FC = () => {
             animate={{ rotate: [-21, 339] }}
             transition={{ duration: 36, repeat: Infinity, ease: 'linear' }}
           >
-            <span className="absolute left-[50%] top-[-3px] w-[5px] h-[5px] rounded-full bg-white shadow-[0_0_8px_3px_rgba(172,108,255,0.7)]" />
+            <span className="absolute left-[50%] top-[-3px] w-[5px] h-[5px] rounded-full bg-white shadow-[0_0_5px_2px_rgba(172,108,255,0.34)]" />
           </motion.div>
           <motion.div
             aria-hidden="true"
@@ -49,7 +49,7 @@ export const CosmicHeroObject: React.FC = () => {
             animate={{ rotate: [30, -330] }}
             transition={{ duration: 48, repeat: Infinity, ease: 'linear' }}
           >
-            <span className="absolute right-[12%] top-[12%] w-[4px] h-[4px] rounded-full bg-violet-100 shadow-[0_0_9px_3px_rgba(164,95,245,0.6)]" />
+            <span className="absolute right-[12%] top-[12%] w-[4px] h-[4px] rounded-full bg-violet-100 shadow-[0_0_5px_2px_rgba(164,95,245,0.30)]" />
           </motion.div>
         </>
       )}
