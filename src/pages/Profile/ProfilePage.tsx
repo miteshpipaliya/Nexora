@@ -641,7 +641,7 @@ export const ProfilePage: React.FC = () => {
       {ticketRecord && (
         <div className="fixed inset-0 z-[70] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
           role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setTicketRecord(null); }}>
-          <div role="dialog" aria-modal="true" aria-label="NEXORA registration ticket" className="w-full max-w-lg my-10">
+          <div role="dialog" aria-modal="true" aria-label="NEXORA registration ticket" className="w-full max-w-[820px] my-10">
             <RegistrationTicket registration={ticketRecord} onClose={() => setTicketRecord(null)} />
           </div>
         </div>
