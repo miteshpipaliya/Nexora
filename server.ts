@@ -1077,7 +1077,7 @@ apiRouter.post('/admin/auth/sync-claim', async (req, res) => {
     });
   } catch (err: any) {
     console.error('[SYNC-CLAIM] Error:', err);
-    res.status(500).json({ error: err.message || 'Failed to sync admin claim.' });
+    res.status(500).json({ error: 'Failed to synchronize administrator permissions.' });
   }
 });
 
@@ -1591,32 +1591,35 @@ apiRouter.all(['/admin/auth/session', '/admin/session'], async (req, res) => {
 // 9. Lock Admin Panel (Revoke elevated session - server-side, persistent)
 apiRouter.post(['/admin/auth/lock', '/admin/lock'], async (req, res) => {
   const token = req.cookies?.['nexora_admin_session']
-    || (req.body.sessionToken as string)
     || (req.headers['x-admin-session'] as string)
-    || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
-  let revoked = false;
-  if (token) {
-    // Revoke from in-memory map
-    if (elevatedAdminSessions.has(token)) {
-      elevatedAdminSessions.delete(token);
-      revoked = true;
-    }
-    // Revoke from Firestore
-    const payload = verifySignedToken(token, 'admin-session');
-    if (payload?.jti) {
-      await revokeAdminSession(payload.jti).catch((err: any) => {
-        console.error('[ADMIN LOCK] Failed to revoke session from Firestore:', err);
-        revoked = false;
-      });
-      await revokeJti(payload.jti, 'admin_lock').catch((err: any) => {
-        console.error('[ADMIN LOCK] Failed to record revocation:', err);
-        revoked = false;
-      });
-    }
+    || (req.headers.authorization?.replace(/^Bearer\\s+/i, ''));
+
+  if (!token) {
     clearAdminSessionCookie(res);
+    res.json({ success: true, revoked: false, message: 'Admin panel already locked.' });
+    return;
   }
-  recordAudit('ADMIN_LOCKED', 'Elevated admin session was manually locked. Server-side revocation: ' + revoked);
-  res.json({ success: true, message: 'Admin session revoked.', revoked });
+
+  const payload = verifySignedToken(token, 'admin-session');
+  if (!payload?.jti) {
+    clearAdminSessionCookie(res);
+    res.status(401).json({ success: false, error: 'Administrator session was not valid.' });
+    return;
+  }
+
+  try {
+    // Both durable revocation writes must complete before acknowledging lock.
+    await revokeAdminSession(payload.jti);
+    await revokeJti(payload.jti, 'admin_lock');
+    elevatedAdminSessions.delete(token);
+    clearAdminSessionCookie(res);
+    recordAudit('ADMIN_LOCKED', 'Elevated admin session was manually revoked.');
+    res.json({ success: true, revoked: true, message: 'Admin session revoked.' });
+  } catch (err) {
+    console.error('[ADMIN LOCK] Persistent session revocation failed:', err);
+    // Never claim success if a durable revocation write fails.
+    res.status(503).json({ success: false, error: 'Could not confirm administrator session revocation. Please retry.' });
+  }
 });
 
 // 9b. Brevo Email Diagnostics & Test Email (WP7)
@@ -1751,7 +1754,7 @@ apiRouter.post(['/registrations/validate', '/api/registrations/validate'], async
 
     res.json({ success: true, allowed: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Validation failed.' });
+    res.status(500).json({ error: 'Validation service is temporarily unavailable.' });
   }
 });
 
@@ -2063,7 +2066,7 @@ apiRouter.post('/admin/upload-image', requireElevatedAdmin, (req, res) => {
       });
     }
   } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Image upload failed.' });
+    res.status(500).json({ error: 'Image upload failed.' });
   }
 });
 
@@ -2280,7 +2283,7 @@ apiRouter.post('/admin/contact-messages/:id/retry-email', requireElevatedAdmin, 
     recordAudit('CONTACT_EMAIL_RESENT', `Notification resent for message ${id}`);
     res.json({ success: true, message: 'Notification email successfully resent.' });
   } catch (err: any) {
-    res.status(err?.status || 500).json({ error: err.message || 'Failed to resend notification email.' });
+    res.status(err?.status === 429 ? 429 : 500).json({ error: 'Failed to resend notification email.' });
   }
 });
 
@@ -2320,7 +2323,7 @@ apiRouter.get('/admin/presence', requireElevatedAdmin, async (req, res) => {
 
     res.json({ success: true, presence: userMap, mode: 'delayed_admin_sync' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Failed to read presence sessions.' });
+    res.status(500).json({ error: 'Failed to read presence sessions.' });
   }
 });
 
@@ -2355,7 +2358,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     return next(err);
   }
   res.status(err.status || 500).json({
-    error: err.message || 'An unexpected server error occurred. Please try again.'
+    error: 'An unexpected server error occurred. Please try again.'
   });
 });
 
