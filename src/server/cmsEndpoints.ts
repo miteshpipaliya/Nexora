@@ -769,6 +769,7 @@ export function registerCmsEndpoints({
       const memberDoc = sanitizeForFirestore({
         id,
         name: data.name.trim(),
+        role_key: typeof data.role_key === 'string' ? data.role_key.slice(0, 60) : '',
         role_name: data.role_name || 'Executive Member',
         academic_branch_name: data.academic_branch_name || 'Engineering',
         division: data.division || 'Division A',
