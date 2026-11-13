@@ -216,11 +216,11 @@ export const LoginPage: React.FC = () => {
                 <div className="p-4 bg-violet-950/50 border border-violet-500/30 rounded-xl space-y-3 text-xs">
                   <div className="flex items-center gap-2 font-mono text-violet-300 font-semibold border-b border-violet-500/20 pb-2">
                     <Globe className="w-4 h-4 text-violet-400 shrink-0" />
-                    <span>Authorize Domain in Firebase</span>
+                    <span>Allow this website domain</span>
                   </div>
 
                   <p className="text-[11px] text-slate-300 leading-relaxed">
-                    Firebase Authentication requires this application&apos;s current hostname to be added to your project&apos;s list of authorized domains.
+                    This website domain is not yet approved for sign-in. Contact the site administrator to enable it.
                   </p>
 
                   {/* Hostname Box with Copy Button */}
@@ -250,12 +250,12 @@ export const LoginPage: React.FC = () => {
 
                   {/* Steps */}
                   <div className="space-y-1.5 text-[11px] text-slate-300 pt-1">
-                    <div>1. Open <strong className="text-white">Firebase Console</strong> → Build → <strong className="text-white">Authentication</strong></div>
+                    <div>1. Open <strong className="text-white">site administrator</strong> → Build → <strong className="text-white">Authentication</strong></div>
                     <div>2. Click <strong className="text-white">Settings</strong> tab → <strong className="text-white">Authorized domains</strong></div>
                     <div>3. Click <strong className="text-white">Add domain</strong>, paste the copied hostname, and Save.</div>
                   </div>
 
-                  {/* Direct Link to Firebase Console */}
+                  {/* Direct Link to site administrator */}
                   <div className="pt-2 border-t border-violet-500/15 flex items-center justify-between">
                     <span className="text-[10px] font-mono text-slate-400">Project: {activeProjectId}</span>
                     <a
@@ -264,7 +264,7 @@ export const LoginPage: React.FC = () => {
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-[11px] font-medium text-violet-300 hover:text-white underline cursor-pointer"
                     >
-                      <span>Open Firebase Console</span>
+                      <span>Contact Site Administrator</span>
                       <ExternalLink className="w-3 h-3" />
                     </a>
                   </div>
