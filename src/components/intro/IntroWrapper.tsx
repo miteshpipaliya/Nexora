@@ -78,7 +78,7 @@ export const IntroWrapper: React.FC = () => {
                 inset: 0,
                 zIndex: 9999,
                 background:
-                  'radial-gradient(ellipse at center, #071528, #02060d 65%, #010204)',
+                  'radial-gradient(ellipse at center, #211044, #130a2a 48%, #080313)',
               }}
             />
           }
