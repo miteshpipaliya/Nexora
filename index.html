@@ -82,7 +82,7 @@
     </style>
     <script>
       try {
-        if (sessionStorage.getItem('nexora-intro-completed') || sessionStorage.getItem('nx-intro-done')) {
+        if (sessionStorage.getItem('introPlayed') === 'true' && new URLSearchParams(location.search).get('intro') !== '1') {
           document.documentElement.classList.add('nx-intro-done');
         }
       } catch (_) {}
