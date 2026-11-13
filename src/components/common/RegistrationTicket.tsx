@@ -62,9 +62,10 @@ export const RegistrationTicket: React.FC<RegistrationTicketProps> = ({ registra
               <div className="text-[10px] uppercase tracking-[.19em] font-mono text-violet-300/70">Unique registration reference</div>
               <div className="mt-1 flex items-center gap-2">
                 <strong className="min-w-0 break-all font-mono text-lg sm:text-[22px] font-bold tracking-[.1em] text-white">{reference}</strong>
-                <button type="button" onClick={() => void copyReference()} title="Copy registration reference" aria-label="Copy registration reference" className="shrink-0 rounded-md border border-violet-400/45 bg-violet-500/20 p-2 text-violet-100 transition-colors hover:bg-violet-500/35">
+                <button type="button" onClick={() => void copyReference()} title="Copy registration reference" aria-label={copied ? "Registration reference copied" : "Copy registration reference"} className="shrink-0 rounded-md border border-violet-400/45 bg-violet-500/20 p-2 text-violet-100 transition-colors hover:bg-violet-500/35">
                   {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 </button>
+                <span role="status" className="sr-only">{copied ? "Registration reference copied to clipboard" : ""}</span>
               </div>
             </div>
             <div className="mt-5 flex items-center justify-between gap-2 border-t border-dashed border-violet-400/30 pt-4">
