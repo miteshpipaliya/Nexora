@@ -1,30 +1,15 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { isDesktopDevice } from './device/DeviceDetector';
 import { shouldPlayIntro, markIntroCompleted } from './shared/IntroCompletion';
 import App from '../../App';
 
 /**
- * IntroWrapper
- * Central animation selector.
- *
- * 1. Detects device category (desktop vs mobile/tablet).
- * 2. Renders exactly ONE intro system - never both.
- * 3. Desktop: renders the existing cinematic IntroAnimation (with sound, fog, zoom).
- *    Lazily loaded so desktop code is NOT downloaded on mobile.
- * 4. Mobile/Tablet: renders the lightweight MobileIntro (silent, no fog, no zoom).
- * 5. <App /> is ALWAYS mounted behind the intro overlay.
- * 6. Intro is removed only when onComplete fires.
- * 7. Plays once per browser tab session. Add ?intro=1 to force replay.
- * 8. If the intro crashes, it is skipped and the site still loads.
+ * Desktop-only intro gate.
+ * Phones/tablets never mount, preload, or run the intro.
+ * On desktop the homepage cannot flash beneath an unloaded intro.
  */
-
-// Lazily load the desktop cinematic intro only on desktop devices.
-// This prevents the desktop animation bundle (including sound controller) from
-// being downloaded on mobile/tablet devices.
 const DesktopIntro = React.lazy(() =>
-  import('./IntroAnimation').then((mod) => ({
-    default: mod.IntroAnimation,
-  }))
+  import('./IntroAnimation').then((mod) => ({ default: mod.IntroAnimation }))
 );
 
 class IntroBoundary extends React.Component<
@@ -32,42 +17,58 @@ class IntroBoundary extends React.Component<
   { failed: boolean }
 > {
   state = { failed: false };
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
+  static getDerivedStateFromError() { return { failed: true }; }
   componentDidCatch(error: unknown) {
-    console.error('[Intro] crashed, skipping intro:', error);
+    console.error('[Intro] failed; recovering to homepage:', error);
     this.props.onError();
   }
-  render() {
-    return this.state.failed ? null : this.props.children;
-  }
+  render() { return this.state.failed ? null : this.props.children; }
 }
 
 export const IntroWrapper: React.FC = () => {
-  const [showIntro, setShowIntro] = useState<boolean>(shouldPlayIntro());
-  const isDesktop = isDesktopDevice();
+  const [isDesktop] = useState(() => isDesktopDevice());
+  const [showIntro, setShowIntro] = useState(() => isDesktop && shouldPlayIntro());
 
   const handleComplete = useCallback(() => {
     markIntroCompleted();
     setShowIntro(false);
   }, []);
 
-  // Desktop: use lazy-loaded Suspense-wrapped IntroAnimation.
-  // Mobile/Tablet: use MobileIntro directly (already lightweight, no lazy needed).
-  const introElement = isDesktop ? (
-    <React.Suspense fallback={null}>
+  useEffect(() => {
+    if (!showIntro) return;
+    const htmlOverflow = document.documentElement.style.overflow;
+    const bodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.documentElement.style.overflow = htmlOverflow;
+      document.body.style.overflow = bodyOverflow;
+    };
+  }, [showIntro]);
+
+  // Critical: render the app immediately on phone/tablet, without any intro overlay.
+  if (!showIntro) return <App />;
+
+  // Desktop intro is exclusive: the homepage cannot flash behind transparent
+  // frames or while the lazy-loaded cinematic component is downloading.
+  return (
+    <React.Suspense
+      fallback={
+        <div
+          role="status"
+          aria-label="Loading NEXORA experience"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'radial-gradient(ellipse at center, #211044, #130a2a 48%, #080313)',
+          }}
+        />
+      }
+    >
       <IntroBoundary onError={handleComplete}>
         <DesktopIntro autoPlay onComplete={handleComplete} />
       </IntroBoundary>
     </React.Suspense>
-  ) : null;
-
-  return (
-    <>
-      <App />
-      {showIntro && introElement}
-    </>
   );
 };
-
