@@ -29,6 +29,9 @@ const ReactIntroReady: React.FC<{ children: React.ReactNode }> = ({ children }) 
   useEffect(() => {
     const frame1 = requestAnimationFrame(() => {
       const frame2 = requestAnimationFrame(() => {
+        // Reveal the styled React tree only after the intro has mounted.
+        const root = document.getElementById('root');
+        if (root) root.style.visibility = 'visible';
         document.documentElement.classList.add('nx-intro-ready');
         document.getElementById('nx-first-paint-gate')?.remove();
       });
@@ -55,6 +58,8 @@ export const IntroWrapper: React.FC = () => {
   // Mobile/tablet remove the desktop-only gate immediately.
   useEffect(() => {
     if (!isDesktop || !introActive) {
+      const root = document.getElementById('root');
+      if (root) root.style.visibility = 'visible';
       document.getElementById('nx-first-paint-gate')?.remove();
       document.documentElement.classList.add('nx-intro-ready');
     }
