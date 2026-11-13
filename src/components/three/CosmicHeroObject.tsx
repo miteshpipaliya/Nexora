@@ -28,6 +28,30 @@ export const CosmicHeroObject: React.FC = () => {
         transition={reduced ? undefined : { duration: 8, repeat: Infinity, ease: 'easeInOut' }}
       />
 
+      {/* Three subtle orbiting pinlights, separate from the original logo art. */}
+      {!reduced && (
+        <>
+          <motion.div
+            aria-hidden="true"
+            className="absolute z-0 top-1/2 left-1/2 w-[83%] h-[62%] rounded-full border border-violet-400/[0.16]"
+            style={{ transform: 'translate(-50%, -50%) rotate(-21deg)', boxShadow: '0 0 25px rgba(139,92,246,0.07)' }}
+            animate={{ rotate: [-21, 339] }}
+            transition={{ duration: 36, repeat: Infinity, ease: 'linear' }}
+          >
+            <span className="absolute left-[50%] top-[-3px] w-[5px] h-[5px] rounded-full bg-white shadow-[0_0_8px_3px_rgba(172,108,255,0.7)]" />
+          </motion.div>
+          <motion.div
+            aria-hidden="true"
+            className="absolute z-0 top-1/2 left-1/2 w-[76%] h-[72%] rounded-full border border-purple-400/[0.1]"
+            style={{ transform: 'translate(-50%, -50%) rotate(30deg)' }}
+            animate={{ rotate: [30, -330] }}
+            transition={{ duration: 48, repeat: Infinity, ease: 'linear' }}
+          >
+            <span className="absolute right-[12%] top-[12%] w-[4px] h-[4px] rounded-full bg-violet-100 shadow-[0_0_9px_3px_rgba(164,95,245,0.6)]" />
+          </motion.div>
+        </>
+      )}
+
       {/* Responsive wingspan is intentionally generous. The original transparent
           image contains the delicate halo and orbit details seen in the reference. */}
       <motion.img
@@ -36,14 +60,14 @@ export const CosmicHeroObject: React.FC = () => {
         draggable={false}
         decoding="async"
         loading="eager"
-        className="relative z-10 block w-[112%] max-w-none sm:w-[110%] lg:w-[124%] h-auto max-h-[min(82vh,650px)] object-contain select-none"
+        className="relative z-10 block w-[116%] max-w-none sm:w-[118%] lg:w-[130%] h-auto max-h-[min(82vh,650px)] object-contain select-none"
         style={{
-          filter: 'drop-shadow(0 0 12px rgba(166,114,247,0.38)) drop-shadow(0 0 35px rgba(104,43,193,0.25))',
+          filter: 'drop-shadow(0 0 12px rgba(200,158,255,0.48)) drop-shadow(0 0 38px rgba(118,54,210,0.28))',
           willChange: reduced ? 'auto' : 'transform',
         }}
         initial={false}
         animate={reduced ? undefined : {
-          y: [0, -9, 0],
+          y: [0, -11, 0],
           rotate: [-0.65, 0.65, -0.65],
           scale: [0.99, 1.015, 0.99],
         }}
