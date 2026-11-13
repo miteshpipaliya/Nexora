@@ -4213,7 +4213,7 @@ export const AdminPage: React.FC = () => {
               <div>
                 <label className="block text-xs font-mono text-slate-300 mb-1">Department / Branch *</label>
                 <select required value={newTeamMemberData.department_name || ''}
-                  onChange={e => setNewTeamMemberData({ ...newTeamMemberData, department_name: e.target.value })}
+                  onChange={e => setNewTeamMemberData({ ...newTeamMemberData, department_name: e.target.value, academic_branch_name: e.target.value })}
                   className="w-full p-3 rounded-lg bg-[#08080D] text-white border border-violet-500/25">
                   <option value="">Select BVM department</option>
                   {newTeamMemberData.department_name && !BVM_DEPARTMENTS.some(d => d === newTeamMemberData.department_name) &&
