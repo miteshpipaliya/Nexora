@@ -32,6 +32,14 @@ export const IntroWrapper: React.FC = () => {
   );
   const introActive = isDesktop && showIntro;
 
+  // The static HTML gate covers the first paint until React can render the
+  // actual intro (or the mobile homepage). Remove only once React has committed.
+  useEffect(() => {
+    const bootGate = document.getElementById('nx-first-paint-gate');
+    if (bootGate) bootGate.remove();
+  }, []);
+
+
   const handleComplete = useCallback(() => {
     markIntroCompleted();
     setShowIntro(false);
@@ -72,15 +80,46 @@ export const IntroWrapper: React.FC = () => {
           fallback={
             <div
               role="status"
-              aria-label="Loading NEXORA experience"
+              aria-label="Preparing NEXORA experience"
               style={{
                 position: 'fixed',
                 inset: 0,
                 zIndex: 9999,
-                background:
-                  'radial-gradient(ellipse at center, #211044, #130a2a 48%, #080313)',
+                background: '#020105',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexDirection: 'column',
+                gap: '16px',
+                pointerEvents: 'none',
+                overflow: 'hidden',
               }}
-            />
+            >
+              <div aria-hidden="true" style={{
+                position: 'absolute', inset: '-14%',
+                background: 'radial-gradient(ellipse 34% 41% at 19% 27%, rgba(68,20,112,0.23), transparent 82%), radial-gradient(ellipse 38% 36% at 82% 72%, rgba(71,31,120,0.19), transparent 85%)',
+                filter: 'blur(30px)',
+              }} />
+              <img
+                src="/images/intro/NEXORA%20LOGO.png?v=3"
+                alt=""
+                fetchPriority="high"
+                decoding="async"
+                style={{
+                  position: 'relative',
+                  width: 'clamp(180px, 30vw, 280px)',
+                  height: 'auto',
+                  filter: 'drop-shadow(0 0 26px rgba(145,88,227,0.6))',
+                }}
+              />
+              <span style={{
+                position: 'relative',
+                fontFamily: 'monospace',
+                fontSize: 'clamp(10px, 1.15vw, 14px)',
+                letterSpacing: '0.18em',
+                color: '#ddd6fe',
+              }}>&gt; CLICK LOGO TO START EXPERIENCE</span>
+            </div>
           }
         >
           <IntroBoundary onError={handleComplete}>
