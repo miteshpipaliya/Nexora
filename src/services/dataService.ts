@@ -1724,6 +1724,7 @@ return { initialized: true };
     const newMember: TeamMember = {
       id,
       name: data.name?.trim() || '',
+      role_key: data.role_key,
       role_name: data.role_name || 'Executive Member',
       academic_branch_name: data.academic_branch_name || 'Engineering',
       division: data.division || 'Division A',
