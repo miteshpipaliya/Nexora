@@ -277,7 +277,8 @@ export function registerContactEndpoints(deps: ContactEndpointDeps) {
 
       res.json({ success: true, message: 'Notification email dispatched successfully.' });
     } catch (err: any) {
-      res.status(502).json({ error: err.message || 'Failed to dispatch email' });
+      console.error('[CONTACT EMAIL RETRY FAILED]', err);
+      res.status(502).json({ error: 'Failed to dispatch email.' });
     }
   });
 }
