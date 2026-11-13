@@ -591,7 +591,7 @@ export const ProfilePage: React.FC = () => {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs font-mono">
                     <span className="text-violet-400 font-semibold selectable-content">
-                      {reg.competition_id || reg.reference_id || reg.id}
+                      {reg.reference_id || reg.id}
                     </span>
                     <span className="px-2 py-0.5 bg-emerald-950/80 text-emerald-300 border border-emerald-500/30 rounded text-[10px]">
                       {reg.registration_status}
