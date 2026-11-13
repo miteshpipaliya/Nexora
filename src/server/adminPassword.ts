@@ -38,11 +38,6 @@ export interface AdminPasswordRecord {
   updatedAt: number;
 }
 
-const FOUNDER_EMAILS = [
-  'miteshpipaliya2202@gmail.com',
-  'mitesh.aiml@gmail.com'
-];
-
 /**
  * Normalizes password string using Unicode NFKC so composite characters match across keyboards/browsers.
  * Preserves leading/trailing characters without silent trimming per policy.
@@ -89,7 +84,7 @@ export function validatePasswordPolicy(
     return { valid: false, reason: 'Password must contain at least one special symbol' };
   }
 
-  const bannedEmails = [...FOUNDER_EMAILS];
+  const bannedEmails = [process.env.FOUNDER_EMAIL, ...String(process.env.ADMIN_EMAILS || '').split(',')].filter((email): email is string => Boolean(email?.trim()));
   if (customFounderEmail) bannedEmails.push(customFounderEmail.toLowerCase().trim());
 
   const lowerPass = normalized.toLowerCase();

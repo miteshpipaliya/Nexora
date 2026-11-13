@@ -18,9 +18,9 @@ NEXORA is a **proposed student-led initiative** at BVM. Its first objective is t
 
 - **Frontend:** React 19, TypeScript, Vite, Tailwind CSS v4, React Router DOM, Lucide Icons.
 - **3D Graphics & Spatial Web:** Three.js procedural orbital cosmic scene & 3D T-shirt viewer with real-time student name personalization.
-- **State & Data Management:** Reactive unified data service supporting both **Supabase PostgreSQL** and persistent local **Demo Mode**.
+- **State & Data Management:** Firebase Authentication, Firestore, Firebase Storage, and a typed React data-service layer.
 - **Forms & Validation:** Controlled form state with robust client and server validation checks.
-- **Database Architecture:** Supabase PostgreSQL with Row Level Security (RLS) policies, indexes, and automated timestamps.
+- **Database Architecture:** Cloud Firestore with Firestore Security Rules, Firebase Authentication, and server-authoritative Express endpoints.
 
 ---
 
@@ -42,30 +42,15 @@ NEXORA is a **proposed student-led initiative** at BVM. Its first objective is t
 
 ---
 
-## 4. Database Setup & Supabase Migrations
+## 4. Firebase and Server Configuration
 
-The complete SQL migration is located in:
-```
-supabase/migrations/20260101000000_create_nexora_schema.sql
-```
+NEXORA uses Firebase Authentication, Cloud Firestore (including a configured named database), and Firebase Storage. The active access policies are in `firestore.rules` and `storage.rules`. Deploy these rules separately with the Firebase CLI; pushing the rule files to Vercel does **not** activate them.
 
-It provisions:
-1. `public.profiles` — Linked to `auth.users(id)` with RLS policies ensuring users only read/edit their own data.
-2. `public.events` — Competition event records with capacity limits and fee tiers.
-3. `public.registrations` — Unique constraint on `(user_id, event_id)` preventing duplicate registrations.
-4. `public.teams` & `public.team_members` — Team management for hackathons and CTFs.
-5. `public.contact_submissions` — Messages submitted to the organizing body.
-6. `public.admin_roles` — Privileged organizer permissions.
+Set `FOUNDER_EMAIL`, `OTP_HMAC_SECRET` (at least 32 random characters), `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, and Firebase Admin credentials in your server's secret environment, never in Git. Keep client Firebase configuration restricted by Firebase Auth, Security Rules, and Google Cloud API key restrictions; Firebase browser API keys are public identifiers rather than server secrets.
 
-### Connecting to Live Supabase:
-1. Create a project at [supabase.com](https://supabase.com).
-2. Run the SQL script from `supabase/migrations/20260101000000_create_nexora_schema.sql` in the Supabase SQL Editor.
-3. Add your Supabase credentials to `.env`:
-   ```bash
-   VITE_SUPABASE_URL=https://your-project.supabase.co
-   VITE_SUPABASE_ANON_KEY=your-anon-key
-   ```
-4. If credentials are not supplied, the app automatically runs in **Demo Mode**, maintaining full local state persistence for review.
+For isolated preview environments, define `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_APP_ID`, and `VITE_FIRESTORE_DATABASE_ID` in Vercel Preview environment variables.
+
+Run `npm ci`, `npm run typecheck`, `npm test`, and `npm run build` before deploying.
 
 ---
 

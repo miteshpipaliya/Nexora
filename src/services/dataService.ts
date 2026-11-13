@@ -996,15 +996,12 @@ return { initialized: true };
     }
   }
 
-  public clearElevatedAdminSession() {
-    // Notify server to revoke session; do not ignore errors (P1-05 fix)
-    safeApiFetch('/api/admin/auth/lock', {
+  public async clearElevatedAdminSession(): Promise<void> {
+    // Await server-confirmed durable revocation. Never swallow failures.
+    await safeApiFetch('/api/admin/auth/lock', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
-    }).catch((err) => {
-      console.error('[ADMIN LOCK] Failed to revoke session server-side:', err);
     });
-    // Cookie is cleared server-side via Set-Cookie; no client-side storage to clean
   }
 
   public sendPresenceHeartbeat = sendPresenceHeartbeat;

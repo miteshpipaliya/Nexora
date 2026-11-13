@@ -66,7 +66,7 @@ describe('Admin Security Password Module (Package B)', () => {
     // Missing symbol
     expect(validatePasswordPolicy('NoSymbolsIncludedHere123').valid).toBe(false);
     // Contains founder email
-    expect(validatePasswordPolicy('miteshpipaliya2202@gmail.com!2026').valid).toBe(false);
+    expect(validatePasswordPolicy('admin-owner@example.test!2026', null, 'admin-owner@example.test').valid).toBe(false);
 
     // Strong compliant password
     expect(validatePasswordPolicy('Nexora@SuperStrong2026!Key').valid).toBe(true);

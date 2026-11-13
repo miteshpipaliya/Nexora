@@ -45,14 +45,13 @@ app.use(express.json({ limit: '100kb' }));
 // ==========================================
 // CORS CONFIGURATION (P1-07 fix)
 // ==========================================
+const isProductionCORS = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
 const ALLOWED_ORIGINS = [
   process.env.FRONTEND_URL,
   process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
-  process.env.VERCEL_ENV?.trim() === 'production' ? 'https://www.nexora-bvm.online' : undefined,
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
+  'https://www.nexora-bvm.online',
+  'https://nexora-bvm.online',
+  ...(!isProductionCORS ? ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', 'http://127.0.0.1:3000'] : []),
 ].filter(Boolean) as string[];
 
 app.use((req, res, next) => {
@@ -443,10 +442,10 @@ apiRouter.post(['/auth/send-email-otp', '/auth/forgot-password/request-otp', '/a
     console.error('Error in /auth/send-email-otp:', err.message || err);
     const status = err instanceof StudentOtpRateLimitError ? 429 : err instanceof StudentOtpStorageError ? 503 : err.status || (err.code === 'EMAIL_NOT_CONFIGURED' ? 503 : 500);
     res.status(status).json({ 
-      error: err instanceof StudentOtpRateLimitError ? err.message : err instanceof StudentOtpStorageError ? 'Verification service is temporarily unavailable.' : err.message || 'Failed to dispatch verification code via email.',
+      error: err instanceof StudentOtpRateLimitError ? err.message : err instanceof StudentOtpStorageError ? 'Verification service is temporarily unavailable.' : 'Failed to dispatch verification code via email.',
       ...(err instanceof StudentOtpRateLimitError ? { waitSeconds: err.waitSeconds } : {}),
       code: err.code || (err instanceof StudentOtpStorageError ? 'OTP_STORAGE_UNAVAILABLE' : 'EMAIL_DISPATCH_FAILED'),
-      actionableHint: err.actionableHint
+      actionableHint: status === 429 ? undefined : 'Please retry later or contact support if the problem continues.'
     });
   }
 });
@@ -854,10 +853,11 @@ interface AdminSessionRecord {
   revoked?: boolean;
 }
 
-async function createAdminSessionRecord(email: string, expiresAt: number): Promise<string> {
-  const sessionId = crypto.randomBytes(24).toString('hex');
+async function createAdminSessionRecord(email: string, expiresAt: number, sessionId: string): Promise<string> {
+  if (!sessionId || !/^[a-f0-9]{32}$/i.test(sessionId)) throw new ConfigError('Invalid admin session identifier.');
   const db = await getAdminFirestore();
-  if (db) {
+  if (!db) throw new ConfigError('Administrator session storage is unavailable.');
+  {
     await db.collection('_admin_sessions').doc(sessionId).set({
       sessionId,
       email: email.toLowerCase().trim(),
@@ -887,9 +887,8 @@ async function validateAdminSessionRecord(sessionId: string): Promise<{ valid: b
 
 async function revokeAdminSession(sessionId: string): Promise<void> {
   const db = await getAdminFirestore();
-  if (db) {
-    await db.collection('_admin_sessions').doc(sessionId).update({ revoked: true });
-  }
+  if (!db) throw new ConfigError('Administrator session storage is unavailable.');
+  await db.collection('_admin_sessions').doc(sessionId).update({ revoked: true });
 }
 
 async function revokeAllAdminSessionsForEmail(email: string): Promise<void> {
@@ -916,16 +915,13 @@ async function isSessionRevoked(jti: string): Promise<boolean> {
 }
 
 async function revokeJti(jti: string, reason: string): Promise<void> {
-  try {
-    const db = await getAdminFirestore();
-    if (db) {
-      await db.collection('_revoked_sessions').doc(jti).set({
-        jti,
-        revokedAt: Date.now(),
-        reason
-      });
-    }
-  } catch {}
+  const db = await getAdminFirestore();
+  if (!db) throw new ConfigError('Administrator revocation storage is unavailable.');
+  await db.collection('_revoked_sessions').doc(jti).set({
+    jti,
+    revokedAt: Date.now(),
+    reason
+  });
 }
 
 // Helper to set HttpOnly, Secure, SameSite=Strict admin session cookie (no cookie-parser dependency)
@@ -1077,7 +1073,7 @@ apiRouter.post('/admin/auth/sync-claim', async (req, res) => {
     });
   } catch (err: any) {
     console.error('[SYNC-CLAIM] Error:', err);
-    res.status(500).json({ error: err.message || 'Failed to sync admin claim.' });
+    res.status(500).json({ error: 'Failed to synchronize administrator permissions.' });
   }
 });
 
@@ -1189,7 +1185,7 @@ apiRouter.post(['/admin/auth/setup-password', '/admin/setup-password'], async (r
     } as any);
 
     const jti = (JSON.parse(Buffer.from(sessionToken.split('.')[0], 'base64url').toString('utf8')) as any).jti;
-    await createAdminSessionRecord(FOUNDER_EMAIL, expiresAt);
+    await createAdminSessionRecord(FOUNDER_EMAIL, expiresAt, jti);
 
     setAdminSessionCookie(res, sessionToken, expiresAt);
     recordAudit('ADMIN_SESSION_CREATED', 'Elevated admin session issued via HttpOnly cookie after password setup.');
@@ -1363,7 +1359,7 @@ apiRouter.post(['/admin/auth/verify-admin-otp', '/admin/auth/verify-otp', '/admi
     } as any);
 
     const jti = (JSON.parse(Buffer.from(sessionToken.split('.')[0], 'base64url').toString('utf8')) as any).jti;
-    await createAdminSessionRecord(FOUNDER_EMAIL, expiresAt);
+    await createAdminSessionRecord(FOUNDER_EMAIL, expiresAt, jti);
 
     setAdminSessionCookie(res, sessionToken, expiresAt);
     recordAudit('ADMIN_ACCESS_GRANTED', 'Founder completed OTP verification. Elevated session issued via HttpOnly cookie (15 min).');
@@ -1591,36 +1587,39 @@ apiRouter.all(['/admin/auth/session', '/admin/session'], async (req, res) => {
 // 9. Lock Admin Panel (Revoke elevated session - server-side, persistent)
 apiRouter.post(['/admin/auth/lock', '/admin/lock'], async (req, res) => {
   const token = req.cookies?.['nexora_admin_session']
-    || (req.body.sessionToken as string)
     || (req.headers['x-admin-session'] as string)
     || (req.headers.authorization?.replace(/^Bearer\s+/i, ''));
-  let revoked = false;
-  if (token) {
-    // Revoke from in-memory map
-    if (elevatedAdminSessions.has(token)) {
-      elevatedAdminSessions.delete(token);
-      revoked = true;
-    }
-    // Revoke from Firestore
-    const payload = verifySignedToken(token, 'admin-session');
-    if (payload?.jti) {
-      await revokeAdminSession(payload.jti).catch((err: any) => {
-        console.error('[ADMIN LOCK] Failed to revoke session from Firestore:', err);
-        revoked = false;
-      });
-      await revokeJti(payload.jti, 'admin_lock').catch((err: any) => {
-        console.error('[ADMIN LOCK] Failed to record revocation:', err);
-        revoked = false;
-      });
-    }
+
+  if (!token) {
     clearAdminSessionCookie(res);
+    res.json({ success: true, revoked: false, message: 'Admin panel already locked.' });
+    return;
   }
-  recordAudit('ADMIN_LOCKED', 'Elevated admin session was manually locked. Server-side revocation: ' + revoked);
-  res.json({ success: true, message: 'Admin session revoked.', revoked });
+
+  const payload = verifySignedToken(token, 'admin-session');
+  if (!payload?.jti) {
+    clearAdminSessionCookie(res);
+    res.status(401).json({ success: false, error: 'Administrator session was not valid.' });
+    return;
+  }
+
+  try {
+    // Both durable revocation writes must complete before acknowledging lock.
+    await revokeAdminSession(payload.jti);
+    await revokeJti(payload.jti, 'admin_lock');
+    elevatedAdminSessions.delete(token);
+    clearAdminSessionCookie(res);
+    recordAudit('ADMIN_LOCKED', 'Elevated admin session was manually revoked.');
+    res.json({ success: true, revoked: true, message: 'Admin session revoked.' });
+  } catch (err) {
+    console.error('[ADMIN LOCK] Persistent session revocation failed:', err);
+    // Never claim success if a durable revocation write fails.
+    res.status(503).json({ success: false, error: 'Could not confirm administrator session revocation. Please retry.' });
+  }
 });
 
 // 9b. Brevo Email Diagnostics & Test Email (WP7)
-apiRouter.get('/admin/email-diagnostics', async (req, res) => {
+apiRouter.get('/admin/email-diagnostics', requireElevatedAdmin, async (req, res) => {
   try {
     const sessionToken = req.cookies?.['nexora_admin_session']
       || (req.headers['x-admin-session'] as string)
@@ -1701,7 +1700,7 @@ apiRouter.get('/admin/email-diagnostics', async (req, res) => {
   }
 });
 
-apiRouter.post('/admin/send-test-email', async (req, res) => {
+apiRouter.post('/admin/send-test-email', requireElevatedAdmin, async (req, res) => {
   try {
     const sessionToken = req.cookies?.['nexora_admin_session']
       || (req.headers['x-admin-session'] as string)
@@ -1719,7 +1718,7 @@ apiRouter.post('/admin/send-test-email', async (req, res) => {
     await sendBrevoOtpEmail(FOUNDER_EMAIL, testOtp, 'signup');
     res.json({ success: true, message: `Test verification email dispatched to ${FOUNDER_EMAIL}.` });
   } catch (err: any) {
-    res.status(err.status || 500).json({ error: err.message || 'Failed to send test email', code: err.code });
+    res.status(err?.status === 429 ? 429 : 503).json({ error: 'Failed to send test email.' });
   }
 });
 
@@ -1751,7 +1750,7 @@ apiRouter.post(['/registrations/validate', '/api/registrations/validate'], async
 
     res.json({ success: true, allowed: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Validation failed.' });
+    res.status(500).json({ error: 'Validation service is temporarily unavailable.' });
   }
 });
 
@@ -2063,7 +2062,7 @@ apiRouter.post('/admin/upload-image', requireElevatedAdmin, (req, res) => {
       });
     }
   } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Image upload failed.' });
+    res.status(500).json({ error: 'Image upload failed.' });
   }
 });
 
@@ -2280,7 +2279,7 @@ apiRouter.post('/admin/contact-messages/:id/retry-email', requireElevatedAdmin, 
     recordAudit('CONTACT_EMAIL_RESENT', `Notification resent for message ${id}`);
     res.json({ success: true, message: 'Notification email successfully resent.' });
   } catch (err: any) {
-    res.status(err?.status || 500).json({ error: err.message || 'Failed to resend notification email.' });
+    res.status(err?.status === 429 ? 429 : 500).json({ error: 'Failed to resend notification email.' });
   }
 });
 
@@ -2320,7 +2319,7 @@ apiRouter.get('/admin/presence', requireElevatedAdmin, async (req, res) => {
 
     res.json({ success: true, presence: userMap, mode: 'delayed_admin_sync' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Failed to read presence sessions.' });
+    res.status(500).json({ error: 'Failed to read presence sessions.' });
   }
 });
 
@@ -2355,7 +2354,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     return next(err);
   }
   res.status(err.status || 500).json({
-    error: err.message || 'An unexpected server error occurred. Please try again.'
+    error: 'An unexpected server error occurred. Please try again.'
   });
 });
 

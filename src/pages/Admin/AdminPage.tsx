@@ -786,8 +786,14 @@ export const AdminPage: React.FC = () => {
   };
 
   // Lock Admin Panel
-  const handleLockPanel = () => {
-    dataService.clearElevatedAdminSession();
+  const handleLockPanel = async () => {
+    try {
+      await dataService.clearElevatedAdminSession();
+    } catch (err) {
+      console.error('[ADMIN LOCK] Revocation failed:', err);
+      setAuthError('Could not confirm session revocation. Please retry.');
+      return;
+    }
     setElevatedAdminVerified(false);
     setPasswordToken(null);
     setEnteredPassword('');

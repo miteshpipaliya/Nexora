@@ -40,4 +40,51 @@ describe('administrator security routes', () => {
 
     expect(response.status).toBe(404);
   });
+  it('clears the administrator cookie when locking an already unauthenticated session', async () => {
+    const response = await fetch(`${baseUrl}/api/admin/auth/lock`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}'
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ success: true, revoked: false });
+    expect(response.headers.get('set-cookie')).toContain('nexora_admin_session=');
+  });
+
+  it('does not acknowledge revocation for a forged administrator cookie', async () => {
+    const response = await fetch(`${baseUrl}/api/admin/auth/lock`, {
+      method: 'POST',
+      headers: { cookie: 'nexora_admin_session=forged.session.signature' }
+    });
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({ success: false });
+  });
+
+  it('does not grant credentialed CORS to untrusted origins', async () => {
+    const response = await fetch(`${baseUrl}/api/admin/auth/session`, {
+      headers: { origin: 'https://evil.example.test' }
+    });
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
+    expect(response.headers.get('access-control-allow-credentials')).toBeNull();
+  });
+
+  it('does not reveal Express parsing error internals to API clients', async () => {
+    const response = await fetch(`${baseUrl}/api/auth/send-email-otp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{ malformed'
+    });
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toBe('An unexpected server error occurred. Please try again.');
+    expect(JSON.stringify(data)).not.toContain('SyntaxError');
+  });
+
+  it('requires a persisted elevated session for email diagnostics and test sends', async () => {
+    const diagnostics = await fetch(`${baseUrl}/api/admin/email-diagnostics`);
+    expect(diagnostics.status).toBe(401);
+    const testSend = await fetch(`${baseUrl}/api/admin/send-test-email`, { method: 'POST' });
+    expect(testSend.status).toBe(401);
+  });
+
 });
