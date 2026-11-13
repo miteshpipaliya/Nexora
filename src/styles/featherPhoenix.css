@@ -12,8 +12,8 @@
   line-height: 0;
   isolation: isolate;
   filter:
-    drop-shadow(0 0 12px rgba(200,158,255,.48))
-    drop-shadow(0 0 38px rgba(118,54,210,.28));
+    drop-shadow(0 0 8px rgba(200,158,255,.22))
+    drop-shadow(0 0 22px rgba(118,54,210,.11));
 }
 .feather-phoenix-img {
   display: block;
@@ -22,6 +22,7 @@
   height: auto;
   object-fit: contain;
   user-select: none;
+  filter: brightness(.89) saturate(.94);
 }
 .feather-phoenix-shimmer {
   position: absolute;
@@ -38,8 +39,8 @@
     109deg,
     transparent 24%,
     rgba(193,162,255,.035) 37%,
-    rgba(229,215,255,.18) 46%,
-    rgba(248,241,255,.30) 49%,
+    rgba(229,215,255,.12) 46%,
+    rgba(248,241,255,.19) 49%,
     rgba(220,198,255,.16) 53%,
     rgba(171,122,244,.035) 63%,
     transparent 76%
@@ -47,14 +48,14 @@
   background-size: 275% 100%;
   background-position: 115% 50%;
   mix-blend-mode: screen;
-  opacity: .82;
+  opacity: .66;
   animation: feather-phoenix-sweep 9s cubic-bezier(.34, .05, .6, 1) infinite;
   will-change: background-position;
 }
 /* The sweep occupies about 40% of each cycle, followed by a long visual rest. */
 @keyframes feather-phoenix-sweep {
   0%, 10% { background-position: 115% 50%; opacity: 0; }
-  16% { opacity: .82; }
+  16% { opacity: .66; }
   46% { background-position: -15% 50%; opacity: .82; }
   54%, 100% { background-position: -15% 50%; opacity: 0; }
 }
