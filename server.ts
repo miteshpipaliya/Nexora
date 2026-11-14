@@ -1850,6 +1850,8 @@ apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/c
       const bvmFee = ev?.bvm_fee ?? ev?.fee_per_participant ?? 50;
       const externalFee = ev?.external_fee ?? ev?.fee_per_participant ?? 70;
       const expectedFee = isBvm ? bvmFee : externalFee;
+      const paymentRequired = ev?.payment_enabled === true && Number(ev?.fee_per_participant) > 0;
+      const participantCount = (Array.isArray(team_member_details) && team_member_details.length) || (Array.isArray(team_members) && team_members.length) || 1;
       const memberDetails = Array.isArray(team_member_details) ? team_member_details : [];
       const memberNames = Array.isArray(team_members) ? team_members : [];
       return {
@@ -1871,10 +1873,10 @@ apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/c
         team_name: team_name?.trim() || '',
         team_members: memberNames,
         team_member_details: memberDetails,
-        participant_count: memberDetails.length || memberNames.length || 1,
-        registration_status: expectedFee > 0 ? 'Pending Review' : 'Confirmed',
-        payment_status: expectedFee > 0 ? 'Pending Verification' : 'Exempt',
-        calculated_fee: expectedFee,
+        participant_count: participantCount,
+        registration_status: paymentRequired ? 'Pending Review' : 'Confirmed',
+        payment_status: paymentRequired ? 'Pending Verification' : 'Exempt',
+        calculated_fee: paymentRequired ? Number(ev?.fee_per_participant) * participantCount : expectedFee,
         fee_paid: 0,
         created_at: nowIso,
         updated_at: nowIso
