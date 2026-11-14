@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
+import { beginTestPayment } from '../../services/paymentCheckout';
 import { CompetitionEvent, RegistrationRecord, TeamMemberDetail } from '../../types';
 import { NexoraLogo } from '../ui/NexoraLogo';
 import { RegistrationTicket } from '../common/RegistrationTicket';
@@ -77,11 +78,14 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
   const [registrationCheckError, setRegistrationCheckError] = useState(false);
   const [confirmedRecord, setConfirmedRecord] = useState<RegistrationRecord | null>(null);
   const [copiedId, setCopiedId] = useState(false);
+  const [paymentBusy, setPaymentBusy] = useState(false);
+  const [existingRecord, setExistingRecord] = useState<RegistrationRecord | null>(null);
 
   // Pre-fill user data and check existing registration
   useEffect(() => {
     if (!isOpen) {
       setConfirmedRecord(null);
+      setExistingRecord(null);
       setErrorMessage(null);
       setRegistrationCheckError(false);
       setCopiedId(false);
@@ -89,6 +93,7 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
     }
 
     setAlreadyRegistered(false);
+    setExistingRecord(null);
     setErrorMessage(null);
     setRegistrationCheckError(false);
 
@@ -103,9 +108,11 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
       setDivision(user.division || '11');
 
       setCheckingExisting(true);
-      dataService.isUserRegisteredForEvent(user.id, event.slug)
-        .then((exists) => {
-          setAlreadyRegistered(exists);
+      dataService.getUserRegistrations(user.id)
+        .then((registrations) => {
+          const found = registrations.find((record) => record.event_slug === event.slug && record.registration_status !== 'Cancelled') || null;
+          setExistingRecord(found);
+          setAlreadyRegistered(Boolean(found));
         })
         .catch((err) => {
           console.error('Could not verify prior competition registration:', err);
@@ -169,10 +176,26 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
   // Active college
   const activeCollege = college === 'Other' ? customCollege : college;
 
-  // Active member count calculation (Uniform ₹50 per participant)
+  // Visual estimate only; backend always calculates the current fee from Firestore.
   const activeExtraMembers = teamMembers.filter((m) => m.name.trim().length > 0);
   const totalParticipants = isTeamEvent ? 1 + activeExtraMembers.length : 1;
-  const calculatedTotalFee = totalParticipants * 50;
+  const calculatedTotalFee = totalParticipants * (Number(event.fee_per_participant) || 0);
+  const requiresPayment = event.payment_enabled === true && calculatedTotalFee > 0;
+
+  const payForRegistration = async (record: RegistrationRecord) => {
+    if (paymentBusy) return;
+    setPaymentBusy(true);
+    setErrorMessage(null);
+    try {
+      const paid = await beginTestPayment(event.slug, record.full_name, record.email, record.phone_number);
+      if (!paid.verified) throw new Error('Payment verification is incomplete.');
+      const updated: RegistrationRecord = { ...record, payment_status: 'Verified', registration_status: 'Confirmed', fee_paid: record.calculated_fee, razorpay_order_id: paid.orderId, razorpay_payment_id: paid.paymentId };
+      setConfirmedRecord(updated);
+      setExistingRecord(updated);
+      setAlreadyRegistered(true);
+    } catch (e) { setErrorMessage(e instanceof Error ? e.message : 'Unable to verify payment. Please retry.'); }
+    finally { setPaymentBusy(false); }
+  };
 
   const handleCopyId = (idToCopy: string) => {
     if (navigator.clipboard) {
@@ -240,7 +263,11 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
         team_member_details: isTeamEvent ? fullTeamDetailsList : undefined
       });
       setConfirmedRecord(record);
+      setExistingRecord(record);
       setAlreadyRegistered(true);
+      if (requiresPayment && record.payment_status !== 'Verified') {
+        await payForRegistration(record);
+      }
     } catch (err: any) {
       setErrorMessage(err.message || 'Registration submission failed. Please try again.');
     } finally {
@@ -294,6 +321,13 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
               <p className="text-sm text-slate-400 max-w-md mx-auto">
                 Your entry for <span className="text-violet-300 font-semibold">{event.title}</span> has been saved. View your permanent Competition ID on your profile dashboard.
               </p>
+              {existingRecord && existingRecord.payment_status !== 'Verified' && event.payment_enabled === true && Number(event.fee_per_participant) > 0 && (
+                <button type="button" disabled={paymentBusy} onClick={() => payForRegistration(existingRecord)}
+                  className="px-5 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-semibold">
+                  {paymentBusy ? 'Opening secure checkout...' : 'Complete Test Payment'}
+                </button>
+              )}
+              {errorMessage && <p role="alert" className="text-xs text-red-300">{errorMessage}</p>}
               <div className="pt-2 flex justify-center gap-3">
                 <Link
                   to="/profile"
@@ -315,10 +349,19 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
             <div className="space-y-6 py-3 text-center">
               <div className="space-y-1">
                 <CheckCircle2 className="h-8 w-8 text-emerald-400 mx-auto" />
-                <h3 className="text-xl font-bold text-white">Registration Recorded!</h3>
-                <p className="text-xs text-slate-400">Your NEXORA entry ticket is ready. Payment remains pending until verified.</p>
+                <h3 className="text-xl font-bold text-white">{confirmedRecord.registration_status === 'Confirmed' ? 'Registration Confirmed!' : 'Registration Saved — Payment Pending'}</h3>
+                <p className="text-xs text-slate-400">{confirmedRecord.payment_status === 'Verified' ? 'Test payment verified successfully. Your NEXORA entry is confirmed.' : 'Your entry is saved but is not confirmed until payment is verified.'}</p>
               </div>
-              <RegistrationTicket registration={confirmedRecord} />
+              {confirmedRecord.registration_status === 'Confirmed' ? <RegistrationTicket registration={confirmedRecord} /> : (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-5 py-4 text-sm text-amber-100">Your ticket will become available once test payment is captured and verified.</div>
+              )}
+              {requiresPayment && confirmedRecord.payment_status !== 'Verified' && (
+                <button type="button" disabled={paymentBusy} onClick={() => payForRegistration(confirmedRecord)}
+                  className="px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-semibold text-xs">
+                  {paymentBusy ? 'Processing test payment...' : 'Pay Securely (Test Mode)'}
+                </button>
+              )}
+              {errorMessage && <p role="alert" className="text-sm text-red-300">{errorMessage}</p>
               <div className="flex justify-center flex-wrap gap-3">
                 <Link to="/profile" onClick={onClose}
                   className="px-5 py-2.5 text-xs rounded-lg bg-violet-600 text-white font-semibold">
@@ -575,12 +618,12 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
                 <div>
                   <span className="text-slate-300 font-semibold block">Registration Fee Structure</span>
                   <span className="text-[11px] text-slate-400">
-                    ₹50 per participant · {totalParticipants} {totalParticipants > 1 ? 'participants' : 'participant'}
+                    ₹{event.fee_per_participant} per participant · {totalParticipants} {totalParticipants > 1 ? 'participants' : 'participant'}
                   </span>
                 </div>
                 <div className="text-right">
                   <div className="text-base font-bold text-violet-300">₹{calculatedTotalFee}</div>
-                  <span className="text-[10px] text-slate-500 block">Unpaid (Pay Later)</span>
+                  <span className="text-[10px] text-slate-500 block">{requiresPayment ? 'Razorpay Test Checkout' : 'No Online Payment'}</span>
                 </div>
               </div>
 
@@ -630,7 +673,7 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
                   disabled={submitting}
                   className="px-6 py-2.5 text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-purple-600 rounded-lg hover:from-violet-500 hover:to-purple-500 transition-all shadow-[0_0_20px_-5px_rgba(139,92,246,0.5)] disabled:opacity-50"
                 >
-                  {submitting ? 'Submitting Registration...' : `Complete Registration (₹${calculatedTotalFee})`}
+                  {submitting ? 'Submitting Registration...' : `Save Registration (₹${calculatedTotalFee})`}
                 </button>
               </div>
             </form>
