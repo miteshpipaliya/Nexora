@@ -289,9 +289,12 @@ export function registerCmsEndpoints({
   // 1. COMPETITIONS CRUD (SERVER-SIDE FIRESTORE GUARANTEE)
   // ========================================================
 
+  const validFee = (fee: unknown): boolean => typeof fee === 'number' && Number.isFinite(fee) && fee >= 0 && fee <= 100000 && Number.isInteger(fee * 100);
+
   apiRouter.post('/admin/competitions', requireElevatedAdmin, async (req: Request, res: Response) => {
     try {
       const data = req.body;
+      if (data.fee_per_participant !== undefined && !validFee(data.fee_per_participant)) { res.status(400).json({ error: 'Invalid registration fee.' }); return; }
       if (!data.title || !data.title.trim()) {
         res.status(400).json({ error: 'Competition title is required.' });
         return;
@@ -344,6 +347,7 @@ export function registerCmsEndpoints({
         capacity: toFiniteNumber(data.capacity, 60),
         registered_count: toFiniteNumber(data.registered_count, 0),
         fee_per_participant: toFiniteNumber(data.fee_per_participant, 50),
+        payment_enabled: data.payment_enabled === true,
         banner_image: data.banner_image || data.cover_image || '/images/competitions/zerocode.jpg',
         cover_image: data.cover_image || data.banner_image || '/images/competitions/zerocode.jpg',
         event_date: data.event_date || 'TBA',
@@ -384,6 +388,7 @@ export function registerCmsEndpoints({
     try {
       const { slug } = req.params;
       const data = req.body;
+      if (data.fee_per_participant !== undefined && !validFee(data.fee_per_participant)) { res.status(400).json({ error: 'Invalid registration fee.' }); return; }
       const db = await getAdminFirestore();
       if (!db) {
         res.status(503).json({ error: 'Database service is currently unreachable.' });
@@ -394,6 +399,7 @@ export function registerCmsEndpoints({
         ...data,
         slug,
         isComingSoon: Boolean(data.isComingSoon),
+        ...(data.payment_enabled !== undefined ? { payment_enabled: data.payment_enabled === true } : {}),
         ...(data.show_capacity !== undefined ? { show_capacity: Boolean(data.show_capacity) } : {}),
         updated_at: new Date().toISOString()
       });
