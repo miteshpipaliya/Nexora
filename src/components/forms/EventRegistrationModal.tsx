@@ -350,7 +350,7 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
               <div className="space-y-1">
                 <CheckCircle2 className="h-8 w-8 text-emerald-400 mx-auto" />
                 <h3 className="text-xl font-bold text-white">{confirmedRecord.registration_status === 'Confirmed' ? 'Registration Confirmed!' : 'Registration Saved — Payment Pending'}</h3>
-                <p className="text-xs text-slate-400">{confirmedRecord.payment_status === 'Verified' ? 'Test payment verified successfully. Your NEXORA entry is confirmed.' : 'Your entry is saved but is not confirmed until payment is verified.'}</p>
+                <p className="text-xs text-slate-400">{confirmedRecord.payment_status === 'Verified' ? 'Test payment verified successfully. Your NEXORA entry is confirmed.' : (confirmedRecord.registration_status === 'Confirmed' ? 'Your registration has been confirmed. No online payment is required.' : 'Your entry is saved but is not confirmed until payment is verified.')}</p>
               </div>
               {confirmedRecord.registration_status === 'Confirmed' ? <RegistrationTicket registration={confirmedRecord} /> : (
                 <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-5 py-4 text-sm text-amber-100">Your ticket will become available once test payment is captured and verified.</div>
