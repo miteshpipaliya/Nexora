@@ -162,14 +162,15 @@ export function registerPaymentEndpoints(deps: Deps) {
         if (event.isComingSoon || event.status !== 'Published' || event.registration_open === false) throw new Error('REGISTRATION_CLOSED');
         if (event.payment_enabled !== true) throw new Error('PAYMENT_DISABLED');
         if (reg.payment_status === 'Verified') throw new Error('ALREADY_PAID');
-        const count = Math.max(1, Math.floor(Number(reg.participant_count) || 1));
-        const amount = money(event.fee_per_participant) * count;
-        if (!amount) throw new Error('FREE_REGISTRATION');
+        // A previously opened order always uses its immutable fee snapshot.
         if (intentSnap.exists) {
           const old = intentSnap.data();
           if (old.state === 'ready' && old.order_id) return { existingOrder: old.order_id, amount: old.amount_paise };
           if (old.state === 'creating' && Date.now() - old.started_at < 120000) throw new Error('ORDER_PENDING');
         }
+        const count = Math.max(1, Math.floor(Number(reg.participant_count) || 1));
+        const amount = money(event.fee_per_participant) * count;
+        if (!amount) throw new Error('FREE_REGISTRATION');
         tx.set(intentRef, { state: 'creating', lease_id: leaseId, started_at: Date.now(), user_id: identity.uid, event_slug: slug, amount_paise: amount });
         return { amount };
       });
