@@ -2500,6 +2500,8 @@ export const AdminPage: React.FC = () => {
                         <td className="py-3 px-4">
                           <select
                             value={reg.registration_status}
+                            disabled={events.some((item) => item.slug === reg.event_slug && item.payment_enabled === true) && reg.payment_status !== 'Verified'}
+                            title={reg.payment_status !== 'Verified' ? 'Online payment must be verified by Razorpay before registration confirmation.' : 'Registration status'}
                             onChange={(e) => handleUpdateRegistrationStatus(reg.id, e.target.value)}
                             className="bg-[#08080D] border border-violet-500/30 rounded-lg px-2 py-1 text-[11px] text-white focus:outline-none focus:border-violet-400 cursor-pointer"
                           >
@@ -2512,6 +2514,8 @@ export const AdminPage: React.FC = () => {
                         <td className="py-3 px-4">
                           <select
                             value={reg.payment_status}
+                            disabled={events.some((item) => item.slug === reg.event_slug && item.payment_enabled === true)}
+                            title={reg.razorpay_payment_id ? `Gateway receipt: ${reg.razorpay_payment_id}` : 'Payment status'}
                             onChange={(e) => handleUpdatePaymentStatus(reg.id, e.target.value)}
                             className={`border rounded-lg px-2 py-1 text-[11px] focus:outline-none cursor-pointer ${
                               reg.payment_status === 'Verified'
