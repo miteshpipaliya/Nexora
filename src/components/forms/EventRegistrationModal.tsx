@@ -181,6 +181,8 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
   const totalParticipants = isTeamEvent ? 1 + activeExtraMembers.length : 1;
   const calculatedTotalFee = totalParticipants * (Number(event.fee_per_participant) || 0);
   const requiresPayment = event.payment_enabled === true && calculatedTotalFee > 0;
+  const paymentNeededFor = (record: RegistrationRecord) => record.payment_status !== 'Verified' && record.payment_status !== 'Exempt' && record.registration_status !== 'Confirmed';
+  const confirmedFor = (record: RegistrationRecord) => record.registration_status === 'Confirmed' && (record.payment_status === 'Verified' || record.payment_status === 'Exempt');
 
   const payForRegistration = async (record: RegistrationRecord) => {
     if (paymentBusy) return;
@@ -189,7 +191,10 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
     try {
       const paid = await beginTestPayment(event.slug, record.full_name, record.email, record.phone_number);
       if (!paid.verified) throw new Error('Payment verification is incomplete.');
-      const updated: RegistrationRecord = { ...record, payment_status: 'Verified', registration_status: 'Confirmed', fee_paid: record.calculated_fee, razorpay_order_id: paid.orderId, razorpay_payment_id: paid.paymentId };
+      // Fetch authoritative server-persisted confirmation instead of constructing a paid record locally.
+      const registrations = await dataService.getUserRegistrations(record.user_id);
+      const updated = registrations.find((entry) => entry.id === record.id && entry.event_slug === event.slug);
+      if (!updated || !confirmedFor(updated)) throw new Error('Payment verified, but registration confirmation is still syncing. Reopen the registration to retrieve your ticket.');
       setConfirmedRecord(updated);
       setExistingRecord(updated);
       setAlreadyRegistered(true);
@@ -265,7 +270,7 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
       setConfirmedRecord(record);
       setExistingRecord(record);
       setAlreadyRegistered(true);
-      if (requiresPayment && record.payment_status !== 'Verified') {
+      if (paymentNeededFor(record)) {
         await payForRegistration(record);
       }
     } catch (err: any) {
@@ -316,12 +321,12 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
                 <CheckCircle2 className="w-8 h-8" />
               </div>
               <h3 className="text-lg font-bold text-white user-select-none">
-                You are already registered for this competition.
+                {existingRecord && !confirmedFor(existingRecord) ? 'Registration saved — payment required' : 'You are already registered for this competition.'}
               </h3>
               <p className="text-sm text-slate-400 max-w-md mx-auto">
-                Your entry for <span className="text-violet-300 font-semibold">{event.title}</span> has been saved. View your permanent Competition ID on your profile dashboard.
+                Your entry for <span className="text-violet-300 font-semibold">{event.title}</span> has been saved. {existingRecord && !confirmedFor(existingRecord) ? 'Complete the required test payment to confirm registration and unlock your ticket.' : 'View your competition ticket on your profile dashboard.'}
               </p>
-              {existingRecord && existingRecord.payment_status !== 'Verified' && event.payment_enabled === true && Number(event.fee_per_participant) > 0 && (
+              {existingRecord && paymentNeededFor(existingRecord) && (
                 <button type="button" disabled={paymentBusy} onClick={() => payForRegistration(existingRecord)}
                   className="px-5 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-semibold">
                   {paymentBusy ? 'Opening secure checkout...' : 'Complete Test Payment'}
@@ -348,14 +353,14 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
           ) : confirmedRecord ? (
             <div className="space-y-6 py-3 text-center">
               <div className="space-y-1">
-                <CheckCircle2 className="h-8 w-8 text-emerald-400 mx-auto" />
-                <h3 className="text-xl font-bold text-white">{confirmedRecord.registration_status === 'Confirmed' ? 'Registration Confirmed!' : 'Registration Saved — Payment Pending'}</h3>
+                {confirmedFor(confirmedRecord) ? <CheckCircle2 className="h-8 w-8 text-emerald-400 mx-auto" /> : <AlertCircle className="h-8 w-8 text-amber-400 mx-auto" />}
+                <h3 className="text-xl font-bold text-white">{confirmedFor(confirmedRecord) ? 'Registration Confirmed!' : 'Registration Saved — Payment Pending'}</h3>
                 <p className="text-xs text-slate-400">{confirmedRecord.payment_status === 'Verified' ? 'Test payment verified successfully. Your NEXORA entry is confirmed.' : (confirmedRecord.registration_status === 'Confirmed' ? 'Your registration has been confirmed. No online payment is required.' : 'Your entry is saved but is not confirmed until payment is verified.')}</p>
               </div>
-              {confirmedRecord.registration_status === 'Confirmed' ? <RegistrationTicket registration={confirmedRecord} /> : (
+              {confirmedFor(confirmedRecord) ? <RegistrationTicket registration={confirmedRecord} /> : (
                 <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-5 py-4 text-sm text-amber-100">Your ticket will become available once test payment is captured and verified.</div>
               )}
-              {requiresPayment && confirmedRecord.payment_status !== 'Verified' && (
+              {paymentNeededFor(confirmedRecord) && (
                 <button type="button" disabled={paymentBusy} onClick={() => payForRegistration(confirmedRecord)}
                   className="px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-semibold text-xs">
                   {paymentBusy ? 'Processing test payment...' : 'Pay Securely (Test Mode)'}
@@ -673,7 +678,7 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
                   disabled={submitting}
                   className="px-6 py-2.5 text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-purple-600 rounded-lg hover:from-violet-500 hover:to-purple-500 transition-all shadow-[0_0_20px_-5px_rgba(139,92,246,0.5)] disabled:opacity-50"
                 >
-                  {submitting ? 'Submitting Registration...' : `Save Registration (₹${calculatedTotalFee})`}
+                  {submitting ? 'Preparing Registration...' : (requiresPayment ? `Continue to Test Payment (₹${calculatedTotalFee})` : 'Confirm Free Registration')}
                 </button>
               </div>
             </form>

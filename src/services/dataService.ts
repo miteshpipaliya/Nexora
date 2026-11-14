@@ -709,19 +709,16 @@ class NexoraDataService {
     const user = auth.currentUser;
     if (!user) throw new Error('Authentication required to register for competitions.');
 
-    let idToken = '';
+    let idToken: string;
     try {
       idToken = await user.getIdToken();
     } catch {
-      // ignore
+      throw new Error('Your sign-in session is unavailable. Please sign in again before registering.');
     }
-
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`
     };
-    if (idToken) {
-      headers['Authorization'] = `Bearer ${idToken}`;
-    }
 
     const payload = {
       event_slug: data.event_slug,
@@ -754,6 +751,20 @@ class NexoraDataService {
       json = await res.json();
     } catch {
       json = null;
+    }
+
+    if (res.status === 401 && json?.code === 'AUTH_TOKEN_INVALID') {
+      try {
+        const refreshedToken = await user.getIdToken(true);
+        res = await fetch('/api/registrations/create', {
+          method: 'POST',
+          headers: { ...headers, Authorization: `Bearer ${refreshedToken}` },
+          body: JSON.stringify(payload)
+        });
+        json = await res.json().catch(() => null);
+      } catch {
+        throw new Error('Your sign-in session expired. Please sign in again before registering.');
+      }
     }
 
     if (!res.ok) {

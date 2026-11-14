@@ -14,6 +14,8 @@ export const RegistrationTicket: React.FC<RegistrationTicketProps> = ({ registra
   const [copied, setCopied] = useState(false);
   const reference = registration.reference_id || registration.id;
   const isTeam = Boolean(registration.team_name?.trim());
+  const paid = registration.payment_status === 'Verified';
+  const exempt = registration.payment_status === 'Exempt';
   const copyReference = async () => {
     try {
       await navigator.clipboard.writeText(reference);
@@ -70,7 +72,7 @@ export const RegistrationTicket: React.FC<RegistrationTicketProps> = ({ registra
             </div>
             <div className="mt-5 flex items-center justify-between gap-2 border-t border-dashed border-violet-400/30 pt-4">
               <span className="inline-flex items-center gap-1.5 font-mono text-[10px] text-violet-300/80"><Wallet className="h-3.5 w-3.5"/> PAYMENT STATUS</span>
-              <span className="rounded-md border border-amber-400/40 bg-amber-400/10 px-2.5 py-1 font-mono text-[11px] font-bold tracking-wider text-amber-300">● PENDING</span>
+              <span className={`rounded-md border px-2.5 py-1 font-mono text-[11px] font-bold tracking-wider ${paid || exempt ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-300' : 'border-amber-400/40 bg-amber-400/10 text-amber-300'}`}>{paid ? '● VERIFIED' : exempt ? '● FREE ENTRY' : '● PENDING'}</span>
             </div>
           </div>
 
@@ -87,7 +89,7 @@ export const RegistrationTicket: React.FC<RegistrationTicketProps> = ({ registra
           {Array.from({ length: 24 }, (_, i) => <span key={i} style={{ height: i % 4 === 0 ? 7 : i % 3 === 0 ? 5 : 3, width: i % 3 === 0 ? 2 : 1 }} className="bg-violet-300" />)}
         </div>
       </article>
-      <p className="mt-4 text-center text-xs text-slate-400">Registration recorded · ₹{registration.calculated_fee ?? 0} payable · Payment not yet verified</p>
+      <p className="mt-4 text-center text-xs text-slate-400">{paid ? `Registration confirmed · ₹${registration.fee_paid ?? registration.calculated_fee ?? 0} paid (TEST MODE)` : exempt ? 'Registration confirmed · No online payment required' : `Registration pending · ₹${registration.calculated_fee ?? 0} payable`}</p>
       {onClose && <button type="button" onClick={onClose} className="mt-4 w-full rounded-xl border border-violet-400/30 bg-violet-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-violet-500">Close Pass</button>}
     </div>
   );

@@ -1780,8 +1780,13 @@ apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/c
       if (!adminAuth) throw new Error('Firebase Admin Auth is unavailable.');
       decodedToken = await adminAuth.verifyIdToken(idToken);
     } catch (error: any) {
-      console.warn('[REGISTRATION] Firebase ID token verification failed:', error?.code || error?.name || 'verification_error');
-      res.status(401).json({ error: 'Invalid authentication credentials.' });
+      // A missing staging backend is a service outage, not invalid student credentials.
+      const unavailable = error instanceof ConfigError || /Firebase Admin Auth is unavailable/.test(String(error?.message || ''));
+      console.warn('[REGISTRATION] Firebase identity check failed:', unavailable ? 'configuration_unavailable' : (error?.code || error?.name || 'verification_error'));
+      res.status(unavailable ? 503 : 401).json({
+        error: unavailable ? 'Registration verification is temporarily unavailable. Please contact the organizer.' : 'Your sign-in session could not be verified. Please sign in again.',
+        code: unavailable ? 'AUTH_SERVICE_UNAVAILABLE' : 'AUTH_TOKEN_INVALID'
+      });
       return;
     }
     const userId = decodedToken.uid;
