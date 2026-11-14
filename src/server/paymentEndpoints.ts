@@ -131,8 +131,19 @@ export function registerPaymentEndpoints(deps: Deps) {
       if (['payment.captured', 'order.paid'].includes(kind) && /^order_[A-Za-z0-9]+$/.test(orderId)) {
         const stored = await paymentDoc(db, orderId).get();
         if (!stored.exists) { res.status(503).json({ error: 'Payment is not available for reconciliation.' }); return; }
-        const trusted = await razorpayRequest('GET', '/payments/' + (pay.id || stored.data()?.razorpay_payment_id || ''));
-        if (trusted.order_id !== orderId || trusted.status !== 'captured' || trusted.amount !== stored.data()?.amount_paise || trusted.currency !== 'INR') throw new Error('PAYMENT_MISMATCH');
+        const paymentId = String(pay.id || stored.data()?.razorpay_payment_id || '');
+        let trusted: Record<string, any> | undefined;
+        if (/^pay_[A-Za-z0-9]+$/.test(paymentId)) {
+          trusted = await razorpayRequest('GET', '/payments/' + paymentId);
+        } else {
+          // order.paid events may omit a payment entity: consult the gateway's captured payments.
+          const gatewayPayments = await razorpayRequest('GET', '/orders/' + orderId + '/payments');
+          trusted = Array.isArray(gatewayPayments.items) ? gatewayPayments.items.find((item: any) =>
+            item.status === 'captured' && item.order_id === orderId &&
+            item.amount === stored.data()?.amount_paise && item.currency === 'INR'
+          ) : undefined;
+        }
+        if (!trusted || trusted.order_id !== orderId || trusted.status !== 'captured' || trusted.amount !== stored.data()?.amount_paise || trusted.currency !== 'INR' || !/^pay_[A-Za-z0-9]+$/.test(String(trusted.id || ''))) throw new Error('PAYMENT_MISMATCH');
         await settle(db, orderId, trusted.id, 'captured');
       }
       if (kind === 'payment.failed' && /^order_[A-Za-z0-9]+$/.test(orderId) && /^pay_[A-Za-z0-9]+$/.test(pay.id || '')) {
