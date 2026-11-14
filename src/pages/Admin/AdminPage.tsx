@@ -370,6 +370,7 @@ export const AdminPage: React.FC = () => {
     isComingSoon: false,
     capacity: 60,
     fee_per_participant: 50,
+    payment_enabled: false,
     banner_image: '/images/competitions/zerocode.jpg',
     cover_image: '/images/competitions/zerocode.jpg',
     event_date: '',
@@ -957,6 +958,7 @@ export const AdminPage: React.FC = () => {
         registration_open: true,
         capacity: 60,
         fee_per_participant: 50,
+        payment_enabled: false,
         banner_image: '/images/competitions/zerocode.jpg'
       });
       loadDashboardData();
@@ -3472,6 +3474,13 @@ export const AdminPage: React.FC = () => {
                     className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
                   />
                 </div>
+                <label className="flex items-center gap-3 text-xs text-slate-300 mt-3">
+                  <input type="checkbox" checked={newEventData.payment_enabled === true}
+                    onChange={(e) => setNewEventData({ ...newEventData, payment_enabled: e.target.checked })}
+                    className="accent-violet-500" />
+                  Require Razorpay online payment (TEST MODE)
+                </label>
+
 
                 <div>
                   <label className="block text-slate-300 font-mono mb-1">Team Size Format</label>
@@ -3731,6 +3740,13 @@ export const AdminPage: React.FC = () => {
                     className="w-full px-3 py-2 bg-[#08080D] border border-violet-500/30 rounded-xl text-white"
                   />
                 </div>
+                <label className="flex items-center gap-3 text-xs text-slate-300 mt-3">
+                  <input type="checkbox" checked={editingEvent.payment_enabled === true}
+                    onChange={(e) => setEditingEvent({ ...editingEvent, payment_enabled: e.target.checked })}
+                    className="accent-violet-500" />
+                  Require Razorpay online payment (TEST MODE)
+                </label>
+
 
                 <div>
                   <label className="block text-slate-300 font-mono mb-1">Registration Open</label>
