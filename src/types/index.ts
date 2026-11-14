@@ -66,6 +66,7 @@ export interface CompetitionEvent {
   show_capacity?: boolean;
   registration_display_mode?: 'capacity' | 'count';
   fee_per_participant: number;
+  payment_enabled?: boolean;
   banner_image?: string;
   cover_image?: string;
   additional_images?: string[];
@@ -116,6 +117,9 @@ export interface RegistrationRecord {
   registration_status: RegistrationStatus;
   payment_status: PaymentStatus;
   calculated_fee: number;
+  fee_paid?: number;
+  razorpay_order_id?: string;
+  razorpay_payment_id?: string;
   created_at: string;
   updated_at: string;
 }
