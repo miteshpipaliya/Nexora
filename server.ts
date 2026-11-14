@@ -21,6 +21,7 @@ import { AdminOtpChallengeStore, AdminOtpRateLimitError, AdminOtpStorageError, t
 import { resolveFirebaseAdminConfig } from './src/server/firebaseAdminConfig';
 import { StudentOtpStore, StudentOtpRateLimitError, StudentOtpStorageError } from './src/server/studentOtpStore';
 import { createRegistrationOnce, RegistrationStoreError } from './src/server/registrationStore';
+import { registerPaymentEndpoints } from './src/server/paymentEndpoints';
 import { validateIndianMobile, normalizeIndianMobile } from './src/shared/lib/phoneUtils';
 // Server-only Firebase Admin SDK is initialized lazily in getAdminFirestore().
 
@@ -45,7 +46,7 @@ app.disable('x-powered-by');
 // route installs its own larger parser *after* admin-session authorization.
 const generalJsonParser = express.json({ limit: '100kb' });
 app.use((req, res, next) => {
-  if (req.method === 'POST' && req.path === '/api/admin/upload-image') return next();
+  if (req.method === 'POST' && (req.path === '/api/admin/upload-image' || req.path === '/api/payments/webhook' || req.path === '/payments/webhook')) return next();
   return generalJsonParser(req, res, next);
 });
 
@@ -1871,8 +1872,8 @@ apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/c
         team_members: memberNames,
         team_member_details: memberDetails,
         participant_count: memberDetails.length || memberNames.length || 1,
-        registration_status: 'Confirmed',
-        payment_status: 'Pending Verification',
+        registration_status: expectedFee > 0 ? 'Pending Review' : 'Confirmed',
+        payment_status: expectedFee > 0 ? 'Pending Verification' : 'Exempt',
         calculated_fee: expectedFee,
         fee_paid: 0,
         created_at: nowIso,
@@ -2360,6 +2361,9 @@ apiRouter.get('/admin/presence', requireElevatedAdmin, async (req, res) => {
     res.status(500).json({ error: 'Failed to read presence sessions.' });
   }
 });
+
+// Payment endpoints reuse existing Firebase Admin and registration documents.
+registerPaymentEndpoints({ apiRouter, getAdminFirestore, getAdminAuth });
 
 // Register CMS endpoints (Competitions, Broadcast Notifications, Image Library, Team CMS)
 registerCmsEndpoints({
