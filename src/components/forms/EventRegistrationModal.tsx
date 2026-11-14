@@ -361,7 +361,7 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
                   {paymentBusy ? 'Processing test payment...' : 'Pay Securely (Test Mode)'}
                 </button>
               )}
-              {errorMessage && <p role="alert" className="text-sm text-red-300">{errorMessage}</p>
+              {errorMessage && <p role="alert" className="text-sm text-red-300">{errorMessage}</p>}
               <div className="flex justify-center flex-wrap gap-3">
                 <Link to="/profile" onClick={onClose}
                   className="px-5 py-2.5 text-xs rounded-lg bg-violet-600 text-white font-semibold">
