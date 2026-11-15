@@ -11,16 +11,6 @@ html,body{margin:0;background:#020105}
   }
 }
 .nx-boot-glow{position:absolute;inset:-14%;background:radial-gradient(ellipse 34% 41% at 19% 27%,rgba(68,20,112,.23),transparent 82%),radial-gradient(ellipse 38% 36% at 82% 72%,rgba(71,31,120,.19),transparent 85%);filter:blur(30px);pointer-events:none}
-.nx-boot-star{position:absolute;border-radius:50%;box-shadow:0 0 4px rgba(186,152,239,.35)}
-.nx-boot-star-1{left:11%;top:18%;width:2px;height:2px;background:rgba(225,208,255,0.82)}
-.nx-boot-star-2{left:27%;top:69%;width:1.5px;height:1.5px;background:rgba(225,208,255,0.63)}
-.nx-boot-star-3{left:40%;top:28%;width:1.5px;height:1.5px;background:rgba(225,208,255,0.82)}
-.nx-boot-star-4{left:58%;top:81%;width:2px;height:2px;background:rgba(225,208,255,0.63)}
-.nx-boot-star-5{left:72%;top:17%;width:1.5px;height:1.5px;background:rgba(225,208,255,0.82)}
-.nx-boot-star-6{left:87%;top:56%;width:1.5px;height:1.5px;background:rgba(225,208,255,0.63)}
-.nx-boot-star-7{left:94%;top:29%;width:2px;height:2px;background:rgba(225,208,255,0.82)}
-.nx-boot-start{position:relative;display:flex;align-items:center;justify-content:center;background:transparent;border:0;padding:0;cursor:pointer;pointer-events:auto;max-width:100%;flex:none}
-.nx-boot-start img{display:block;filter:drop-shadow(0 0 26px rgba(145,88,227,.6))}
 .nx-boot-hint{position:relative;font:clamp(10px,1.15vw,14px) monospace;letter-spacing:.18em;color:#ddd6fe}
 
 /* Desktop first arrival: background first, phoenix rises for 2 seconds,
@@ -30,13 +20,21 @@ html,body{margin:0;background:#020105}
     position:absolute;left:50%;top:50%;
     transform:translate3d(-50%,calc(-50% + 55vh),0);opacity:0;
     will-change:transform,opacity;backface-visibility:hidden;
-    animation:nx-boot-rise 2s cubic-bezier(.22,.7,.22,1) both;
+    animation:nx-boot-rise 2s cubic-bezier(.25,.1,.25,1) both;
+    animation-play-state:paused;pointer-events:none;
+  }
+  html.nx-boot-playing:not(.nx-intro-done):not(.nx-intro-ready) .nx-boot-start{
+    animation-play-state:running;
   }
   html:not(.nx-intro-done):not(.nx-intro-ready) .nx-boot-hint{
     position:absolute;top:calc(50% + 176px);left:50%;
     width:max-content;max-width:90vw;text-align:center;
     transform:translateX(-50%);
     opacity:0;animation:nx-boot-prompt .65s ease-out 2s forwards;
+    animation-play-state:paused;
+  }
+  html.nx-boot-playing:not(.nx-intro-done):not(.nx-intro-ready) .nx-boot-hint{
+    animation-play-state:running;
   }
 }
 @keyframes nx-boot-rise{
