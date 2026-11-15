@@ -39,7 +39,7 @@ const ReactIntroReady: React.FC<{ children: React.ReactNode }> = ({ children }) 
           document.documentElement.classList.add('nx-intro-ready');
           document.getElementById('nx-first-paint-gate')?.remove();
         };
-        const remaining = Math.max(0, 2100 - performance.now());
+        const remaining = Math.max(0, 3200 - performance.now());
         timer = window.setTimeout(reveal, remaining);
       });
     });
