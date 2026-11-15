@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { isDesktopDevice } from './device/DeviceDetector';
 import { shouldPlayIntro, markIntroCompleted } from './shared/IntroCompletion';
 import App from '../../App';
@@ -28,20 +27,20 @@ class IntroBoundary extends React.Component<
 
 const ReactIntroReady: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   useEffect(() => {
-    const frame1 = requestAnimationFrame(() => {
-      const frame2 = requestAnimationFrame(() => {
-        // Reveal the styled React tree only after the intro has mounted.
+    let secondFrame = 0;
+    // React's start screen is mounted. Swap after a paint, without waiting
+    // for an entrance animation or imposing a fixed loading delay.
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
         const root = document.getElementById('root');
         if (root) root.style.visibility = 'visible';
         document.documentElement.classList.add('nx-intro-ready');
         document.getElementById('nx-first-paint-gate')?.remove();
       });
-      frameRef.current = frame2;
     });
-    const frameRef = { current: 0 };
     return () => {
-      cancelAnimationFrame(frame1);
-      cancelAnimationFrame(frameRef.current);
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
     };
   }, []);
   return <>{children}</>;
@@ -104,60 +103,19 @@ export const IntroWrapper: React.FC = () => {
       >
         <App />
       </main>
-      {introActive && createPortal(
+      {introActive && (
         <React.Suspense
-          fallback={
-            <div
-              role="status"
-              aria-label="Preparing NEXORA experience"
-              style={{
-                position: 'fixed',
-                inset: 0,
-                zIndex: 9999,
-                background: '#020105',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexDirection: 'column',
-                gap: '16px',
-                pointerEvents: 'none',
-                overflow: 'hidden',
-              }}
-            >
-              <div aria-hidden="true" style={{
-                position: 'absolute', inset: '-14%',
-                background: 'radial-gradient(ellipse 34% 41% at 19% 27%, rgba(68,20,112,0.23), transparent 82%), radial-gradient(ellipse 38% 36% at 82% 72%, rgba(71,31,120,0.19), transparent 85%)',
-                filter: 'blur(30px)',
-              }} />
-              <img
-                src="/images/intro/NEXORA%20LOGO.png?v=3"
-                alt=""
-                fetchPriority="high"
-                decoding="async"
-                style={{
-                  position: 'relative',
-                  width: 'clamp(180px, 30vw, 280px)',
-                  height: 'auto',
-                  filter: 'drop-shadow(0 0 26px rgba(145,88,227,0.6))',
-                }}
-              />
-              <span style={{
-                position: 'relative',
-                fontFamily: 'monospace',
-                fontSize: 'clamp(10px, 1.15vw, 14px)',
-                letterSpacing: '0.18em',
-                color: '#ddd6fe',
-              }}>&gt; CLICK LOGO TO START EXPERIENCE</span>
-            </div>
-          }
+          fallback={<div aria-hidden="true" style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: '#020105', pointerEvents: 'none',
+          }} />}
         >
           <IntroBoundary onError={handleComplete}>
             <ReactIntroReady>
               <DesktopIntro autoPlay onComplete={handleComplete} />
             </ReactIntroReady>
           </IntroBoundary>
-        </React.Suspense>,
-        document.body
+        </React.Suspense>
       )}
     </>
   );
