@@ -51,7 +51,7 @@ const ReactIntroReady: React.FC<{ children: React.ReactNode }> = ({ children }) 
       });
     });
     // Safety fallback only; normal hand-off follows the CSS animation event.
-    safetyTimer = window.setTimeout(reveal, 5000);
+    safetyTimer = window.setTimeout(reveal, 10000);
     return () => {
       cancelAnimationFrame(frame1);
       cancelAnimationFrame(frame2);
