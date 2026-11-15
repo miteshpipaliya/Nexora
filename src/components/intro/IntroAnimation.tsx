@@ -139,8 +139,13 @@ const END_S = SCENE_S + ZOOM_S + REVEAL_S; // 6.2
 type ExitMode = 'normal' | 'fast' | 'reduced';
 const rootVariants = {
   exit: (mode: ExitMode) => ({
-    opacity: 0,
-    transition: { duration: mode === 'fast' ? 0.35 : mode === 'reduced' ? 0.5 : REVEAL_S, ease: 'easeOut' as const },
+    // Keep the existing fog and camera animations intact. During the final
+    // reveal, let the already-mounted homepage gradually show through the mist,
+    // rather than cutting from an opaque fog frame to the page.
+    opacity: mode === 'normal' ? [1, 1, 0.94, 0.72, 0.35, 0] : 0,
+    transition: mode === 'normal'
+      ? { duration: REVEAL_S, times: [0, 0.16, 0.36, 0.58, 0.82, 1], ease: 'easeInOut' as const }
+      : { duration: mode === 'fast' ? 0.35 : 0.5, ease: 'easeOut' as const },
   }),
 };
 
@@ -172,39 +177,16 @@ const glassButton: React.CSSProperties = {
   backdropFilter: 'blur(10px)',
 };
 
-const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
+// Match the first-paint gate exactly so the React hand-off cannot change the sky.
+const Backdrop: React.FC<{ reduced: boolean }> = () => (
   <>
-    {/* Near-black galaxy from the supplied reference: violet haze ONLY in two
-        broad, edge-free clouds. No bright centralized gradient and no color bands. */}
+    <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: '#020105' }} />
     <div aria-hidden="true" style={{
-      position: 'absolute', inset: 0, pointerEvents: 'none',
-      background: '#020105',
-    }} />
-    <motion.div aria-hidden="true" style={{
       position: 'absolute', inset: '-14%', pointerEvents: 'none',
-      background:
-        'radial-gradient(ellipse 34% 41% at 19% 27%, rgba(68,20,112,0.23) 0%, rgba(42,12,80,0.12) 40%, transparent 82%), radial-gradient(ellipse 38% 36% at 82% 72%, rgba(71,31,120,0.19) 0%, rgba(41,15,76,0.09) 45%, transparent 85%)',
+      background: 'radial-gradient(ellipse 34% 41% at 19% 27%,rgba(68,20,112,.23),transparent 82%),radial-gradient(ellipse 38% 36% at 82% 72%,rgba(71,31,120,.19),transparent 85%)',
       filter: 'blur(30px)',
-    }}
-      animate={reduced ? undefined : { opacity: [0.78, 1, 0.82], x: [0, 8, 0] }}
-      transition={reduced ? undefined : { duration: 22, repeat: Infinity, ease: 'easeInOut' }}
-    />
-    {/* Sparse, subdued starlight scattered across the entire viewport. */}
-    {DESKTOP_PARTICLES.filter((_, i) => [4, 22, 51, 89, 136, 174, 217].includes(i)).map((p, i) => (
-      <motion.span key={i} aria-hidden="true" style={{
-        position: 'absolute',
-        left: `${p.left}%`, top: `${p.top}%`,
-        width: Math.min(p.size, 1.25), height: Math.min(p.size, 1.25),
-        borderRadius: '50%',
-        background: i % 13 === 0 ? '#eed4ff' : '#9d84c5',
-        opacity: p.alpha * 0.37,
-        boxShadow: i % 9 === 0 ? '0 0 4px rgba(172,122,232,0.23)' : 'none',
-      }}
-        initial={false}
-        animate={reduced ? undefined : { opacity: [p.alpha * 0.20, p.alpha * 0.48, p.alpha * 0.20] }}
-        transition={reduced ? undefined : { duration: p.twinkle + 8, delay: p.delay, repeat: Infinity, ease: 'easeInOut' }}
-      />
-    ))}
+    }} />
+
   </>
 );
 
@@ -328,7 +310,7 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
           boxSizing: 'border-box',
         }}
       >
-        <motion.button
+        <button
           type="button"
           className="nx-gate-logo"
           onClick={onStart}
@@ -347,31 +329,23 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
             minHeight: 'clamp(200px, 40vw, 340px)',
             touchAction: 'manipulation',
           }}
-          initial={{ opacity: 1, scale: 1 }}
-          animate={launching ? { opacity: 1, scale: 1.25 } : { opacity: 1, scale: 1 }}
-          transition={launching ? { duration: LAUNCH_MS / 1000, ease: 'easeIn' } : { duration: 1.2, ease: EASE }}
-          whileHover={launching ? undefined : { scale: 1.06 }}
-          whileTap={launching ? undefined : { scale: 0.96 }}
         >
-          <motion.img
+          <img
             src={MAIN_LOGO}
             alt=""
             draggable={false}
-            style={{ position: 'relative', width: 'clamp(180px, 30vw, 280px)', height: 'auto', pointerEvents: 'none', userSelect: 'none' }}
-            animate={
-              launching
-                ? { filter: 'drop-shadow(0 0 60px rgba(237,233,254,1)) brightness(1.8)' }
-                : {
-                    filter: [
-                      'drop-shadow(0 0 8px rgba(167,139,250,0.55)) drop-shadow(0 0 22px rgba(139,92,246,0.45)) brightness(1)',
-                      'drop-shadow(0 0 14px rgba(196,181,253,0.95)) drop-shadow(0 0 44px rgba(139,92,246,0.8)) brightness(1.15)',
-                      'drop-shadow(0 0 8px rgba(167,139,250,0.55)) drop-shadow(0 0 22px rgba(139,92,246,0.45)) brightness(1)',
-                    ],
-                  }
-            }
-            transition={launching ? { duration: LAUNCH_MS / 1000, ease: 'easeOut' } : { duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+            width={280}
+            height={262}
+            style={{
+              position: 'relative',
+              width: 'clamp(180px, 32vw, 280px)',
+              height: 'auto',
+              pointerEvents: 'none',
+              userSelect: 'none',
+              filter: 'drop-shadow(0 0 26px rgba(145,88,227,.6))',
+            }}
           />
-        </motion.button>
+        </button>
 
         <motion.div className="nx-typing-line" animate={{ opacity: launching ? 0 : 1 }} transition={{ duration: 0.2 }}>
           <TypingLine text={label} />
@@ -437,7 +411,10 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
         stopLater(2300); // let the "arrive" chord and wind ring out
       }
       setVisible(false); // reveal: overlay fades out, AnimatePresence then calls complete()
-      window.setTimeout(complete, fast ? 800 : reduced ? 1000 : 200); // safety net if the exit animation never reports back
+      // Do not unmount the intro 200ms into the 1.2s reveal: that was
+      // cutting the fog away before the homepage could emerge naturally.
+      // AnimatePresence normally calls complete(); this is only a fallback.
+      window.setTimeout(complete, fast ? 900 : reduced ? 1100 : Math.round(REVEAL_S * 1000) + 450);
     },
     [fadeOutAndStop, stopLater, complete, reduced]
   );
@@ -496,8 +473,9 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
             height: '100dvh',
             // Fallback for browsers that don't support dvh
             minHeight: '100vh',
-            background:
-              'radial-gradient(ellipse at 50% 50%, #211044 0%, #130a2a 48%, #080313 100%)',
+            background: started
+              ? 'radial-gradient(ellipse at 50% 50%, #211044 0%, #130a2a 48%, #080313 100%)'
+              : '#020105',
             zIndex: 9999,
             overflow: 'hidden',
             touchAction: 'none',
