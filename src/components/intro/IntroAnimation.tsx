@@ -340,7 +340,7 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
               filter: 'drop-shadow(0 0 26px rgba(145,88,227,.6))',
             }}
           />
-        </motion.button>
+        </button>
 
         <motion.div className="nx-typing-line" animate={{ opacity: launching ? 0 : 1 }} transition={{ duration: 0.2 }}>
           <TypingLine text={label} />
