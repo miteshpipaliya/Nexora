@@ -496,8 +496,9 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
             height: '100dvh',
             // Fallback for browsers that don't support dvh
             minHeight: '100vh',
-            background:
-              'radial-gradient(ellipse at 50% 50%, #211044 0%, #130a2a 48%, #080313 100%)',
+            background: started
+              ? 'radial-gradient(ellipse at 50% 50%, #211044 0%, #130a2a 48%, #080313 100%)'
+              : '#020105',
             zIndex: 9999,
             overflow: 'hidden',
             touchAction: 'none',
