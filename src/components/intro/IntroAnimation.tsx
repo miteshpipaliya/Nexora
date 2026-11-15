@@ -172,38 +172,32 @@ const glassButton: React.CSSProperties = {
   backdropFilter: 'blur(10px)',
 };
 
-const Backdrop: React.FC<{ reduced: boolean }> = ({ reduced }) => (
+// Match the first-paint gate exactly so the React hand-off cannot change the sky.
+const BOOT_STARS = [
+  { left: '11%', top: '18%', size: 2, alpha: .82 },
+  { left: '27%', top: '69%', size: 1.5, alpha: .63 },
+  { left: '40%', top: '28%', size: 1.5, alpha: .82 },
+  { left: '58%', top: '81%', size: 2, alpha: .63 },
+  { left: '72%', top: '17%', size: 1.5, alpha: .82 },
+  { left: '87%', top: '56%', size: 1.5, alpha: .63 },
+  { left: '94%', top: '29%', size: 2, alpha: .82 },
+];
+const Backdrop: React.FC<{ reduced: boolean }> = () => (
   <>
-    {/* Near-black galaxy from the supplied reference: violet haze ONLY in two
-        broad, edge-free clouds. No bright centralized gradient and no color bands. */}
+    <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: '#020105' }} />
     <div aria-hidden="true" style={{
-      position: 'absolute', inset: 0, pointerEvents: 'none',
-      background: '#020105',
-    }} />
-    <motion.div aria-hidden="true" style={{
       position: 'absolute', inset: '-14%', pointerEvents: 'none',
-      background:
-        'radial-gradient(ellipse 34% 41% at 19% 27%, rgba(68,20,112,0.23) 0%, rgba(42,12,80,0.12) 40%, transparent 82%), radial-gradient(ellipse 38% 36% at 82% 72%, rgba(71,31,120,0.19) 0%, rgba(41,15,76,0.09) 45%, transparent 85%)',
+      background: 'radial-gradient(ellipse 34% 41% at 19% 27%,rgba(68,20,112,.23),transparent 82%),radial-gradient(ellipse 38% 36% at 82% 72%,rgba(71,31,120,.19),transparent 85%)',
       filter: 'blur(30px)',
-    }}
-      animate={reduced ? undefined : { opacity: [0.78, 1, 0.82], x: [0, 8, 0] }}
-      transition={reduced ? undefined : { duration: 22, repeat: Infinity, ease: 'easeInOut' }}
-    />
-    {/* Sparse, subdued starlight scattered across the entire viewport. */}
-    {DESKTOP_PARTICLES.filter((_, i) => [4, 22, 51, 89, 136, 174, 217].includes(i)).map((p, i) => (
-      <motion.span key={i} aria-hidden="true" style={{
-        position: 'absolute',
-        left: `${p.left}%`, top: `${p.top}%`,
-        width: Math.min(p.size, 1.25), height: Math.min(p.size, 1.25),
-        borderRadius: '50%',
-        background: i % 13 === 0 ? '#eed4ff' : '#9d84c5',
-        opacity: p.alpha * 0.37,
-        boxShadow: i % 9 === 0 ? '0 0 4px rgba(172,122,232,0.23)' : 'none',
-      }}
-        initial={false}
-        animate={reduced ? undefined : { opacity: [p.alpha * 0.20, p.alpha * 0.48, p.alpha * 0.20] }}
-        transition={reduced ? undefined : { duration: p.twinkle + 8, delay: p.delay, repeat: Infinity, ease: 'easeInOut' }}
-      />
+    }} />
+    {BOOT_STARS.map((star, i) => (
+      <span key={i} aria-hidden="true" style={{
+        position: 'absolute', left: star.left, top: star.top,
+        width: star.size, height: star.size, borderRadius: '50%',
+        background: `rgba(225,208,255,${star.alpha})`,
+        boxShadow: '0 0 4px rgba(186,152,239,.35)',
+        pointerEvents: 'none',
+      }} />
     ))}
   </>
 );
