@@ -142,9 +142,9 @@ const rootVariants = {
     // Keep the existing fog and camera animations intact. During the final
     // reveal, let the already-mounted homepage gradually show through the mist,
     // rather than cutting from an opaque fog frame to the page.
-    opacity: mode === 'normal' ? [1, 0.96, 0.72, 0.38, 0] : 0,
+    opacity: mode === 'normal' ? [1, 1, 0.94, 0.72, 0.35, 0] : 0,
     transition: mode === 'normal'
-      ? { duration: REVEAL_S, times: [0, 0.18, 0.48, 0.76, 1], ease: 'easeInOut' as const }
+      ? { duration: REVEAL_S, times: [0, 0.16, 0.36, 0.58, 0.82, 1], ease: 'easeInOut' as const }
       : { duration: mode === 'fast' ? 0.35 : 0.5, ease: 'easeOut' as const },
   }),
 };
@@ -411,7 +411,10 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({
         stopLater(2300); // let the "arrive" chord and wind ring out
       }
       setVisible(false); // reveal: overlay fades out, AnimatePresence then calls complete()
-      window.setTimeout(complete, fast ? 800 : reduced ? 1000 : 200); // safety net if the exit animation never reports back
+      // Do not unmount the intro 200ms into the 1.2s reveal: that was
+      // cutting the fog away before the homepage could emerge naturally.
+      // AnimatePresence normally calls complete(); this is only a fallback.
+      window.setTimeout(complete, fast ? 900 : reduced ? 1100 : Math.round(REVEAL_S * 1000) + 450);
     },
     [fadeOutAndStop, stopLater, complete, reduced]
   );
