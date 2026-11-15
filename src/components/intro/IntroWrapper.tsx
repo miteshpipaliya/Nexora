@@ -27,36 +27,20 @@ class IntroBoundary extends React.Component<
 
 const ReactIntroReady: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   useEffect(() => {
-    let frame2 = 0;
-    let safetyTimer: number | undefined;
-    let finished = false;
-    const gate = document.getElementById('nx-first-paint-gate');
-    const hint = gate?.querySelector('.nx-boot-hint');
-    const reveal = () => {
-      if (finished) return;
-      finished = true;
-      const root = document.getElementById('root');
-      if (root) root.style.visibility = 'visible';
-      document.documentElement.classList.add('nx-intro-ready');
-      gate?.remove();
-    };
-    // Hand off when the actual CSS animation completes, not an arbitrary
-    // timeout measured from module startup (which caused pauses on slow loads).
-    hint?.addEventListener('animationend', reveal, { once: true });
-    const frame1 = requestAnimationFrame(() => {
-      frame2 = requestAnimationFrame(() => {
-        if (!hint || getComputedStyle(hint).animationName === 'none') {
-          reveal();
-        }
+    let secondFrame = 0;
+    // React's start screen is mounted. Swap after a paint, without waiting
+    // for an entrance animation or imposing a fixed loading delay.
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        const root = document.getElementById('root');
+        if (root) root.style.visibility = 'visible';
+        document.documentElement.classList.add('nx-intro-ready');
+        document.getElementById('nx-first-paint-gate')?.remove();
       });
     });
-    // Safety fallback only; normal hand-off follows the CSS animation event.
-    safetyTimer = window.setTimeout(reveal, 10000);
     return () => {
-      cancelAnimationFrame(frame1);
-      cancelAnimationFrame(frame2);
-      if (safetyTimer !== undefined) window.clearTimeout(safetyTimer);
-      hint?.removeEventListener('animationend', reveal);
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
     };
   }, []);
   return <>{children}</>;
