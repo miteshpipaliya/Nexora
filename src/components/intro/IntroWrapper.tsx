@@ -27,20 +27,26 @@ class IntroBoundary extends React.Component<
 
 const ReactIntroReady: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   useEffect(() => {
+    let timer: number | undefined;
+    let frame2 = 0;
     const frame1 = requestAnimationFrame(() => {
-      const frame2 = requestAnimationFrame(() => {
-        // Reveal the styled React tree only after the intro has mounted.
-        const root = document.getElementById('root');
-        if (root) root.style.visibility = 'visible';
-        document.documentElement.classList.add('nx-intro-ready');
-        document.getElementById('nx-first-paint-gate')?.remove();
+      frame2 = requestAnimationFrame(() => {
+        // Keep the first-paint gate in front until its two-second rise finishes.
+        // The React intro is already mounted behind it, ready for the hand-off.
+        const reveal = () => {
+          const root = document.getElementById('root');
+          if (root) root.style.visibility = 'visible';
+          document.documentElement.classList.add('nx-intro-ready');
+          document.getElementById('nx-first-paint-gate')?.remove();
+        };
+        const remaining = Math.max(0, 2100 - performance.now());
+        timer = window.setTimeout(reveal, remaining);
       });
-      frameRef.current = frame2;
     });
-    const frameRef = { current: 0 };
     return () => {
       cancelAnimationFrame(frame1);
-      cancelAnimationFrame(frameRef.current);
+      cancelAnimationFrame(frame2);
+      if (timer !== undefined) window.clearTimeout(timer);
     };
   }, []);
   return <>{children}</>;
