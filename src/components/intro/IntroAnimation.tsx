@@ -305,7 +305,7 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
           boxSizing: 'border-box',
         }}
       >
-        <motion.button
+        <button
           type="button"
           className="nx-gate-logo"
           onClick={onStart}
@@ -324,29 +324,21 @@ const StartGate: React.FC<{ reduced: boolean; launching: boolean; onStart: () =>
             minHeight: 'clamp(200px, 40vw, 340px)',
             touchAction: 'manipulation',
           }}
-          initial={{ opacity: 1, scale: 1 }}
-          animate={launching ? { opacity: 1, scale: 1.25 } : { opacity: 1, scale: 1 }}
-          transition={launching ? { duration: LAUNCH_MS / 1000, ease: 'easeIn' } : { duration: 1.2, ease: EASE }}
-          whileHover={launching ? undefined : { scale: 1.06 }}
-          whileTap={launching ? undefined : { scale: 0.96 }}
         >
-          <motion.img
+          <img
             src={MAIN_LOGO}
             alt=""
             draggable={false}
-            style={{ position: 'relative', width: 'clamp(180px, 30vw, 280px)', height: 'auto', pointerEvents: 'none', userSelect: 'none' }}
-            animate={
-              launching
-                ? { filter: 'drop-shadow(0 0 60px rgba(237,233,254,1)) brightness(1.8)' }
-                : {
-                    filter: [
-                      'drop-shadow(0 0 8px rgba(167,139,250,0.55)) drop-shadow(0 0 22px rgba(139,92,246,0.45)) brightness(1)',
-                      'drop-shadow(0 0 14px rgba(196,181,253,0.95)) drop-shadow(0 0 44px rgba(139,92,246,0.8)) brightness(1.15)',
-                      'drop-shadow(0 0 8px rgba(167,139,250,0.55)) drop-shadow(0 0 22px rgba(139,92,246,0.45)) brightness(1)',
-                    ],
-                  }
-            }
-            transition={launching ? { duration: LAUNCH_MS / 1000, ease: 'easeOut' } : { duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+            width={280}
+            height={262}
+            style={{
+              position: 'relative',
+              width: 'clamp(180px, 32vw, 280px)',
+              height: 'auto',
+              pointerEvents: 'none',
+              userSelect: 'none',
+              filter: 'drop-shadow(0 0 26px rgba(145,88,227,.6))',
+            }}
           />
         </motion.button>
 
