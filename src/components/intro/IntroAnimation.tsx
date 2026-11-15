@@ -173,15 +173,6 @@ const glassButton: React.CSSProperties = {
 };
 
 // Match the first-paint gate exactly so the React hand-off cannot change the sky.
-const BOOT_STARS = [
-  { left: '11%', top: '18%', size: 2, alpha: .82 },
-  { left: '27%', top: '69%', size: 1.5, alpha: .63 },
-  { left: '40%', top: '28%', size: 1.5, alpha: .82 },
-  { left: '58%', top: '81%', size: 2, alpha: .63 },
-  { left: '72%', top: '17%', size: 1.5, alpha: .82 },
-  { left: '87%', top: '56%', size: 1.5, alpha: .63 },
-  { left: '94%', top: '29%', size: 2, alpha: .82 },
-];
 const Backdrop: React.FC<{ reduced: boolean }> = () => (
   <>
     <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: '#020105' }} />
@@ -190,15 +181,7 @@ const Backdrop: React.FC<{ reduced: boolean }> = () => (
       background: 'radial-gradient(ellipse 34% 41% at 19% 27%,rgba(68,20,112,.23),transparent 82%),radial-gradient(ellipse 38% 36% at 82% 72%,rgba(71,31,120,.19),transparent 85%)',
       filter: 'blur(30px)',
     }} />
-    {BOOT_STARS.map((star, i) => (
-      <span key={i} aria-hidden="true" style={{
-        position: 'absolute', left: star.left, top: star.top,
-        width: star.size, height: star.size, borderRadius: '50%',
-        background: `rgba(225,208,255,${star.alpha})`,
-        boxShadow: '0 0 4px rgba(186,152,239,.35)',
-        pointerEvents: 'none',
-      }} />
-    ))}
+
   </>
 );
 
