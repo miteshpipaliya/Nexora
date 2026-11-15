@@ -13,37 +13,17 @@ html,body{margin:0;background:#020105}
 .nx-boot-glow{position:absolute;inset:-14%;background:radial-gradient(ellipse 34% 41% at 19% 27%,rgba(68,20,112,.23),transparent 82%),radial-gradient(ellipse 38% 36% at 82% 72%,rgba(71,31,120,.19),transparent 85%);filter:blur(30px);pointer-events:none}
 .nx-boot-hint{position:relative;font:clamp(10px,1.15vw,14px) monospace;letter-spacing:.18em;color:#ddd6fe}
 
-/* Desktop first arrival: background first, phoenix rises for 2 seconds,
-   then the start prompt appears. No animation or intro on touch/tablet. */
+/* Static, immediately clickable desktop start screen. No motion or timers. */
 @media (min-width:1025px) and (hover:hover) and (pointer:fine){
   html:not(.nx-intro-done):not(.nx-intro-ready) .nx-boot-start{
-    position:absolute;left:50%;top:50%;
-    transform:translate3d(-50%,calc(-50% + 55vh),0);opacity:0;
-    will-change:transform,opacity;backface-visibility:hidden;
-    animation:nx-boot-rise 2s cubic-bezier(.25,.1,.25,1) both;
-    animation-play-state:paused;pointer-events:none;
-  }
-  html.nx-boot-playing:not(.nx-intro-done):not(.nx-intro-ready) .nx-boot-start{
-    animation-play-state:running;
+    position:relative;
+    flex:none;
+    pointer-events:auto;
   }
   html:not(.nx-intro-done):not(.nx-intro-ready) .nx-boot-hint{
-    position:absolute;top:calc(50% + 176px);left:50%;
-    width:max-content;max-width:90vw;text-align:center;
-    transform:translateX(-50%);
-    opacity:0;animation:nx-boot-prompt .65s ease-out 2s forwards;
-    animation-play-state:paused;
+    position:relative;
+    opacity:1;
+    text-align:center;
+    max-width:90vw;
   }
-  html.nx-boot-playing:not(.nx-intro-done):not(.nx-intro-ready) .nx-boot-hint{
-    animation-play-state:running;
-  }
-}
-@keyframes nx-boot-rise{
-  0%{transform:translate3d(-50%,calc(-50% + 55vh),0);opacity:0;pointer-events:none}
-  15%{opacity:1;pointer-events:none}
-  99%{pointer-events:none}
-  100%{transform:translate3d(-50%,-50%,0);opacity:1;pointer-events:auto}
-}
-@keyframes nx-boot-prompt{
-  from{opacity:0;letter-spacing:.3em}
-  to{opacity:1;letter-spacing:.18em}
 }
