@@ -139,8 +139,13 @@ const END_S = SCENE_S + ZOOM_S + REVEAL_S; // 6.2
 type ExitMode = 'normal' | 'fast' | 'reduced';
 const rootVariants = {
   exit: (mode: ExitMode) => ({
-    opacity: 0,
-    transition: { duration: mode === 'fast' ? 0.35 : mode === 'reduced' ? 0.5 : REVEAL_S, ease: 'easeOut' as const },
+    // Keep the existing fog and camera animations intact. During the final
+    // reveal, let the already-mounted homepage gradually show through the mist,
+    // rather than cutting from an opaque fog frame to the page.
+    opacity: mode === 'normal' ? [1, 0.96, 0.72, 0.38, 0] : 0,
+    transition: mode === 'normal'
+      ? { duration: REVEAL_S, times: [0, 0.18, 0.48, 0.76, 1], ease: 'easeInOut' as const }
+      : { duration: mode === 'fast' ? 0.35 : 0.5, ease: 'easeOut' as const },
   }),
 };
 
