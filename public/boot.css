@@ -1,6 +1,6 @@
 html,body{margin:0;background:#140B30}
 .nx-boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#140B30;z-index:9998}
-.nx-boot img{width:clamp(180px,32vw,280px);height:auto;max-width:80vw;transform:translateY(-20px)}
+.nx-boot img{width:clamp(180px,32vw,280px);height:auto;max-width:80vw;transform:none}
 #root{visibility:hidden}
 #nx-first-paint-gate{display:none}
 #nx-first-paint-start:focus-visible{outline:2px solid #c4b5fd;outline-offset:5px;border-radius:12px}
@@ -22,3 +22,28 @@ html,body{margin:0;background:#140B30}
 .nx-boot-start{position:relative;display:flex;align-items:center;justify-content:center;background:transparent;border:0;padding:0;cursor:pointer;pointer-events:auto;max-width:100%;flex:none}
 .nx-boot-start img{display:block;filter:drop-shadow(0 0 26px rgba(145,88,227,.6))}
 .nx-boot-hint{position:relative;font:clamp(10px,1.15vw,14px) monospace;letter-spacing:.18em;color:#ddd6fe}
+
+/* Desktop first arrival: background first, phoenix rises for 2 seconds,
+   then the start prompt appears. No animation or intro on touch/tablet. */
+@media (min-width:1025px) and (hover:hover) and (pointer:fine){
+  html:not(.nx-intro-done):not(.nx-intro-ready) .nx-boot-start{
+    position:absolute;left:50%;top:50%;
+    animation:nx-boot-rise 2s cubic-bezier(.2,.72,.18,1) both;
+  }
+  html:not(.nx-intro-done):not(.nx-intro-ready) .nx-boot-hint{
+    position:absolute;top:calc(50% + 176px);left:50%;
+    width:max-content;max-width:90vw;text-align:center;
+    transform:translateX(-50%);
+    opacity:0;animation:nx-boot-prompt .65s ease-out 2s forwards;
+  }
+}
+@keyframes nx-boot-rise{
+  0%{transform:translate(-50%,calc(-50% + 55vh));opacity:0;pointer-events:none}
+  12%{opacity:1;pointer-events:none}
+  99%{pointer-events:none}
+  100%{transform:translate(-50%,-50%);opacity:1;pointer-events:auto}
+}
+@keyframes nx-boot-prompt{
+  from{opacity:0;letter-spacing:.3em}
+  to{opacity:1;letter-spacing:.18em}
+}
