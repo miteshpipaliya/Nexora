@@ -6,14 +6,30 @@ type CheckoutConstructor = new (options: Record<string, unknown>) => RazorpayIns
 
 declare global { interface Window { Razorpay?: CheckoutConstructor } }
 let checkoutScript: Promise<void> | null = null;
-function loadRazorpay() {
+function loadRazorpay(): Promise<void> {
   if (window.Razorpay) return Promise.resolve();
   if (!checkoutScript) checkoutScript = new Promise<void>((resolve, reject) => {
     const script = document.createElement('script');
     script.src = 'https://checkout.razorpay.com/v1/checkout.js';
     script.async = true;
-    script.onload = () => window.Razorpay ? resolve() : reject(new Error('Razorpay checkout could not load.'));
-    script.onerror = () => { checkoutScript = null; reject(new Error('Unable to load the secure payment checkout.')); };
+    let settled = false;
+    const timeout = window.setTimeout(() => fail('Razorpay checkout timed out. Please check your connection and retry.'), 15000);
+    function fail(message: string) {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      script.remove();
+      checkoutScript = null;
+      reject(new Error(message));
+    }
+    script.onload = () => {
+      if (!window.Razorpay) return fail('Razorpay checkout could not initialize. Please retry.');
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      resolve();
+    };
+    script.onerror = () => fail('Unable to load the secure payment checkout. Please check browser extensions and retry.');
     document.head.appendChild(script);
   });
   return checkoutScript;
