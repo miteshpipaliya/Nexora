@@ -65,10 +65,17 @@ describe('Razorpay server-side payment boundaries (no live gateway)', () => {
     const res = await post('create-order', { event_slug: '../unsafe' }, 'valid-test-token');
     expect(res.status).toBe(400);
   });
-  it('forbids online payments for competitions whose payment toggle is off', async () => {
-    const res = await post('create-order', { event_slug: slug }, 'valid-test-token');
-    expect(res.status).toBe(403);
-    expect((await res.json()).code).toBe('PAYMENT_DISABLED');
+  it('forbids online payments for truly free competitions', async () => {
+    const event = records['events/' + slug];
+    const originalFee = event.fee_per_participant;
+    event.fee_per_participant = 0;
+    try {
+      const res = await post('create-order', { event_slug: slug }, 'valid-test-token');
+      expect(res.status).toBe(403);
+      expect((await res.json()).code).toBe('PAYMENT_DISABLED');
+    } finally {
+      event.fee_per_participant = originalFee;
+    }
   });
   it('never accepts a claimed payment without authentication', async () => {
     const res = await post('verify', { razorpay_order_id: 'order_test123', razorpay_payment_id: 'pay_test123', razorpay_signature: 'a'.repeat(64) });
