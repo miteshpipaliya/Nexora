@@ -1855,7 +1855,8 @@ apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/c
       const bvmFee = ev?.bvm_fee ?? ev?.fee_per_participant ?? 50;
       const externalFee = ev?.external_fee ?? ev?.fee_per_participant ?? 70;
       const expectedFee = isBvm ? bvmFee : externalFee;
-      const paymentRequired = ev?.payment_enabled === true && Number(ev?.fee_per_participant) > 0;
+      // Paid competitions must never be confirmed as free when an admin toggle is disabled.
+      const paymentRequired = Number(ev?.fee_per_participant) > 0;
       const participantCount = (Array.isArray(team_member_details) && team_member_details.length) || (Array.isArray(team_members) && team_members.length) || 1;
       const memberDetails = Array.isArray(team_member_details) ? team_member_details : [];
       const memberNames = Array.isArray(team_members) ? team_members : [];
@@ -1881,7 +1882,7 @@ apiRouter.post(['/registrations/create', '/registrations', '/api/registrations/c
         participant_count: participantCount,
         registration_status: paymentRequired ? 'Pending Review' : 'Confirmed',
         payment_status: paymentRequired ? 'Pending Verification' : 'Exempt',
-        calculated_fee: paymentRequired ? Number(ev?.fee_per_participant) * participantCount : expectedFee,
+        calculated_fee: paymentRequired ? Number(ev?.fee_per_participant) * participantCount : 0,
         fee_paid: 0,
         created_at: nowIso,
         updated_at: nowIso
