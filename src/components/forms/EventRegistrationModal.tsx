@@ -180,7 +180,7 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
   const activeExtraMembers = teamMembers.filter((m) => m.name.trim().length > 0);
   const totalParticipants = isTeamEvent ? 1 + activeExtraMembers.length : 1;
   const calculatedTotalFee = totalParticipants * (Number(event.fee_per_participant) || 0);
-  const requiresPayment = event.payment_enabled === true && calculatedTotalFee > 0;
+  const requiresPayment = calculatedTotalFee > 0;
   const paymentNeededFor = (record: RegistrationRecord) => record.payment_status !== 'Verified' && record.payment_status !== 'Exempt' && record.registration_status !== 'Confirmed';
   const confirmedFor = (record: RegistrationRecord) => record.registration_status === 'Confirmed' && (record.payment_status === 'Verified' || record.payment_status === 'Exempt');
 
