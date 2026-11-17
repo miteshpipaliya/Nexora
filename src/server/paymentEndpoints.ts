@@ -71,6 +71,7 @@ function fail(res: Response, error: unknown) {
     ORDER_PENDING: [409, 'Payment order is already being created. Please retry shortly.'],
     PAYMENT_MISMATCH: [400, 'Payment verification failed.'],
     PAYMENT_NOT_CAPTURED: [409, 'Payment has not been captured yet.'],
+    PAYMENT_NOT_READY: [409, 'Payment has not been confirmed yet.'],
   };
   const [status, message] = map[code] || [500, 'Unable to process payment safely.'];
   if (status >= 500) console.error('[PAYMENTS]', code in map ? code : 'INTERNAL');
@@ -92,7 +93,7 @@ async function settle(db: any, orderId: string, paymentId: string, status: 'capt
     if (reg.user_id !== payment.user_id || reg.event_slug !== payment.event_slug) throw new Error('PAYMENT_MISMATCH');
     if (payment.status === 'captured') {
       if (payment.razorpay_payment_id !== paymentId) throw new Error('PAYMENT_MISMATCH');
-      return { alreadyVerified: true };
+      return { alreadyVerified: true, registration: { ...reg, id: regSnap.id } };
     }
     if (status === 'captured') {
       if (reg.payment_status === 'Verified' && reg.razorpay_order_id !== orderId) throw new Error('ALREADY_PAID');
@@ -101,7 +102,7 @@ async function settle(db: any, orderId: string, paymentId: string, status: 'capt
     } else if (payment.status !== 'failed') {
       tx.update(ref, { status: 'failed', updated_at: new Date().toISOString() });
     }
-    return { alreadyVerified: false };
+    return { alreadyVerified: false, registration: status === 'captured' ? { ...reg, id: regSnap.id, registration_status: 'Confirmed', payment_status: 'Verified', razorpay_order_id: orderId, razorpay_payment_id: paymentId, fee_paid: payment.amount_paise / 100 } : undefined };
   });
 }
 
@@ -180,7 +181,8 @@ export function registerPaymentEndpoints(deps: Deps) {
           if (old.state === 'creating' && Date.now() - old.started_at < 120000) throw new Error('ORDER_PENDING');
         }
         const count = Math.max(1, Math.floor(Number(reg.participant_count) || 1));
-        const amount = money(event.fee_per_participant) * count;
+        // The server-issued registration snapshot is the immutable charge for this entry.
+        const amount = money(reg.calculated_fee);
         if (!amount) throw new Error('FREE_REGISTRATION');
         tx.set(intentRef, { state: 'creating', lease_id: leaseId, started_at: Date.now(), user_id: identity.uid, event_slug: slug, amount_paise: amount });
         return { amount };
@@ -202,6 +204,41 @@ export function registerPaymentEndpoints(deps: Deps) {
         tx.update(intentRef, { state: 'ready', order_id: order.id, updated_at: Date.now() });
       });
       res.json({ success: true, order_id: order.id, amount: preparation.amount, currency: 'INR', key_id: credentials().keyId });
+    } catch (e) { if (e instanceof z.ZodError) { res.status(400).json({ error: 'Invalid competition ID.' }); return; } fail(res, e); }
+  });
+
+  // Recover successful payments after a lost checkout callback, reload, or webhook delay.
+  apiRouter.post('/payments/status', async (req, res) => {
+    try {
+      const identity = await auth(req, deps);
+      const { event_slug: slug } = bodySchema.parse(req.body);
+      const db = await getAdminFirestore();
+      if (!db) throw new Error('SERVICE_UNAVAILABLE');
+      const regRef = db.collection('registrations').doc(registrationIdFor(identity.uid, slug));
+      const regSnap = await regRef.get();
+      if (!regSnap.exists || regSnap.data().user_id !== identity.uid) throw new Error('NOT_FOUND');
+      const registration = regSnap.data();
+      if (registration.payment_status === 'Verified' && registration.registration_status === 'Confirmed') {
+        res.json({ success: true, verified: true, registration: { ...registration, id: regSnap.id } }); return;
+      }
+      const intentSnap = await db.collection('payment_order_intents').doc(regRef.id).get();
+      const orderId = intentSnap.exists ? intentSnap.data().order_id : null;
+      if (typeof orderId === 'string' && /^order_[A-Za-z0-9]+$/.test(orderId)) {
+        const paymentSnap = await paymentDoc(db, orderId).get();
+        if (paymentSnap.exists) {
+          const payments = await razorpayRequest('GET', '/orders/' + orderId + '/payments');
+          const captured = Array.isArray(payments.items) ? payments.items.find((p: any) =>
+            p.order_id === orderId && p.status === 'captured' &&
+            p.currency === 'INR' && p.amount === paymentSnap.data().amount_paise &&
+            /^pay_[A-Za-z0-9]+$/.test(String(p.id || ''))
+          ) : null;
+          if (captured) {
+            const result = await settle(db, orderId, captured.id, 'captured');
+            res.json({ success: true, verified: true, ...result }); return;
+          }
+        }
+      }
+      res.json({ success: true, verified: false });
     } catch (e) { if (e instanceof z.ZodError) { res.status(400).json({ error: 'Invalid competition ID.' }); return; } fail(res, e); }
   });
 
