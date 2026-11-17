@@ -172,7 +172,8 @@ export function registerPaymentEndpoints(deps: Deps) {
         const event = eventSnap.data(), reg = regSnap.data();
         if (reg.user_id !== identity.uid || reg.event_slug !== slug || reg.registration_status === 'Cancelled') throw new Error('UNAUTHORIZED');
         if (event.isComingSoon || event.status !== 'Published' || event.registration_open === false) throw new Error('REGISTRATION_CLOSED');
-        if (event.payment_enabled !== true) throw new Error('PAYMENT_DISABLED');
+        // Any paid competition requires payment regardless of legacy admin toggle.
+        if (!(Number(event.fee_per_participant) > 0)) throw new Error('PAYMENT_DISABLED');
         if (reg.payment_status === 'Verified') throw new Error('ALREADY_PAID');
         // A previously opened order always uses its immutable fee snapshot.
         if (intentSnap.exists) {
