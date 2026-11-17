@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
-import { beginTestPayment } from '../../services/paymentCheckout';
+import { beginTestPayment, recoverTestPayment } from '../../services/paymentCheckout';
 import { CompetitionEvent, RegistrationRecord, TeamMemberDetail } from '../../types';
 import { NexoraLogo } from '../ui/NexoraLogo';
 import { RegistrationTicket } from '../common/RegistrationTicket';
@@ -189,12 +189,19 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
     setPaymentBusy(true);
     setErrorMessage(null);
     try {
-      const paid = await beginTestPayment(event.slug, record.full_name, record.email, record.phone_number);
-      if (!paid.verified) throw new Error('Payment verification is incomplete.');
-      // Fetch authoritative server-persisted confirmation instead of constructing a paid record locally.
-      const registrations = await dataService.getUserRegistrations(record.user_id);
-      const updated = registrations.find((entry) => entry.id === record.id && entry.event_slug === event.slug);
-      if (!updated || !confirmedFor(updated)) throw new Error('Payment verified, but registration confirmation is still syncing. Reopen the registration to retrieve your ticket.');
+      // Reconcile captured gateway payments before opening a new checkout attempt.
+      const recovered = await recoverTestPayment(event.slug);
+      let updated = recovered.verified ? recovered.registration as RegistrationRecord | undefined : undefined;
+      if (!updated) {
+        const paid = await beginTestPayment(event.slug, record.full_name, record.email, record.phone_number);
+        if (!paid.verified) throw new Error('Payment verification is incomplete.');
+        updated = paid.registration as RegistrationRecord | undefined;
+      }
+      if (!updated) {
+        const registrations = await dataService.getUserRegistrations(record.user_id);
+        updated = registrations.find((entry) => entry.id === record.id && entry.event_slug === event.slug);
+      }
+      if (!updated || !confirmedFor(updated)) throw new Error('Payment was processed, but confirmation is still syncing. Reopen this registration to recover your ticket.');
       setConfirmedRecord(updated);
       setExistingRecord(updated);
       setAlreadyRegistered(true);
