@@ -31,13 +31,17 @@ async function postPayment<T>(route: string, data: object): Promise<T> {
   if (!res.ok || !json?.success) throw new Error(json?.error || 'Payment request failed. Please retry.');
   return json as T;
 }
-export type VerifiedPayment = { verified: boolean; orderId: string; paymentId: string };
+export type VerifiedPayment = { verified: boolean; orderId: string; paymentId: string; registration?: Record<string, unknown> };
+export async function recoverTestPayment(eventSlug: string): Promise<{ verified: boolean; registration?: Record<string, unknown> }> {
+  return postPayment('status', { event_slug: eventSlug });
+}
 export async function beginTestPayment(eventSlug: string, name: string, email: string, phone: string): Promise<VerifiedPayment> {
   const order = await postPayment<{ success: boolean; order_id: string; key_id: string; amount: number; currency: string }>('create-order', { event_slug: eventSlug });
   if (!order.key_id.startsWith('rzp_test_')) throw new Error('Only Razorpay test payments are supported.');
   await loadRazorpay();
   return await new Promise<VerifiedPayment>((resolve, reject) => {
     let finished = false;
+    let verifying = false;
     const finish = (error?: Error, result?: VerifiedPayment) => {
       if (finished) return;
       finished = true;
@@ -53,16 +57,17 @@ export async function beginTestPayment(eventSlug: string, name: string, email: s
       prefill: { name, email, contact: phone },
       theme: { color: '#7C3AED' },
       handler: async (response: CheckoutPayload) => {
+        verifying = true;
         try {
-          const result = await postPayment<{ verified: boolean }>('verify', response);
+          const result = await postPayment<{ verified: boolean; registration?: Record<string, unknown> }>('verify', response);
           if (!result.verified) throw new Error('Payment could not be verified.');
-          finish(undefined, { verified: true, orderId: response.razorpay_order_id, paymentId: response.razorpay_payment_id });
+          finish(undefined, { verified: true, orderId: response.razorpay_order_id, paymentId: response.razorpay_payment_id, registration: result.registration });
         } catch (error) { finish(error instanceof Error ? error : new Error('Verification failed.')); }
       },
       modal: { ondismiss: () => {
         // A succeeded checkout can close just before the async verification finishes.
         // Never infer success from dismissal. The student may retry and the server reconciles.
-        if (!finished) finish(new Error('Checkout closed. If payment was captured, retry to verify your status.'));
+        if (!finished && !verifying) finish(new Error('Checkout closed. Your payment status will be checked before another attempt.'));
       }}
     });
     razorpay.on('payment.failed', () => finish(new Error('Test payment failed. No registration was confirmed.')));
