@@ -36,7 +36,15 @@ async function razorpayRequest(method: 'GET' | 'POST', path: string, payload?: o
       ...(payload ? { body: JSON.stringify(payload) } : {}),
       signal: controller.signal
     });
-    if (!response.ok) throw new Error('PAYMENT_GATEWAY_UNAVAILABLE');
+    if (!response.ok) {
+      // Never log credentials, Authorization headers, or raw provider responses.
+      if (response.status === 401 || response.status === 403) {
+        console.error('[PAYMENTS] Razorpay rejected the configured test credentials (HTTP ' + response.status + ').');
+        throw new Error('PAYMENT_AUTH_FAILED');
+      }
+      console.error('[PAYMENTS] Razorpay order/payment API returned HTTP ' + response.status + '.');
+      throw new Error('PAYMENT_GATEWAY_UNAVAILABLE');
+    }
     return await response.json() as Record<string, any>;
   } finally { clearTimeout(timeout); }
 }
@@ -61,6 +69,7 @@ function fail(res: Response, error: unknown) {
     UNAUTHORIZED: [401, 'Sign in to continue.'],
     SERVICE_UNAVAILABLE: [503, 'Payment service is temporarily unavailable.'],
     PAYMENT_NOT_CONFIGURED: [503, 'Test payments are not configured yet.'],
+    PAYMENT_AUTH_FAILED: [503, 'Razorpay Test Mode credentials were rejected. Update the matching test Key ID and Key Secret in Vercel Production, then redeploy.'],
     PAYMENT_GATEWAY_UNAVAILABLE: [503, 'Payment gateway is unavailable. Please retry later.'],
     INVALID_FEE: [400, 'Competition fee is invalid.'],
     NOT_FOUND: [404, 'Competition or registration was not found.'],
