@@ -7,7 +7,7 @@ export const InstallPage: React.FC = () => {
   return (
     <section className="min-h-[75vh] bg-[#08080D] px-4 py-14 text-slate-100">
       <div className="mx-auto max-w-4xl text-center">
-        <img src="/pwa-phoenix-512.png" alt="NEXORA purple phoenix logo" className="mx-auto h-40 w-40 rounded-2xl bg-black object-contain sm:h-52 sm:w-52" decoding="async" />
+        <img src="/pwa-phoenix-512.png?v=queen2" alt="NEXORA purple phoenix logo" className="mx-auto h-40 w-40 rounded-2xl bg-black object-contain sm:h-52 sm:w-52" decoding="async" />
         <p className="mt-5 text-xs font-semibold uppercase tracking-[.3em] text-violet-300">Official mobile web app</p>
         <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-5xl">NEXORA BVM — Mobile PWA Guide</h1>
         <p className="mx-auto mt-4 max-w-2xl text-slate-300">Add NEXORA to your Android or iPhone home screen using your browser. No APK, IPA, or separate account is needed. The website and installed app share the same live competitions, announcements and registrations.</p>
