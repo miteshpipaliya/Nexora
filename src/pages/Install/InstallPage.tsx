@@ -1,5 +1,5 @@
 import React from 'react';
-import { Smartphone, Share2, CheckCircle2, Globe2 } from 'lucide-react';
+import { Smartphone, Share2, CheckCircle2 } from 'lucide-react';
 import { isInstalledMobilePwa } from '../../pwa/mobilePwa';
 
 export const InstallPage: React.FC = () => {
@@ -38,7 +38,6 @@ export const InstallPage: React.FC = () => {
             <p className="mt-5 rounded-lg bg-violet-500/10 p-3 text-xs leading-5 text-violet-200">iOS uses Add to Home Screen, not an APK or IPA download. Available menu options depend on iOS and browser version.</p>
           </article>
         </div>
-        <p className="mt-8 flex items-center justify-center gap-2 text-sm text-slate-400"><Globe2 size={17}/> One NEXORA backend across website, Android and iOS.</p>
       </div>
     </section>
   );
