@@ -35,6 +35,10 @@ export const Footer: React.FC = () => {
     e.preventDefault();
     if (submitting) return; // Prevent double-clicks
     if (!senderName.trim() || !senderEmail.trim() || !contactMessage.trim()) return;
+    if (senderName.trim().length < 2 || contactMessage.trim().length < 10) {
+      setErrorMsg('Enter a name of at least 2 characters and a message of at least 10 characters.');
+      return;
+    }
 
     setSubmitting(true);
     setErrorMsg(null);
@@ -57,9 +61,11 @@ export const Footer: React.FC = () => {
       setCurrentSubmissionId((typeof crypto !== 'undefined' && crypto.randomUUID) 
         ? crypto.randomUUID() 
         : 'c0000000-0000-4000-8000-' + Date.now().toString(16).padStart(12, '0'));
-    } catch {
-      // User-friendly error message, never raw error or stack trace
-      setErrorMsg('We could not send your message right now. Please try again.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      setErrorMsg(/too many|rate.limit|429/i.test(message)
+        ? 'Too many messages sent. Please wait before trying again.'
+        : 'We could not send your message right now. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -203,6 +209,8 @@ export const Footer: React.FC = () => {
                 <input
                   type="text"
                   placeholder="Your Name"
+                  minLength={2}
+                  maxLength={80}
                   value={senderName}
                   onChange={(e) => setSenderName(e.target.value)}
                   required
@@ -220,6 +228,8 @@ export const Footer: React.FC = () => {
                 />
                 <textarea
                   placeholder="Your thoughts, questions, or faculty inquiry..."
+                  minLength={10}
+                  maxLength={2000}
                   rows={2}
                   value={contactMessage}
                   onChange={(e) => setContactMessage(e.target.value)}
