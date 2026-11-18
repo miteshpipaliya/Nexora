@@ -129,11 +129,13 @@ export async function playNotificationSound(notificationId?: string, forceTest: 
       if (playedNotificationIds.has(notificationId)) {
         return false;
       }
-      if (!claimSoundPlayback(notificationId)) {
+      // Do not claim the ID until audio is actually playable. Otherwise a
+      // suspended AudioContext permanently silences this notification.
+      if (audioCtx?.state === 'suspended') await audioCtx.resume().catch(() => {});
+      if (audioCtx?.state === 'running') {
+        if (!claimSoundPlayback(notificationId)) return false;
         playedNotificationIds.add(notificationId);
-        return false;
       }
-      playedNotificationIds.add(notificationId);
     }
 
     if (now - lastSoundPlayedAt < THROTTLE_MS) {
@@ -155,6 +157,11 @@ export async function playNotificationSound(notificationId?: string, forceTest: 
 
     if (audioCtx.state !== 'running') {
       return false; // Audio locked or browser blocked autoplay
+    }
+
+    if (notificationId && !forceTest && !playedNotificationIds.has(notificationId)) {
+      if (!claimSoundPlayback(notificationId)) return false;
+      playedNotificationIds.add(notificationId);
     }
 
     const ctx = audioCtx;
