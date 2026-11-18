@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { GlobalGalaxyBackground } from './components/layout/GlobalGalaxyBackground';
+import { isInstalledMobilePwa } from './pwa/mobilePwa';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 
@@ -59,7 +60,7 @@ export function App() {
           <BroadcastPopupContainer />
           <BroadcastToast />
           {/* Layer 1: Full-website animated galaxy background covering entire viewport */}
-          <GlobalGalaxyBackground />
+          {!isInstalledMobilePwa() && <GlobalGalaxyBackground />}
 
           {/* Layer 2: Page content layered over the global galaxy */}
           <div className="relative z-10 flex flex-col min-h-screen bg-transparent text-[#F8FAFC]">
