@@ -81,7 +81,7 @@
       "destination": "/api/index.ts"
     },
     {
-      "source": "/((?!sw\\.js$|offline\\.html$|manifest\\.webmanifest$|site\\.webmanifest$|icon-192\\.png$|icon-512\\.png$|icon-maskable-512\\.png$|.*\\.[a-zA-Z0-9]+$).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]
