@@ -169,6 +169,7 @@ export function useBroadcastPopups() {
   // Listen to siteMeta/broadcastSchedule
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
+    let fallbackInterval: ReturnType<typeof setInterval> | null = null;
 
     try {
       const scheduleRef = doc(db, 'siteMeta', 'broadcastSchedule');
@@ -184,7 +185,8 @@ export function useBroadcastPopups() {
         },
         () => {
           // Fallback to polling every 60s on listener error
-          const interval = setInterval(async () => {
+          if (fallbackInterval) return;
+          fallbackInterval = setInterval(async () => {
             try {
               const snap = await getDoc(scheduleRef);
               if (snap.exists() && Array.isArray(snap.data()?.items)) {
@@ -192,7 +194,6 @@ export function useBroadcastPopups() {
               }
             } catch {}
           }, 60000);
-          return () => clearInterval(interval);
         }
       );
     } catch {
@@ -201,6 +202,7 @@ export function useBroadcastPopups() {
 
     return () => {
       if (unsubscribe) unsubscribe();
+      if (fallbackInterval) clearInterval(fallbackInterval);
       activeTimersRef.current.forEach(t => clearTimeout(t));
       activeTimersRef.current.clear();
       retryTimersRef.current.forEach(t => clearTimeout(t));
