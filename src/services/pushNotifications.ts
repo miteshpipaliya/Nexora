@@ -3,6 +3,35 @@ import { getMessaging, getToken, deleteToken, isSupported, onMessage } from 'fir
 
 const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
 
+/** A newly installed worker may still be installing when register() resolves. */
+async function getActivePushWorker(): Promise<ServiceWorkerRegistration> {
+  const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+  if (registration.active) return registration;
+  const worker = registration.installing || registration.waiting;
+  if (!worker) throw new Error('Service worker is not available. Reload the page and try again.');
+  await new Promise<void>((resolve, reject) => {
+    if (registration.active) { resolve(); return; }
+    const timeout = window.setTimeout(() => {
+      worker.removeEventListener('statechange', onChange);
+      reject(new Error('Service worker activation timed out. Reload and try again.'));
+    }, 15000);
+    function onChange() {
+      if (registration.active || worker.state === 'activated') {
+        clearTimeout(timeout);
+        worker.removeEventListener('statechange', onChange);
+        resolve();
+      } else if (worker.state === 'redundant') {
+        clearTimeout(timeout);
+        worker.removeEventListener('statechange', onChange);
+        reject(new Error('Service worker installation failed. Reload and try again.'));
+      }
+    }
+    worker.addEventListener('statechange', onChange);
+    onChange();
+  });
+  return registration;
+}
+
 export async function enableNexoraPush(): Promise<void> {
   if (!auth.currentUser) throw new Error('Sign in to enable notifications.');
   if (!vapidKey) throw new Error('Firebase Web Push VAPID key is not configured.');
