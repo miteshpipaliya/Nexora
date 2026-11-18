@@ -10,6 +10,7 @@ import { Footer } from './components/layout/Footer';
 // Pages
 import { HomePage } from './pages/Home/HomePage';
 import { AboutPage } from './pages/About/AboutPage';
+import { InstallPage } from './pages/Install/InstallPage';
 import { CompetitionsHubPage } from './pages/Competitions/CompetitionsHubPage';
 import { ZeroCodePage } from './pages/Competitions/ZeroCodePage';
 import { CTFPage } from './pages/Competitions/CTFPage';
@@ -69,6 +70,7 @@ export function App() {
               <Routes>
                 <Route path="/" element={<ErrorBoundary><HomePage /></ErrorBoundary>} />
                 <Route path="/about" element={<ErrorBoundary><AboutPage /></ErrorBoundary>} />
+                <Route path="/install" element={<ErrorBoundary><InstallPage /></ErrorBoundary>} />
                 
                 {/* Competitions: Dynamic Firestore-backed routes */}
                 <Route path="/competitions" element={<ErrorBoundary><CompetitionsHubPage /></ErrorBoundary>} />
