@@ -2378,6 +2378,7 @@ registerCmsEndpoints({
   apiRouter,
   requireElevatedAdmin,
   getAdminFirestore,
+  getAdminAuth,
   recordAudit
 });
 
