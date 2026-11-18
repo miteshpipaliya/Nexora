@@ -31,6 +31,7 @@ import { DynamicCompetitionPage } from './pages/Competitions/DynamicCompetitionP
 import { useBroadcastPopups } from './features/notifications/useBroadcastPopups';
 import { BroadcastPopup } from './features/notifications/BroadcastPopup';
 import { BroadcastToast } from './components/common/BroadcastToast';
+import { listenForForegroundPush } from './services/pushNotifications';
 import { CopyGuard } from './components/common/CopyGuard';
 
 // Scroll to top helper on navigation
@@ -52,6 +53,12 @@ const BroadcastPopupContainer: React.FC = () => {
 };
 
 export function App() {
+  useEffect(() => {
+    let active = true;
+    let unsubscribe: (() => void) | undefined;
+    void listenForForegroundPush().then(stop => { if (active) unsubscribe = stop; else stop(); }).catch(() => {});
+    return () => { active = false; unsubscribe?.(); };
+  }, []);
   return (
     <ErrorBoundary>
       <AuthProvider>
