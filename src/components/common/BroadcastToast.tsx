@@ -100,7 +100,9 @@ export const BroadcastToast: React.FC = () => {
           if (n.status !== 'Published') return false;
           if (seen.has(n.id)) return false;
           const createdMs = new Date(n.created_at).getTime();
-          return !isNaN(createdMs) && (now - createdMs) >= 0 && (now - createdMs) < MAX_TOAST_AGE_MS &&\n            (!n.expires_at || Date.parse(n.expires_at) > now) &&\n            (!n.audience || n.audience === 'all' || (n.audience === 'admin' && !!user?.is_admin) || (n.audience === 'students' && !user?.is_admin));
+          return !isNaN(createdMs) && (now - createdMs) >= 0 && (now - createdMs) < MAX_TOAST_AGE_MS &&
+            (!n.expires_at || Date.parse(n.expires_at) > now) &&
+            (!n.audience || n.audience === 'all' || (n.audience === 'admin' && !!user?.is_admin) || (n.audience === 'students' && !user?.is_admin));
         });
 
         if (initialToasts.length > 0) {
