@@ -451,6 +451,42 @@ apiRouter.post('/admin/competitions', requireElevatedAdmin, async (req: Request,
   // 2. BROADCAST NOTIFICATIONS CRUD (PHASE 8)
   // ========================================================
 
+  // Public, server-filtered broadcast feed. Firestore collection-wide client listeners
+  // cannot read drafts under the production security rules.
+  apiRouter.get('/public/broadcasts', async (_req: Request, res: Response) => {
+    try {
+      const db = await getAdminFirestore();
+      if (!db) { res.status(503).json({ error: 'Broadcast service unavailable' }); return; }
+      const snapshot = await db.collection('notifications').orderBy('created_at', 'desc').limit(100).get();
+      const now = Date.now();
+      const parseTime = (value: any): number => {
+        if (!value) return NaN;
+        if (typeof value.toMillis === 'function') return value.toMillis();
+        return new Date(value).getTime();
+      };
+      const notifications = snapshot.docs.map((d: any) => ({ ...d.data(), id: d.id }))
+        .filter((n: any) => {
+          if (n.status !== 'Published') return false;
+          const start = parseTime(n.display_at || n.scheduled_for || n.publish_at);
+          const end = parseTime(n.expires_at);
+          return (!Number.isFinite(start) || start <= now) && (!Number.isFinite(end) || end > now);
+        }).map((n: any) => ({
+          id: n.id, title: n.title, message: n.message, category: n.category || 'Announcement',
+          priority: n.priority || 'Normal', audience: n.audience || 'all', status: 'Published',
+          created_at: n.created_at, display_at: n.display_at || n.publish_at || n.created_at,
+          expires_at: n.expires_at || null, link_url: n.link_url || null,
+          link_text: n.link_text || null, image_url: n.image_url || null,
+          show_popup: n.show_popup !== false, is_popup: n.is_popup === true,
+          popup_delay_seconds: n.popup_delay_seconds || 0, created_by: n.created_by || null
+        }));
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      res.json({ notifications });
+    } catch (err) {
+      console.error('[PUBLIC BROADCAST FEED ERROR]', err);
+      res.status(503).json({ error: 'Broadcast feed unavailable' });
+    }
+  });
+
   apiRouter.post('/admin/notifications', requireElevatedAdmin, async (req: Request, res: Response) => {
     try {
       const data = req.body;
