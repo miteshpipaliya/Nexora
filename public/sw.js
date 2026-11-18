@@ -5,7 +5,7 @@ self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
     // Never cache Vercel authentication HTML as an offline page.
-    for (const path of [OFFLINE, '/icon-192.png']) {
+    for (const path of [OFFLINE, '/pwa-phoenix-192.png']) {
       try {
         const response = await fetch(path, { cache: 'no-store', credentials: 'same-origin' });
         const type = response.headers.get('content-type') || '';
