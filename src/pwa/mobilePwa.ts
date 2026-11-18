@@ -1,3 +1,17 @@
+export type MobileInstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
+let pendingInstallPrompt: MobileInstallPrompt | null = null;
+export function getMobileInstallPrompt(): MobileInstallPrompt | null { return pendingInstallPrompt; }
+export function clearMobileInstallPrompt(): void { pendingInstallPrompt = null; }
+// Capture the event at application startup, before the /install route is mounted.
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', event => {
+    event.preventDefault();
+    pendingInstallPrompt = event as MobileInstallPrompt;
+    window.dispatchEvent(new Event('nexora-install-available'));
+  });
+  window.addEventListener('appinstalled', () => { pendingInstallPrompt = null; });
+}
+
 // PWA installation targets phones/tablets; desktop remains a conventional website.
 export function isInstalledMobilePwa(): boolean {
   if (typeof window === 'undefined') return false;
