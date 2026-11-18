@@ -1,23 +1,31 @@
 {
-  "name": "NEXORA",
+  "id": "/",
+  "name": "NEXORA BVM",
   "short_name": "NEXORA",
-  "description": "Student Technology & Innovation Community at BVM Engineering College (Birla Vishvakarma Mahavidyalaya), Vallabh Vidyanagar, Gujarat.",
+  "description": "NEXORA BVM student innovation, competitions and engineering community.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#05010F",
   "theme_color": "#05010F",
   "icons": [
     {
-      "src": "/nexora-phoenix-192.png",
+      "src": "/pwa-phoenix-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/phoenix-icon.svg?v=2",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/pwa-phoenix-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "/pwa-phoenix-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

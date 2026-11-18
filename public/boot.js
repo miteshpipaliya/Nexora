@@ -1,3 +1,12 @@
+// Installed mobile apps bypass all introductory gates and animations.
+try {
+  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (mobile && installed) {
+    document.documentElement.classList.add('nx-mobile-pwa', 'nx-intro-done', 'nx-intro-ready');
+  }
+} catch (_) {}
+
 // Preserve the original first-paint session gate logic before React starts.
 try {
   if (sessionStorage.getItem('introPlayed') === 'true' && new URLSearchParams(location.search).get('intro') !== '1') {

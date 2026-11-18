@@ -3,12 +3,14 @@ import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { GlobalGalaxyBackground } from './components/layout/GlobalGalaxyBackground';
+import { isInstalledMobilePwa } from './pwa/mobilePwa';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 
 // Pages
 import { HomePage } from './pages/Home/HomePage';
 import { AboutPage } from './pages/About/AboutPage';
+import { InstallPage } from './pages/Install/InstallPage';
 import { CompetitionsHubPage } from './pages/Competitions/CompetitionsHubPage';
 import { ZeroCodePage } from './pages/Competitions/ZeroCodePage';
 import { CTFPage } from './pages/Competitions/CTFPage';
@@ -59,7 +61,7 @@ export function App() {
           <BroadcastPopupContainer />
           <BroadcastToast />
           {/* Layer 1: Full-website animated galaxy background covering entire viewport */}
-          <GlobalGalaxyBackground />
+          {!isInstalledMobilePwa() && <GlobalGalaxyBackground />}
 
           {/* Layer 2: Page content layered over the global galaxy */}
           <div className="relative z-10 flex flex-col min-h-screen bg-transparent text-[#F8FAFC]">
@@ -68,6 +70,7 @@ export function App() {
               <Routes>
                 <Route path="/" element={<ErrorBoundary><HomePage /></ErrorBoundary>} />
                 <Route path="/about" element={<ErrorBoundary><AboutPage /></ErrorBoundary>} />
+                <Route path="/install" element={<ErrorBoundary><InstallPage /></ErrorBoundary>} />
                 
                 {/* Competitions: Dynamic Firestore-backed routes */}
                 <Route path="/competitions" element={<ErrorBoundary><CompetitionsHubPage /></ErrorBoundary>} />

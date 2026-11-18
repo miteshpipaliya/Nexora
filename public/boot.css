@@ -27,3 +27,8 @@ html,body{margin:0;background:#020105}
     max-width:90vw;
   }
 }
+
+/* Installed Android/iOS PWA: no motion, desktop intro, or animation overlays. */
+html.nx-mobile-pwa *,html.nx-mobile-pwa *::before,html.nx-mobile-pwa *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+html.nx-mobile-pwa #nx-first-paint-gate{display:none!important}
+html.nx-mobile-pwa #root{visibility:visible!important}
