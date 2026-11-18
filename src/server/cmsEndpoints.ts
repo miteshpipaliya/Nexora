@@ -544,7 +544,11 @@ apiRouter.post('/admin/competitions', requireElevatedAdmin, async (req: Request,
     const db = await getAdminFirestore();
     if (!db) throw new Error('Push database unavailable');
     const { getMessaging } = await import('firebase-admin/messaging');
-    const messaging = getMessaging(db.app);
+    // Firestore's .app is not a reliable public API. Auth is bound to the
+    // explicitly named Firebase Admin app initialized in server.ts.
+    const adminAuth = await getAdminAuth();
+    if (!adminAuth?.app) throw new Error('Firebase Admin app is unavailable for push delivery');
+    const messaging = getMessaging(adminAuth.app);
     const url = typeof notification.link_url === 'string' && /^\/(?!\/)/.test(notification.link_url)
       ? notification.link_url : '/';
     const audience = notification.audience || 'all';
