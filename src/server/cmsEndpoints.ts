@@ -7,6 +7,7 @@ export interface CmsEndpointsDependencies {
   apiRouter: Router;
   requireElevatedAdmin: (req: Request, res: Response, next: NextFunction) => void;
   getAdminFirestore: () => Promise<any>;
+  getAdminAuth: () => Promise<any>;
   recordAudit: (eventType: string, details: string) => void;
 }
 
@@ -282,6 +283,7 @@ export function registerCmsEndpoints({
   apiRouter,
   requireElevatedAdmin,
   getAdminFirestore,
+  getAdminAuth,
   recordAudit
 }: CmsEndpointsDependencies) {
 
@@ -487,6 +489,84 @@ apiRouter.post('/admin/competitions', requireElevatedAdmin, async (req: Request,
     }
   });
 
+  // Device tokens are stored server-side, keyed by SHA-256; never exposed to other clients.
+  const verifiedPushUser = async (req: Request): Promise<string | null> => {
+    const match = /^Bearer (.+)$/.exec(req.header('authorization') || '');
+    if (!match) return null;
+    const adminAuth = await getAdminAuth();
+    if (!adminAuth) return null;
+    try { return (await adminAuth.verifyIdToken(match[1], true)).uid as string; }
+    catch { return null; }
+  };
+  apiRouter.post('/push/subscriptions', async (req: Request, res: Response) => {
+    const uid = await verifiedPushUser(req);
+    if (!uid) { res.status(401).json({ error: 'Sign in required' }); return; }
+    const token = req.body?.token;
+    if (typeof token !== 'string' || token.length < 40 || token.length > 4096) {
+      res.status(400).json({ error: 'Invalid device token' }); return;
+    }
+    try {
+      const db = await getAdminFirestore();
+      if (!db) { res.status(503).json({ error: 'Push service unavailable' }); return; }
+      const id = crypto.createHash('sha256').update(token).digest('hex');
+      await db.collection('pushSubscriptions').doc(id).set({
+        uid, token, enabled: true, updatedAt: new Date().toISOString()
+      });
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ success: true });
+    } catch { res.status(503).json({ error: 'Could not save subscription' }); }
+  });
+  apiRouter.delete('/push/subscriptions', async (req: Request, res: Response) => {
+    const uid = await verifiedPushUser(req);
+    if (!uid) { res.status(401).json({ error: 'Sign in required' }); return; }
+    const token = req.body?.token;
+    if (typeof token !== 'string' || token.length < 40 || token.length > 4096) {
+      res.status(400).json({ error: 'Invalid device token' }); return;
+    }
+    try {
+      const db = await getAdminFirestore();
+      const id = crypto.createHash('sha256').update(token).digest('hex');
+      const ref = db.collection('pushSubscriptions').doc(id);
+      const existing = await ref.get();
+      if (existing.exists && existing.data()?.uid === uid) await ref.delete();
+      res.json({ success: true });
+    } catch { res.status(503).json({ error: 'Could not remove subscription' }); }
+  });
+
+  const sendBroadcastPush = async (notification: Record<string, any>) => {
+    if (notification.status !== 'Published') return;
+    const scheduled = Date.parse(notification.publish_at || notification.display_at || '');
+    if (Number.isFinite(scheduled) && scheduled > Date.now()) return;
+    const expiry = Date.parse(notification.expires_at || '');
+    if (Number.isFinite(expiry) && expiry <= Date.now()) return;
+    const db = await getAdminFirestore();
+    if (!db) return;
+    const { getMessaging } = await import('firebase-admin/messaging');
+    const messaging = getMessaging(db.app);
+    const snap = await db.collection('pushSubscriptions').where('enabled', '==', true).limit(500).get();
+    const docs = snap.docs.filter((doc: any) => typeof doc.data().token === 'string');
+    const url = typeof notification.link_url === 'string' && /^\/(?!\/)/.test(notification.link_url)
+      ? notification.link_url : '/';
+    // Data-only payload: one notification from our own service worker, without duplicate browser display.
+    for (let i = 0; i < docs.length; i += 500) {
+      const batch = docs.slice(i, i + 500);
+      const result = await messaging.sendEachForMulticast({
+        tokens: batch.map((doc: any) => doc.data().token),
+        data: {
+          title: String(notification.title || 'NEXORA BVM').slice(0, 120),
+          body: String(notification.message || '').slice(0, 500),
+          url, broadcastId: String(notification.id)
+        },
+        webpush: { headers: { TTL: '86400' } }
+      });
+      await Promise.all(result.responses.map(async (response: any, index: number) => {
+        if (response.error && /registration-token-not-registered|invalid-registration-token/.test(response.error.code || '')) {
+          await batch[index].ref.delete();
+        }
+      }));
+    }
+  };
+
   apiRouter.post('/admin/notifications', requireElevatedAdmin, async (req: Request, res: Response) => {
     try {
       const data = req.body;
@@ -540,6 +620,8 @@ apiRouter.post('/admin/competitions', requireElevatedAdmin, async (req: Request,
 
       await db.collection('notifications').doc(id).set(sanitizeForFirestore(notifDoc));
       recordAudit('NOTIFICATION_PUBLISHED', `Broadcast announcement: ${notifDoc.title}`);
+      // Push is best-effort: publishing must not fail if FCM is temporarily unavailable.
+      try { await sendBroadcastPush(notifDoc); } catch (pushError) { console.error('[PUSH DELIVERY ERROR]', pushError); }
 
       res.json({ success: true, notification: notifDoc });
     } catch (err: any) {
