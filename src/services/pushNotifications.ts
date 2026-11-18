@@ -1,5 +1,5 @@
 import { app, auth } from './firebase';
-import { getMessaging, getToken, deleteToken, isSupported } from 'firebase/messaging';
+import { getMessaging, getToken, deleteToken, isSupported, onMessage } from 'firebase/messaging';
 
 const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
 
@@ -39,4 +39,23 @@ export async function disableNexoraPush(): Promise<void> {
     if (!response.ok) throw new Error('Could not remove notification subscription.');
   }
   await deleteToken(messaging);
+}
+
+/** Show a notification when the web app is focused; background delivery uses /sw.js. */
+export async function listenForForegroundPush(): Promise<() => void> {
+  if (!(await isSupported())) return () => {};
+  return onMessage(getMessaging(app), payload => {
+    const data = payload.data || {};
+    if (Notification.permission !== 'granted') return;
+    const title = String(data.title || payload.notification?.title || 'NEXORA BVM');
+    const url = typeof data.url === 'string' && data.url.startsWith('/') && !data.url.startsWith('//') ? data.url : '/';
+    navigator.serviceWorker.ready.then(registration =>
+      registration.showNotification(title, {
+        body: String(data.body || payload.notification?.body || ''),
+        icon: '/pwa-phoenix-192.png',
+        tag: String(data.broadcastId || 'nexora-broadcast'),
+        data: { url }
+      })
+    ).catch(error => console.warn('Foreground push display unavailable:', error));
+  });
 }
