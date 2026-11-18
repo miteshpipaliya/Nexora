@@ -9,4 +9,4 @@
 7. Test **Disable Notifications** and verify delivery stops for that device.
 8. Run `npm run lint`, `npm test`, and `npm run build` before merging. Confirm Vercel preview is READY.
 
-**Limitations in this first version:** push is sent immediately for newly published, unscheduled **Everyone** broadcasts only, to the first 500 subscribed devices. Future-scheduled announcements and audience-targeted notifications still use the existing in-app broadcast feed. Do not merge until those delivery requirements are addressed if needed. Native push delivery is best effort, not guaranteed, and cannot display while a phone is fully powered off.
+**Limitations in this first version:** push is sent immediately for newly published, unscheduled broadcasts, paginated across subscribed devices and filtered by their verified admin role. Future-scheduled announcements still use the existing in-app broadcast feed; scheduled background push requires a trusted scheduled dispatcher. Do not merge until those delivery requirements are addressed if needed. Native push delivery is best effort, not guaranteed, and cannot display while a phone is fully powered off.
