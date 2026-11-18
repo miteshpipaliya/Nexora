@@ -534,7 +534,7 @@ apiRouter.post('/admin/competitions', requireElevatedAdmin, async (req: Request,
   });
 
   const sendBroadcastPush = async (notification: Record<string, any>) => {
-    if (notification.status !== 'Published') return;
+    if (notification.status !== 'Published' || notification.audience !== 'all') return;
     const scheduled = Date.parse(notification.publish_at || notification.display_at || '');
     if (Number.isFinite(scheduled) && scheduled > Date.now()) return;
     const expiry = Date.parse(notification.expires_at || '');
