@@ -4,8 +4,6 @@ import { isInstalledMobilePwa } from '../../pwa/mobilePwa';
 
 export const InstallPage: React.FC = () => {
   const installed = isInstalledMobilePwa();
-  return () => { active = false; };
-  }, []);
   return (
     <section className="min-h-[75vh] bg-[#08080D] px-4 py-14 text-slate-100">
       <div className="mx-auto max-w-4xl text-center">
