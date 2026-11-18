@@ -28,8 +28,10 @@ export function initializeMobilePwa(): void {
   const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   if (!mobile || !('serviceWorker' in navigator) || !window.isSecureContext) return;
-  window.addEventListener('load', () => {
+  const register = () => {
     navigator.serviceWorker.register('/sw.js', { scope: '/' })
       .catch(error => console.warn('[PWA] Service worker unavailable:', error));
-  }, { once: true });
+  };
+  if (document.readyState === 'complete') register();
+  else window.addEventListener('load', register, { once: true });
 }
