@@ -1,5 +1,5 @@
 // NEXORA mobile PWA: online-first, never cache account, registration, admin or payment data.
-const CACHE = 'nexora-mobile-offline-v4';
+const CACHE = 'nexora-mobile-offline-v5';
 const OFFLINE = '/offline.html';
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
@@ -47,7 +47,7 @@ self.addEventListener('push', event => {
   const candidate = String(data.url || '/');
   const url = candidate.startsWith('/') && !candidate.startsWith('//') ? candidate : '/';
   event.waitUntil(self.registration.showNotification(title, {
-    body, icon: '/pwa-phoenix-192.png', badge: '/pwa-phoenix-192.png',
+    body, badge: '/notification-badge-96.png',
     tag: String(data.broadcastId || 'nexora-broadcast'),
     data: { url }
   }));
