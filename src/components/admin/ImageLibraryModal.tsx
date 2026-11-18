@@ -24,25 +24,83 @@ interface ImageLibraryModalProps {
 }
 
 const CATEGORIES = [
-  'All',
-  'Vibe Coding / AI Hackathon',
-  'CodeRush',
-  'Mechanical / RoboRace',
-  'Cybersecurity / CTF',
-  'Civil / Engineering',
-  'General Student Groups'
+  "Coding / CodeRush",
+  "Hackathon / AI",
+  "Brain / Knowledge",
+  "Civil / Engineering",
+  "Cybersecurity / CTF",
+  "Mechanical / RoboRace",
+  "Electronics / Circuitrix",
+  "Robotics / Pathfinder",
+  "Signal Hunt",
+  "ZeroCode"
 ] as const;
+
+// Bundled competition imagery remains selectable even before the admin uploads custom covers.
+const PRESET_IMAGES: ImageLibraryItem[] = [
+  { id: 'preset_0_0', title: 'Coding / CodeRush · Cover 1', category: 'Coding / CodeRush', url: '/images/competitions/coderush.jpg', file_name: 'coderush.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_0_1', title: 'Coding / CodeRush · Cover 2', category: 'Coding / CodeRush', url: '/images/competitions/zerocode.jpg', file_name: 'zerocode.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_0_2', title: 'Coding / CodeRush · Cover 3', category: 'Coding / CodeRush', url: '/images/competitions/ctf.jpg', file_name: 'ctf.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_0_3', title: 'Coding / CodeRush · Cover 4', category: 'Coding / CodeRush', url: '/images/competitions/pathfinder.jpg', file_name: 'pathfinder.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_0_4', title: 'Coding / CodeRush · Cover 5', category: 'Coding / CodeRush', url: '/images/competitions/hackathon.jpg', file_name: 'hackathon.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_1_0', title: 'Hackathon / AI · Cover 1', category: 'Hackathon / AI', url: '/images/competitions/hackathon.jpg', file_name: 'hackathon.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_1_1', title: 'Hackathon / AI · Cover 2', category: 'Hackathon / AI', url: '/images/competitions/coderush.jpg', file_name: 'coderush.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_1_2', title: 'Hackathon / AI · Cover 3', category: 'Hackathon / AI', url: '/images/competitions/zerocode.jpg', file_name: 'zerocode.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_1_3', title: 'Hackathon / AI · Cover 4', category: 'Hackathon / AI', url: '/images/competitions/circuitrix.jpg', file_name: 'circuitrix.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_1_4', title: 'Hackathon / AI · Cover 5', category: 'Hackathon / AI', url: '/images/competitions/ctf.jpg', file_name: 'ctf.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_2_0', title: 'Brain / Knowledge · Cover 1', category: 'Brain / Knowledge', url: '/images/competitions/brainbattle.jpg', file_name: 'brainbattle.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_2_1', title: 'Brain / Knowledge · Cover 2', category: 'Brain / Knowledge', url: '/images/competitions/pathfinder.jpg', file_name: 'pathfinder.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_2_2', title: 'Brain / Knowledge · Cover 3', category: 'Brain / Knowledge', url: '/images/competitions/signalhunt.jpg', file_name: 'signalhunt.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_2_3', title: 'Brain / Knowledge · Cover 4', category: 'Brain / Knowledge', url: '/images/competitions/ctf.jpg', file_name: 'ctf.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_2_4', title: 'Brain / Knowledge · Cover 5', category: 'Brain / Knowledge', url: '/images/competitions/coderush.jpg', file_name: 'coderush.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_3_0', title: 'Civil / Engineering · Cover 1', category: 'Civil / Engineering', url: '/images/competitions/bridgemania.jpg', file_name: 'bridgemania.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_3_1', title: 'Civil / Engineering · Cover 2', category: 'Civil / Engineering', url: '/images/competitions/pathfinder.jpg', file_name: 'pathfinder.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_3_2', title: 'Civil / Engineering · Cover 3', category: 'Civil / Engineering', url: '/images/competitions/roborace.jpg', file_name: 'roborace.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_3_3', title: 'Civil / Engineering · Cover 4', category: 'Civil / Engineering', url: '/images/competitions/circuitrix.jpg', file_name: 'circuitrix.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_3_4', title: 'Civil / Engineering · Cover 5', category: 'Civil / Engineering', url: '/images/competitions/signalhunt.jpg', file_name: 'signalhunt.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_4_0', title: 'Cybersecurity / CTF · Cover 1', category: 'Cybersecurity / CTF', url: '/images/competitions/ctf.jpg', file_name: 'ctf.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_4_1', title: 'Cybersecurity / CTF · Cover 2', category: 'Cybersecurity / CTF', url: '/images/competitions/coderush.jpg', file_name: 'coderush.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_4_2', title: 'Cybersecurity / CTF · Cover 3', category: 'Cybersecurity / CTF', url: '/images/competitions/zerocode.jpg', file_name: 'zerocode.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_4_3', title: 'Cybersecurity / CTF · Cover 4', category: 'Cybersecurity / CTF', url: '/images/competitions/signalhunt.jpg', file_name: 'signalhunt.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_4_4', title: 'Cybersecurity / CTF · Cover 5', category: 'Cybersecurity / CTF', url: '/images/competitions/hackathon.jpg', file_name: 'hackathon.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_5_0', title: 'Mechanical / RoboRace · Cover 1', category: 'Mechanical / RoboRace', url: '/images/competitions/roborace.jpg', file_name: 'roborace.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_5_1', title: 'Mechanical / RoboRace · Cover 2', category: 'Mechanical / RoboRace', url: '/images/competitions/bridgemania.jpg', file_name: 'bridgemania.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_5_2', title: 'Mechanical / RoboRace · Cover 3', category: 'Mechanical / RoboRace', url: '/images/competitions/pathfinder.jpg', file_name: 'pathfinder.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_5_3', title: 'Mechanical / RoboRace · Cover 4', category: 'Mechanical / RoboRace', url: '/images/competitions/circuitrix.jpg', file_name: 'circuitrix.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_5_4', title: 'Mechanical / RoboRace · Cover 5', category: 'Mechanical / RoboRace', url: '/images/competitions/signalhunt.jpg', file_name: 'signalhunt.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_6_0', title: 'Electronics / Circuitrix · Cover 1', category: 'Electronics / Circuitrix', url: '/images/competitions/circuitrix.jpg', file_name: 'circuitrix.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_6_1', title: 'Electronics / Circuitrix · Cover 2', category: 'Electronics / Circuitrix', url: '/images/competitions/signalhunt.jpg', file_name: 'signalhunt.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_6_2', title: 'Electronics / Circuitrix · Cover 3', category: 'Electronics / Circuitrix', url: '/images/competitions/pathfinder.jpg', file_name: 'pathfinder.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_6_3', title: 'Electronics / Circuitrix · Cover 4', category: 'Electronics / Circuitrix', url: '/images/competitions/roborace.jpg', file_name: 'roborace.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_6_4', title: 'Electronics / Circuitrix · Cover 5', category: 'Electronics / Circuitrix', url: '/images/competitions/bridgemania.jpg', file_name: 'bridgemania.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_7_0', title: 'Robotics / Pathfinder · Cover 1', category: 'Robotics / Pathfinder', url: '/images/competitions/pathfinder.jpg', file_name: 'pathfinder.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_7_1', title: 'Robotics / Pathfinder · Cover 2', category: 'Robotics / Pathfinder', url: '/images/competitions/roborace.jpg', file_name: 'roborace.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_7_2', title: 'Robotics / Pathfinder · Cover 3', category: 'Robotics / Pathfinder', url: '/images/competitions/circuitrix.jpg', file_name: 'circuitrix.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_7_3', title: 'Robotics / Pathfinder · Cover 4', category: 'Robotics / Pathfinder', url: '/images/competitions/bridgemania.jpg', file_name: 'bridgemania.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_7_4', title: 'Robotics / Pathfinder · Cover 5', category: 'Robotics / Pathfinder', url: '/images/competitions/brainbattle.jpg', file_name: 'brainbattle.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_8_0', title: 'Signal Hunt · Cover 1', category: 'Signal Hunt', url: '/images/competitions/signalhunt.jpg', file_name: 'signalhunt.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_8_1', title: 'Signal Hunt · Cover 2', category: 'Signal Hunt', url: '/images/competitions/circuitrix.jpg', file_name: 'circuitrix.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_8_2', title: 'Signal Hunt · Cover 3', category: 'Signal Hunt', url: '/images/competitions/ctf.jpg', file_name: 'ctf.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_8_3', title: 'Signal Hunt · Cover 4', category: 'Signal Hunt', url: '/images/competitions/pathfinder.jpg', file_name: 'pathfinder.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_8_4', title: 'Signal Hunt · Cover 5', category: 'Signal Hunt', url: '/images/competitions/brainbattle.jpg', file_name: 'brainbattle.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_9_0', title: 'ZeroCode · Cover 1', category: 'ZeroCode', url: '/images/competitions/zerocode.jpg', file_name: 'zerocode.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_9_1', title: 'ZeroCode · Cover 2', category: 'ZeroCode', url: '/images/competitions/coderush.jpg', file_name: 'coderush.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_9_2', title: 'ZeroCode · Cover 3', category: 'ZeroCode', url: '/images/competitions/hackathon.jpg', file_name: 'hackathon.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_9_3', title: 'ZeroCode · Cover 4', category: 'ZeroCode', url: '/images/competitions/brainbattle.jpg', file_name: 'brainbattle.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+  { id: 'preset_9_4', title: 'ZeroCode · Cover 5', category: 'ZeroCode', url: '/images/competitions/ctf.jpg', file_name: 'ctf.jpg', file_size: 0, dimensions: 'Bundled asset', uploaded_by: 'NEXORA', is_system_preset: true, created_at: '2026-11-18T00:00:00.000Z' },
+];
+
 
 export const ImageLibraryModal: React.FC<ImageLibraryModalProps> = ({
   isOpen,
   onClose,
   onSelectImage,
   currentSelectedUrl,
-  defaultCategory = 'All'
+  defaultCategory = 'Coding / CodeRush'
 }) => {
-  const [images, setImages] = useState<ImageLibraryItem[]>([]);
+  const [images, setImages] = useState<ImageLibraryItem[]>(PRESET_IMAGES);
   const [loading, setLoading] = useState<boolean>(true);
-  const [selectedCategory, setSelectedCategory] = useState<string>(defaultCategory);
+  const [selectedCategory, setSelectedCategory] = useState<string>(CATEGORIES.includes(defaultCategory as typeof CATEGORIES[number]) ? defaultCategory : 'Coding / CodeRush');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedItem, setSelectedItem] = useState<ImageLibraryItem | null>(null);
 
@@ -51,7 +109,7 @@ export const ImageLibraryModal: React.FC<ImageLibraryModalProps> = ({
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [showUploadPanel, setShowUploadPanel] = useState<boolean>(false);
   const [uploadTitle, setUploadTitle] = useState<string>('');
-  const [uploadCategory, setUploadCategory] = useState<string>('Vibe Coding / AI Hackathon');
+  const [uploadCategory, setUploadCategory] = useState<string>('Coding / CodeRush');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -68,7 +126,7 @@ export const ImageLibraryModal: React.FC<ImageLibraryModalProps> = ({
     setErrorMsg(null);
     try {
       const list = await dataService.getImageLibrary();
-      setImages(list);
+      setImages([...list.filter(item => !PRESET_IMAGES.some(preset => preset.url === item.url && preset.category === item.category)), ...PRESET_IMAGES]);
       if (currentSelectedUrl) {
         const found = list.find((img) => img.url === currentSelectedUrl);
         if (found) setSelectedItem(found);
@@ -83,7 +141,7 @@ export const ImageLibraryModal: React.FC<ImageLibraryModalProps> = ({
   // Filtered images
   const filteredImages = useMemo(() => {
     return images.filter((img) => {
-      const matchesCategory = selectedCategory === 'All' || img.category === selectedCategory;
+      const matchesCategory = img.category === selectedCategory;
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch = !q || 
         img.title.toLowerCase().includes(q) || 
@@ -202,7 +260,7 @@ export const ImageLibraryModal: React.FC<ImageLibraryModalProps> = ({
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
                 <span>NEXORA Centralized Image Library</span>
                 <span className="text-xs px-2.5 py-0.5 rounded-full bg-violet-950/80 border border-violet-500/30 text-violet-300 font-mono">
-                  {images.length} Assets
+                  {filteredImages.length} Assets
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
@@ -316,7 +374,7 @@ export const ImageLibraryModal: React.FC<ImageLibraryModalProps> = ({
                     onChange={(e) => setUploadCategory(e.target.value)}
                     className="w-full px-3.5 py-2 text-xs bg-[#11101B] border border-violet-500/25 rounded-xl text-white focus:outline-none focus:border-violet-400"
                   >
-                    {CATEGORIES.filter((c) => c !== 'All').map((cat) => (
+                    {CATEGORIES.map((cat) => (
                       <option key={cat} value={cat}>
                         {cat}
                       </option>
