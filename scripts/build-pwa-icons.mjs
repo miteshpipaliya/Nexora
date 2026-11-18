@@ -21,4 +21,20 @@ await createIcon(192, 'pwa-phoenix-192.png', 0.08);
 await createIcon(512, 'pwa-phoenix-512.png', 0.08);
 await createIcon(512, 'pwa-phoenix-maskable-512.png', 0.17);
 await createIcon(180, 'pwa-apple-touch-180.png', 0.08);
+// Android status-bar notification badges must be monochrome with transparency.
+// A full black-backed PWA icon renders as an opaque white square in the status bar.
+const badgeSize = 96;
+const { data: badgePixels, info: badgeInfo } = await sharp(source)
+  .resize(badgeSize, badgeSize, { fit: 'contain', background: '#00000000' })
+  .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+for (let i = 0; i < badgePixels.length; i += badgeInfo.channels) {
+  const alpha = badgePixels[i + 3];
+  const brightness = Math.max(badgePixels[i], badgePixels[i + 1], badgePixels[i + 2]);
+  badgePixels[i] = 255;
+  badgePixels[i + 1] = 255;
+  badgePixels[i + 2] = 255;
+  badgePixels[i + 3] = alpha > 12 && brightness > 35 ? alpha : 0;
+}
+await sharp(badgePixels, { raw: { width: badgeSize, height: badgeSize, channels: badgeInfo.channels } })
+  .png().toFile(path.join(destination, 'notification-badge-96.png'));
 console.log('Generated black-background NEXORA winged queen/phoenix PWA icons');
