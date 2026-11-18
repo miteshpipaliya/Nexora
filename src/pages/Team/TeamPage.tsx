@@ -63,14 +63,14 @@ export const TeamPage: React.FC = () => {
           {founder && (
             <section aria-label="Founder" className="mx-auto w-full max-w-[470px]">
               <div className="text-center text-[11px] text-violet-300/80 font-mono tracking-[.19em] uppercase mb-5">NEXORA DIGITAL CREDENTIAL · FOUNDER BADGE</div>
-              <article className="group relative overflow-hidden rounded-[25px] border border-[#d4af37]/75 bg-gradient-to-b from-[#211a36]/95 via-[#1a142c]/95 to-[#120f21]/95 px-7 pt-8 pb-6 shadow-[0_23px_60px_-25px_rgba(206,172,70,.24)] transition-transform duration-500 hover:-translate-y-1">
+              <article className="group relative overflow-hidden rounded-[25px] border border-[#d4af37]/75 bg-gradient-to-b from-[#211a36]/95 via-[#1a142c]/95 to-[#120f21]/95 px-7 pt-8 pb-6 shadow-[0_23px_60px_-25px_rgba(206,172,70,.24)] motion-safe:transition-transform motion-safe:duration-300 motion-safe:hover:-translate-y-1">
                 <header className="relative flex items-center justify-between border-b border-violet-400/15 pb-6">
                   <NexoraLogo size="sm" />
                   <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/35 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-bold text-amber-200"><Crown className="h-3 w-3" /> FOUNDER</span>
                 </header>
                 <div className="flex items-center gap-5 py-7">
                   <div className="h-[92px] w-[92px] shrink-0 overflow-hidden rounded-2xl border border-violet-500/65 bg-[#0a0811] shadow-[0_0_18px_-5px_rgba(153,80,255,.7)] flex items-center justify-center text-violet-200 font-bold">
-                    {founder.avatar_url && !avatarFailed ? <img src={founder.avatar_url} alt="" onError={() => setAvatarFailed(true)} className="w-full h-full object-cover"/> : founder.name.slice(0, 2).toUpperCase()}
+                    {founder.avatar_url && !avatarFailed ? <img src={founder.avatar_url} alt="" onError={() => setAvatarFailed(true)} loading="lazy" decoding="async" className="w-full h-full object-cover"/> : founder.name.slice(0, 2).toUpperCase()}
                   </div>
                   <div className="min-w-0">
                     <h2 className="text-2xl font-extrabold text-white break-words">{founder.name}</h2>
@@ -86,7 +86,7 @@ export const TeamPage: React.FC = () => {
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-4" aria-label="Founder social and contact links">
-                  <a href={founder.social_links?.github?.trim() || 'https://github.com/miteshpipaliya'} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-lg border border-violet-500/25 bg-violet-500/10 px-3 py-2.5 text-xs font-semibold text-violet-200 hover:bg-violet-500/20"><Github className="h-4 w-4" /> GitHub Connect</a>
+                  <span aria-disabled="true" title="GitHub Connect is temporarily unavailable" className="flex cursor-not-allowed select-none items-center justify-center gap-2 rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2.5 text-xs font-semibold text-violet-300/60"><Github className="h-4 w-4" /> GitHub Connect</span>
                   <a href="https://www.instagram.com/miteshhhfr/" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-lg border border-violet-500/25 bg-violet-500/10 px-3 py-2.5 text-xs font-semibold text-violet-200 hover:bg-violet-500/20"><Instagram className="h-4 w-4" /> Instagram</a>
                   <a href="mailto:miteshpipaliya2202@gmail.com" className="flex items-center justify-center gap-2 rounded-lg border border-violet-500/25 bg-violet-500/10 px-3 py-2.5 text-xs font-semibold text-violet-200 hover:bg-violet-500/20"><Mail className="h-4 w-4" /> Gmail</a>
                 </div>
@@ -105,7 +105,7 @@ export const TeamPage: React.FC = () => {
                 {others.map(member => {
                   const faculty = member.role_key?.startsWith('faculty_') || member.role_name === 'Faculty Member';
                   return (
-                    <article key={member.id} className="group relative rounded-[24px] bg-gradient-to-b from-[#201936] to-[#120f22] border border-violet-500/25 p-6 space-y-5 shadow-[0_16px_45px_-25px_rgba(129,70,230,.3)] transition-all duration-300 hover:-translate-y-1 hover:border-violet-400/45">
+                    <article key={member.id} className="group relative rounded-[24px] bg-gradient-to-b from-[#201936] to-[#120f22] border border-violet-500/25 p-6 space-y-5 shadow-[0_16px_45px_-25px_rgba(129,70,230,.3)] motion-safe:transition-transform motion-safe:duration-300 motion-safe:hover:-translate-y-1 hover:border-violet-400/45">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-xs font-mono text-violet-300">{member.role_name || (faculty ? 'Faculty Member' : 'Team Member')}</span>
                         {faculty ? <GraduationCap className="h-5 w-5 text-violet-400" /> : <Users className="h-5 w-5 text-violet-400" />}
