@@ -509,8 +509,10 @@ apiRouter.post('/admin/competitions', requireElevatedAdmin, async (req: Request,
       const db = await getAdminFirestore();
       if (!db) { res.status(503).json({ error: 'Push service unavailable' }); return; }
       const id = crypto.createHash('sha256').update(token).digest('hex');
+      const claims = await (await getAdminAuth()).getUser(uid);
       await db.collection('pushSubscriptions').doc(id).set({
-        uid, token, enabled: true, updatedAt: new Date().toISOString()
+        uid, token, enabled: true, isAdmin: claims.customClaims?.admin === true,
+        updatedAt: new Date().toISOString()
       });
       res.setHeader('Cache-Control', 'no-store');
       res.json({ success: true });
@@ -534,37 +536,50 @@ apiRouter.post('/admin/competitions', requireElevatedAdmin, async (req: Request,
   });
 
   const sendBroadcastPush = async (notification: Record<string, any>) => {
-    if (notification.status !== 'Published' || notification.audience !== 'all') return;
+    if (notification.status !== 'Published') return;
     const scheduled = Date.parse(notification.publish_at || notification.display_at || '');
     if (Number.isFinite(scheduled) && scheduled > Date.now()) return;
     const expiry = Date.parse(notification.expires_at || '');
     if (Number.isFinite(expiry) && expiry <= Date.now()) return;
     const db = await getAdminFirestore();
-    if (!db) return;
+    if (!db) throw new Error('Push database unavailable');
     const { getMessaging } = await import('firebase-admin/messaging');
     const messaging = getMessaging(db.app);
-    const snap = await db.collection('pushSubscriptions').where('enabled', '==', true).limit(500).get();
-    const docs = snap.docs.filter((doc: any) => typeof doc.data().token === 'string');
     const url = typeof notification.link_url === 'string' && /^\/(?!\/)/.test(notification.link_url)
       ? notification.link_url : '/';
-    // Data-only payload: one notification from our own service worker, without duplicate browser display.
-    for (let i = 0; i < docs.length; i += 500) {
-      const batch = docs.slice(i, i + 500);
-      const result = await messaging.sendEachForMulticast({
-        tokens: batch.map((doc: any) => doc.data().token),
-        data: {
-          title: String(notification.title || 'NEXORA BVM').slice(0, 120),
-          body: String(notification.message || '').slice(0, 500),
-          url, broadcastId: String(notification.id)
-        },
-        webpush: { headers: { TTL: '86400' } }
-      });
-      await Promise.all(result.responses.map(async (response: any, index: number) => {
-        if (response.error && /registration-token-not-registered|invalid-registration-token/.test(response.error.code || '')) {
-          await batch[index].ref.delete();
-        }
-      }));
+    const audience = notification.audience || 'all';
+    let cursor: any = null;
+    let delivered = 0;
+    for (;;) {
+      let query = db.collection('pushSubscriptions').orderBy('__name__').limit(500);
+      if (cursor) query = query.startAfter(cursor);
+      const snap = await query.get();
+      if (snap.empty) break;
+      cursor = snap.docs[snap.docs.length - 1];
+      const docs = snap.docs.filter((doc: any) => doc.data().enabled === true &&
+        typeof doc.data().token === 'string' &&
+        (audience === 'all' || (audience === 'students' && doc.data().isAdmin !== true) ||
+          (audience === 'admin' && doc.data().isAdmin === true)));
+      if (docs.length) {
+        const result = await messaging.sendEachForMulticast({
+          tokens: docs.map((doc: any) => doc.data().token),
+          data: {
+            title: String(notification.title || 'NEXORA BVM').slice(0, 120),
+            body: String(notification.message || '').slice(0, 500),
+            url, broadcastId: String(notification.id)
+          },
+          webpush: { headers: { TTL: '86400' } }
+        });
+        delivered += result.successCount;
+        await Promise.all(result.responses.map(async (response: any, index: number) => {
+          if (response.error && /registration-token-not-registered|invalid-registration-token/.test(response.error.code || '')) {
+            await docs[index].ref.delete();
+          }
+        }));
+      }
+      if (snap.size < 500) break;
     }
+    return delivered;
   };
 
   apiRouter.post('/admin/notifications', requireElevatedAdmin, async (req: Request, res: Response) => {
