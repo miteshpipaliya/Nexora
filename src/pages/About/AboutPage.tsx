@@ -39,6 +39,24 @@ export const AboutPage: React.FC = () => {
         </p>
       </div>
 
+      {/* Public identity and origin */}
+      <section className="max-w-4xl mx-auto rounded-2xl border border-violet-500/25 bg-[#11101B] p-6 sm:p-8 space-y-6" aria-label="NEXORA BVM founder and origin">
+        <div className="space-y-2">
+          <h2 className="text-2xl font-bold text-white">What is NEXORA BVM?</h2>
+          <p className="text-sm sm:text-base text-slate-300 leading-relaxed">NEXORA BVM is a student-led technology and innovation community initiative associated with Birla Vishvakarma Mahavidyalaya (BVM), Vallabh Vidyanagar, Gujarat, India.</p>
+          <p className="text-sm sm:text-base text-slate-300 leading-relaxed">Its vision is to bring students together through programming competitions, hackathons, collaborative projects, technical learning, and innovation.</p>
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-bold text-white">Who founded NEXORA BVM?</h2>
+          <p className="text-sm sm:text-base text-slate-300 leading-relaxed">NEXORA BVM was founded by <strong className="text-white">Mitesh M. Pipaliya</strong>, who initiated the project and helped develop its vision and digital presence.</p>
+          <a href="https://github.com/miteshpipaliya" target="_blank" rel="noopener noreferrer" className="inline-flex text-sm text-violet-300 underline underline-offset-4 hover:text-violet-200">Founder on GitHub</a>
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-bold text-white">Mission</h2>
+          <p className="text-sm sm:text-base text-slate-300 leading-relaxed">To encourage students to build, compete, innovate, and turn technical ideas into meaningful projects.</p>
+        </div>
+      </section>
+
       {/* The Core Purpose */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div className="p-8 rounded-2xl bg-[#11101B] border border-violet-500/20 space-y-4">
