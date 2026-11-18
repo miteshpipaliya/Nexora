@@ -226,6 +226,7 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setErrorMessage(null);
 
     if (registrationCheckError) {
@@ -671,6 +672,12 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
                 </label>
               </div>
 
+              {/* Keep validation and API errors visible beside the submit action even when the form is scrolled down. */}
+              {errorMessage && (
+                <div role="alert" aria-live="assertive" className="p-3 rounded-lg border border-red-500/40 bg-red-950/50 text-xs text-red-200">
+                  {errorMessage}
+                </div>
+              )}
               {/* Action Buttons */}
               <div className="pt-2 flex items-center justify-end gap-3">
                 <button
