@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Terminal, Shield, Cpu, Code2, Sparkles, Image as ImageIcon } from 'lucide-react';
 import { CompetitionEvent } from '../../types';
 
@@ -59,6 +59,14 @@ export const CompetitionCardImage: React.FC<CompetitionCardImageProps> = ({
   const [hasTriedFallback, setHasTriedFallback] = useState<boolean>(false);
   const [isFailedCompletely, setIsFailedCompletely] = useState<boolean>(false);
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
+
+  // Firestore can update the cover URL while this card stays mounted.
+  useEffect(() => {
+    setCurrentSrc(primarySrc);
+    setHasTriedFallback(false);
+    setIsFailedCompletely(false);
+    setIsLoaded(false);
+  }, [primarySrc]);
 
   const handleError = () => {
     if (!hasTriedFallback && currentSrc !== defaultFallback) {
