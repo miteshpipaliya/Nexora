@@ -114,6 +114,14 @@ export const BroadcastToast: React.FC = () => {
             isFreshLive: false
           }));
           setActiveToasts(items);
+          // A broadcast published moments before the feed's first response is
+          // live, not an old catch-up item. Attempt its chime as well.
+          // Browsers may require a prior user gesture to unlock Web Audio.
+          const recent = initialToasts.find(n => {
+            const age = now - Date.parse(n.created_at);
+            return age >= 0 && age < 20000;
+          });
+          if (recent) void playNotificationSound(recent.id).catch(() => {});
         }
         return;
       }
