@@ -11,7 +11,7 @@ const SEEN_BROADCASTS_KEY = 'nexora_seen_broadcasts';
 const MAX_SEEN_CACHE = 200;
 const MAX_STACK = 3;
 const AUTO_DISMISS_MS = 10000;
-const MAX_TOAST_AGE_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_TOAST_AGE_MS = 24 * 60 * 60 * 1000; // Show missed broadcasts after reopening the PWA
 
 export function getSeenBroadcastIds(): Set<string> {
   try {
@@ -95,12 +95,12 @@ export const BroadcastToast: React.FC = () => {
       // On initial load, mark all pre-existing notifications as baseline so we never chime on page load
       if (isInitialSnapshotRef.current) {
         isInitialSnapshotRef.current = false;
-        // Don't play sound for initial load, only show unexpired toasts if created very recently (<30s)
+        // Show recent, unseen broadcasts when a mobile PWA is reopened after being closed.
         const initialToasts = allNotifs.filter((n: InAppNotification) => {
           if (n.status !== 'Published') return false;
           if (seen.has(n.id)) return false;
           const createdMs = new Date(n.created_at).getTime();
-          return !isNaN(createdMs) && (now - createdMs) < 30000;
+          return !isNaN(createdMs) && (now - createdMs) >= 0 && (now - createdMs) < MAX_TOAST_AGE_MS &&\n            (!n.expires_at || Date.parse(n.expires_at) > now) &&\n            (!n.audience || n.audience === 'all' || (n.audience === 'admin' && !!user?.is_admin) || (n.audience === 'students' && !user?.is_admin));
         });
 
         if (initialToasts.length > 0) {
@@ -153,7 +153,7 @@ export const BroadcastToast: React.FC = () => {
         }
 
         const createdMs = new Date(n.created_at).getTime();
-        // Item created > 5 minutes ago: skip toast, show in bell only
+        // Skip broadcasts older than the catch-up window; keep them in the bell.
         if (!isNaN(createdMs) && (now - createdMs) > MAX_TOAST_AGE_MS) {
           markBroadcastSeenLocally(n.id);
           return false;
