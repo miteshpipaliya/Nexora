@@ -581,7 +581,20 @@ apiRouter.post('/admin/competitions', requireElevatedAdmin, async (req: Request,
           }
         });
         delivered += result.successCount;
-        console.info('[PUSH DELIVERY]', { broadcastId: notification.id, attempted: docs.length, accepted: result.successCount, failed: result.failureCount });
+        const failureCodes = result.responses
+          .filter((response: any) => response.error)
+          .reduce((codes: Record<string, number>, response: any) => {
+            const code = String(response.error?.code || 'unknown');
+            codes[code] = (codes[code] || 0) + 1;
+            return codes;
+          }, {});
+        console.info('[PUSH DELIVERY]', {
+          broadcastId: notification.id,
+          attempted: docs.length,
+          accepted: result.successCount,
+          failed: result.failureCount,
+          failureCodes
+        });
         await Promise.all(result.responses.map(async (response: any, index: number) => {
           if (response.error && /registration-token-not-registered|invalid-registration-token/.test(response.error.code || '')) {
             await docs[index].ref.delete();
