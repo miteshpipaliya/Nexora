@@ -1124,7 +1124,8 @@ return { initialized: true };
       } finally { inFlight = false; }
     };
     void refresh();
-    const interval = window.setInterval(() => { void refresh(); }, 15000);
+    // Poll while the app is visible; background delivery is handled by FCM push.
+    const interval = window.setInterval(() => { void refresh(); }, 5000);
     const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
     window.addEventListener('focus', onVisible);
     document.addEventListener('visibilitychange', onVisible);
