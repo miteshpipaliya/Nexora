@@ -1103,25 +1103,38 @@ return { initialized: true };
   ): () => void {
     const audience = typeof audienceOrCallback === 'string' ? audienceOrCallback : 'all';
     const callback = typeof audienceOrCallback === 'function' ? audienceOrCallback : (maybeCallback || (() => {}));
-
-    try {
-      const q = collection(db, 'notifications');
-      const unsubscribe = onSnapshot(q, (snap) => {
-        let notifs = snap.docs.map(d => d.data() as InAppNotification);
-        if (audience !== 'all') {
-          notifs = notifs.filter(n => n.audience === 'all' || n.audience === audience);
+    let stopped = false;
+    let controller: AbortController | null = null;
+    let inFlight = false;
+    const refresh = async () => {
+      if (stopped || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      controller = new AbortController();
+      try {
+        const response = await fetch('/api/public/broadcasts', { cache: 'no-store', credentials: 'same-origin', signal: controller.signal });
+        if (!response.ok) throw new Error('Broadcast feed HTTP ' + response.status);
+        const data = await response.json() as { notifications?: InAppNotification[] };
+        if (stopped) return;
+        const notifications = Array.isArray(data.notifications) ? data.notifications : [];
+        callback(audience === 'all' ? notifications : notifications.filter(n => n.audience === 'all' || n.audience === audience));
+      } catch (err) {
+        if (!stopped && !(err instanceof DOMException && err.name === 'AbortError')) {
+          console.warn('Broadcast feed temporarily unavailable:', err);
         }
-        notifs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        callback(notifs);
-      }, (err) => {
-        console.warn('Notifications subscription error:', err);
-        callback([]);
-      });
-      return unsubscribe;
-    } catch {
-      callback([]);
-      return () => {};
-    }
+      } finally { inFlight = false; }
+    };
+    void refresh();
+    const interval = window.setInterval(() => { void refresh(); }, 15000);
+    const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      stopped = true;
+      controller?.abort();
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }
 
   public subscribeContactMessages(callback: (msgs: ContactMessage[]) => void): () => void {
