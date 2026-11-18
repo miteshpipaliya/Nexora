@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const source = path.join(root, 'public', 'logo_transparent.png');
+const source = path.join(root, 'public', 'phoenix-icon.svg');
 const destination = path.join(root, 'public');
 const background = '#000000';
 
@@ -21,4 +21,4 @@ await createIcon(192, 'pwa-phoenix-192.png', 0.08);
 await createIcon(512, 'pwa-phoenix-512.png', 0.08);
 await createIcon(512, 'pwa-phoenix-maskable-512.png', 0.17);
 await createIcon(180, 'pwa-apple-touch-180.png', 0.08);
-console.log('Generated black-background NEXORA phoenix PWA icons');
+console.log('Generated black-background NEXORA winged queen/phoenix PWA icons');
