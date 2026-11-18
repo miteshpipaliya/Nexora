@@ -4,6 +4,7 @@ import { Menu, X, Shield } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { NexoraLogo } from '../ui/NexoraLogo';
 import { NotificationBell } from '../ui/NotificationBell';
+import { PushNotificationControl } from '../ui/PushNotificationControl';
 
 export const Navbar: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -87,6 +88,7 @@ export const Navbar: React.FC = () => {
           <div className="hidden md:flex items-center gap-3 shrink-0">
             {/* Real-time Broadcast Notification Bell */}
             <NotificationBell />
+            <PushNotificationControl />
 
             {user ? (
               <Link
@@ -144,6 +146,7 @@ export const Navbar: React.FC = () => {
             ))}
           </div>
 
+          <PushNotificationControl />
           <div className="pt-3 border-t border-violet-500/10">
             {user ? (
               <div className="space-y-2">

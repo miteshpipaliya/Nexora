@@ -1,5 +1,5 @@
 // NEXORA mobile PWA: online-first, never cache account, registration, admin or payment data.
-const CACHE = 'nexora-mobile-offline-v3';
+const CACHE = 'nexora-mobile-offline-v4';
 const OFFLINE = '/offline.html';
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
@@ -35,4 +35,32 @@ self.addEventListener('fetch', event => {
       { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
     );
   }));
+});
+
+// NEXORA web push: Firebase Messaging uses this existing PWA service worker.
+self.addEventListener('push', event => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch (_) { /* malformed payload */ }
+  const data = payload.data || {};
+  const title = String(data.title || payload.notification?.title || 'NEXORA BVM').slice(0, 120);
+  const body = String(data.body || payload.notification?.body || '').slice(0, 500);
+  const candidate = String(data.url || '/');
+  const url = candidate.startsWith('/') && !candidate.startsWith('//') ? candidate : '/';
+  event.waitUntil(self.registration.showNotification(title, {
+    body, icon: '/pwa-phoenix-192.png', badge: '/pwa-phoenix-192.png',
+    tag: String(data.broadcastId || 'nexora-broadcast'),
+    data: { url }
+  }));
+});
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const path = event.notification.data?.url || '/';
+  const url = new URL(path, self.location.origin);
+  if (url.origin !== self.location.origin) return;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const existing = windows.find(client => new URL(client.url).origin === url.origin);
+    if (existing) { await existing.navigate(url.href); await existing.focus(); }
+    else await self.clients.openWindow(url.href);
+  })());
 });
