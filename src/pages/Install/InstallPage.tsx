@@ -1,9 +1,46 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Smartphone, Share2, CheckCircle2, Globe2, ShieldCheck } from 'lucide-react';
 import { isInstalledMobilePwa } from '../../pwa/mobilePwa';
 
 export const InstallPage: React.FC = () => {
   const installed = isInstalledMobilePwa();
+  const [checks, setChecks] = useState<Array<{ name: string; result: string; ok: boolean }>>([]);
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const results: Array<{ name: string; result: string; ok: boolean }> = [];
+      const assets = [
+        ['Manifest', '/manifest.webmanifest', 'manifest'],
+        ['192px icon', '/icon-192.png', 'image/png'],
+        ['512px icon', '/icon-512.png', 'image/png'],
+        ['Maskable icon', '/icon-maskable-512.png', 'image/png'],
+        ['Service worker', '/sw.js', 'javascript'],
+        ['Offline screen', '/offline.html', 'text/html']
+      ];
+      for (const [name, path, expected] of assets) {
+        try {
+          const response = await fetch(path, { cache: 'no-store', credentials: 'same-origin' });
+          const type = response.headers.get('content-type') || '';
+          const validType = expected === 'manifest' ? (type.includes('json') || type.includes('manifest')) : type.includes(expected);
+          let valid = response.ok && validType;
+          if (valid && expected === 'manifest') {
+            const data = await response.json() as { name?: string; display?: string; icons?: unknown[] };
+            valid = data.name === 'NEXORA BVM' && data.display === 'standalone' && Array.isArray(data.icons) && data.icons.length >= 2;
+          }
+          results.push({ name, ok: valid, result: String(response.status) + ' ' + (type || 'unknown content type') });
+        } catch (error) { results.push({ name, ok: false, result: error instanceof Error ? error.message : 'Network error' }); }
+      }
+      if ('serviceWorker' in navigator) {
+        try {
+          const registration = await navigator.serviceWorker.getRegistration('/');
+          results.push({ name: 'Worker registration', ok: !!registration?.active, result: registration?.active ? 'Active' : 'Not active (try reloading)' });
+        } catch { results.push({ name: 'Worker registration', ok: false, result: 'Unavailable' }); }
+      }
+      results.push({ name: 'Secure origin', ok: window.isSecureContext, result: window.isSecureContext ? 'HTTPS secure' : 'Not secure' });
+      if (active) setChecks(results);
+    })();
+    return () => { active = false; };
+  }, []);
   return (
     <section className="min-h-[75vh] bg-[#08080D] px-4 py-14 text-slate-100">
       <div className="mx-auto max-w-4xl text-center">
@@ -41,6 +78,13 @@ export const InstallPage: React.FC = () => {
         <div className="mx-auto mt-8 max-w-2xl rounded-xl border border-violet-500/20 bg-[#151024] p-5 text-left">
           <h2 className="flex items-center gap-2 font-semibold"><ShieldCheck size={19} className="text-violet-300"/> Installation troubleshooting</h2>
           <p className="mt-2 text-sm leading-6 text-slate-300">Use the official production domain after PWA release. Temporary Vercel previews may be protected and cannot always be installed. If installation fails, confirm that the website loads normally and that its manifest and app icons are publicly accessible. A shortcut is not the same as a standalone PWA.</p>
+        </div>
+        <div className="mx-auto mt-6 max-w-2xl rounded-xl border border-violet-500/20 bg-[#151024] p-5 text-left">
+          <h2 className="font-semibold">PWA compatibility check</h2>
+          <p className="mt-2 text-xs leading-5 text-slate-400">Checks files available to this browser. Vercel preview protection may still block Chrome's background installer even if these checks pass after login.</p>
+          <ul className="mt-3 space-y-2 text-xs">
+            {checks.map(check => <li key={check.name} className="flex flex-wrap items-start justify-between gap-2"><span className="text-slate-200">{check.name}</span><span className={check.ok ? 'text-emerald-300' : 'text-rose-300'}>{check.ok ? 'PASS' : 'FAIL'} — {check.result}</span></li>)}
+          </ul>
         </div>
         <p className="mt-8 flex items-center justify-center gap-2 text-sm text-slate-400"><Globe2 size={17}/> One NEXORA backend across website, Android and iOS.</p>
       </div>
