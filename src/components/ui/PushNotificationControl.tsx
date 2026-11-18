@@ -3,7 +3,7 @@ import { BellRing, BellOff, LoaderCircle, AlertCircle, CheckCircle2 } from 'luci
 import { enableNexoraPush, disableNexoraPush, getNexoraPushStatus } from '../../services/pushNotifications';
 import { useAuth } from '../../context/AuthContext';
 
-type Feedback = { kind: 'success' | 'error'; text: string } | null;
+type Feedback = { kind: 'error'; text: string } | null;
 
 export const PushNotificationControl: React.FC = () => {
   const { user } = useAuth();
@@ -48,12 +48,12 @@ export const PushNotificationControl: React.FC = () => {
         await disableNexoraPush();
         window.localStorage.removeItem('nexora-push-enabled');
         setEnabled(false);
-        setFeedback({ kind: 'success', text: 'Notifications turned off on this device.' });
+
       } else {
         await enableNexoraPush();
         window.localStorage.setItem('nexora-push-enabled', 'yes');
         setEnabled(true);
-        setFeedback({ kind: 'success', text: 'Notifications are on for this device.' });
+
       }
     } catch (error) {
       setFeedback({ kind: 'error', text: error instanceof Error ? error.message : 'Could not update notifications.' });
@@ -72,20 +72,20 @@ export const PushNotificationControl: React.FC = () => {
         aria-pressed={enabled}
         className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
           enabled ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25'
-          : 'border-violet-500/40 text-violet-100 hover:bg-violet-500/15'
+          : 'border-rose-500/60 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25'
         }`}>
         {busy || checking ? <LoaderCircle size={15} className="animate-spin" /> :
           enabled ? <CheckCircle2 size={15} /> : blocked || unavailable ? <BellOff size={15} /> : <BellRing size={15} />}
         <span>{label}</span>
       </button>
       {feedback && (
-        <p role={feedback.kind === 'error' ? 'alert' : 'status'}
-          className={`break-words text-xs leading-snug ${feedback.kind === 'error' ? 'text-rose-300' : 'text-emerald-300'}`}>
-          {feedback.kind === 'error' ? <AlertCircle size={12} className="mr-1 inline" /> : <CheckCircle2 size={12} className="mr-1 inline" />}
+        <p role={'alert'}
+          className={`break-words text-xs leading-snug ${'text-rose-300'}`}>
+          <AlertCircle size={12} className="mr-1 inline" />
           {feedback.text}
         </p>
       )}
-      {blocked && <p className="text-xs text-amber-300">Allow notifications in your browser's site settings.</p>}
+
     </div>
   );
 };
