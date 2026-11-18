@@ -93,7 +93,7 @@ export async function listenForForegroundPush(): Promise<() => void> {
     navigator.serviceWorker.ready.then(registration =>
       registration.showNotification(title, {
         body: String(data.body || payload.notification?.body || ''),
-        badge: '/notification-badge-96.png',
+        icon: '/pwa-phoenix-192.png',
         tag: String(data.broadcastId || 'nexora-broadcast'),
         data: { url }
       })
