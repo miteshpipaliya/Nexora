@@ -32,6 +32,18 @@ async function getActivePushWorker(): Promise<ServiceWorkerRegistration> {
   return registration;
 }
 
+export async function getNexoraPushStatus(): Promise<boolean> {
+  if (!auth.currentUser || !vapidKey || !('Notification' in window) ||
+      Notification.permission !== 'granted' || !('serviceWorker' in navigator) ||
+      !(await isSupported())) return false;
+  const registration = await navigator.serviceWorker.getRegistration('/');
+  if (!registration?.active) return false;
+  const subscription = await registration.pushManager.getSubscription();
+  if (!subscription) return false;
+  // Local preference is advisory; actual browser subscription is the source of truth.
+  return window.localStorage.getItem('nexora-push-enabled') === 'yes';
+}
+
 export async function enableNexoraPush(): Promise<void> {
   if (!auth.currentUser) throw new Error('Sign in to enable notifications.');
   if (!vapidKey) throw new Error('Firebase Web Push VAPID key is not configured.');
@@ -42,7 +54,7 @@ export async function enableNexoraPush(): Promise<void> {
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') throw new Error('Notification permission was not granted.');
   }
-  const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+  const registration = await getActivePushWorker();
   const token = await getToken(getMessaging(app), { vapidKey, serviceWorkerRegistration: registration });
   if (!token) throw new Error('Could not register this device for notifications.');
   const idToken = await auth.currentUser.getIdToken();
