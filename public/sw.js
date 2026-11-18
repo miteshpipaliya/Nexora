@@ -1,5 +1,5 @@
 // NEXORA mobile PWA: online-first, never cache account, registration, admin or payment data.
-const CACHE = 'nexora-mobile-offline-v2';
+const CACHE = 'nexora-mobile-offline-v3';
 const OFFLINE = '/offline.html';
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
