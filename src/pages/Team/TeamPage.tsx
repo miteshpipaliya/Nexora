@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Crown, GraduationCap, Loader2, ShieldCheck, Sparkles, Users } from 'lucide-react';
+import { Crown, GraduationCap, Loader2, ShieldCheck, Sparkles, Users, Github, Instagram, Mail } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import type { TeamMember } from '../../types';
 import { NexoraLogo } from '../../components/ui/NexoraLogo';
@@ -81,8 +81,19 @@ export const TeamPage: React.FC = () => {
                   <Detail label="Department / Branch" value={founder.academic_branch_name || founder.department_name} />
                   <Detail label="Division" value={founder.division} />
                   <Detail label="Enrollment No." value={founder.enrollment_number} />
+                  <div className="col-span-2 border-t border-violet-400/10 pt-3">
+                    <Detail label="Bio" value={founder.bio} />
+                  </div>
                 </div>
-                {founder.bio?.trim() && <p className="border-b border-violet-500/10 py-5 text-sm leading-relaxed text-slate-400">{founder.bio}</p>}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-4" aria-label="Founder social and contact links">
+                  <a href={founder.social_links?.github?.trim() || 'https://github.com/miteshpipaliya'} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-lg border border-violet-500/25 bg-violet-500/10 px-3 py-2.5 text-xs font-semibold text-violet-200 hover:bg-violet-500/20"><Github className="h-4 w-4" /> GitHub Connect</a>
+                  {founder.social_links?.instagram?.trim() ? (
+                    <a href={founder.social_links.instagram.startsWith('http') ? founder.social_links.instagram : `https://www.instagram.com/${founder.social_links.instagram.replace(/^@/, '')}/`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-lg border border-violet-500/25 bg-violet-500/10 px-3 py-2.5 text-xs font-semibold text-violet-200 hover:bg-violet-500/20"><Instagram className="h-4 w-4" /> {founder.social_links.instagram.replace(/^https?:\\/\\/(www\\.)?instagram\\.com\\//, '@').replace(/\\/$/, '').replace(/^([^@])/, '@$1')}</a>
+                  ) : (
+                    <span className="flex items-center justify-center gap-2 rounded-lg border border-violet-500/10 px-3 py-2.5 text-xs text-slate-500"><Instagram className="h-4 w-4" /> Instagram not linked</span>
+                  )}
+                  <a href={`mailto:${founder.social_links?.email?.trim() || 'miteshpipaliya2202@gmail.com'}`} className="flex items-center justify-center gap-2 rounded-lg border border-violet-500/25 bg-violet-500/10 px-3 py-2.5 text-xs font-semibold text-violet-200 hover:bg-violet-500/20"><Mail className="h-4 w-4" /> Gmail</a>
+                </div>
                 <footer className="flex items-center justify-between gap-3 pt-5 font-mono text-[10px] tracking-wider text-violet-300/60"><span>NEXORA INITIATIVE</span><span>FOUNDER · VERIFIED PROFILE</span></footer>
               </article>
             </section>
