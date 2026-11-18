@@ -88,7 +88,7 @@ export const TeamPage: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-4" aria-label="Founder social and contact links">
                   <a href={founder.social_links?.github?.trim() || 'https://github.com/miteshpipaliya'} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-lg border border-violet-500/25 bg-violet-500/10 px-3 py-2.5 text-xs font-semibold text-violet-200 hover:bg-violet-500/20"><Github className="h-4 w-4" /> GitHub Connect</a>
                   {founder.social_links?.instagram?.trim() ? (
-                    <a href={founder.social_links.instagram.startsWith('http') ? founder.social_links.instagram : `https://www.instagram.com/${`@${founder.social_links.instagram.split('/').filter(Boolean).pop()?.replace(/^@/, '') || ''}`}</a>
+                    <a href={founder.social_links.instagram.startsWith('http') ? founder.social_links.instagram : 'https://www.instagram.com/' + founder.social_links.instagram.replace(/^@/, '') + '/'} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-lg border border-violet-500/25 bg-violet-500/10 px-3 py-2.5 text-xs font-semibold text-violet-200 hover:bg-violet-500/20"><Instagram className="h-4 w-4" /> Instagram</a>
                   ) : (
                     <span className="flex items-center justify-center gap-2 rounded-lg border border-violet-500/10 px-3 py-2.5 text-xs text-slate-500"><Instagram className="h-4 w-4" /> Instagram not linked</span>
                   )}
