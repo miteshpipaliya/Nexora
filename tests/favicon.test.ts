@@ -21,6 +21,10 @@ describe('Official Brand Favicon & Web Manifest Asset Verification', () => {
       'favicon-16x16.png',
       'favicon-32x32.png',
       'favicon-48x48.png',
+      'nexora-phoenix-48.png',
+      'nexora-phoenix-96.png',
+      'nexora-phoenix-192.png',
+      'phoenix-icon.svg',
       'favicon-96x96.png',
       'favicon-144x144.png',
       'apple-touch-icon.png',
@@ -44,7 +48,7 @@ describe('Official Brand Favicon & Web Manifest Asset Verification', () => {
       { file: 'favicon-48x48.png', expectedSize: 48 },
       { file: 'favicon-96x96.png', expectedSize: 96 },
       { file: 'favicon-144x144.png', expectedSize: 144 },
-      { file: 'apple-touch-icon.png', expectedSize: 180 },
+      { file: 'apple-touch-icon.png', expectedSize: 192 },
       { file: 'icon-192.png', expectedSize: 192 },
       { file: 'icon-512.png', expectedSize: 512 },
       { file: 'icon-maskable-512.png', expectedSize: 512 }
@@ -71,13 +75,13 @@ describe('Official Brand Favicon & Web Manifest Asset Verification', () => {
   it('verifies index.html declares standard favicon tags and canonical domain', () => {
     const indexHtml = fs.readFileSync(path.resolve('index.html'), 'utf8');
 
-    expect(indexHtml).toContain("href='/favicon.ico'");
-    expect(indexHtml).toContain("href='/favicon-48x48.png'");
-    expect(indexHtml).toContain("href='/favicon-96x96.png'");
-    expect(indexHtml).toContain("href='/favicon-32x32.png'");
-    expect(indexHtml).toContain("href='/favicon-16x16.png'");
-    expect(indexHtml).toContain("href='/apple-touch-icon.png'");
-    expect(indexHtml).toContain("href='/manifest.webmanifest'");
+    expect(indexHtml).toContain('href="/favicon.ico?v=2"');
+    expect(indexHtml).toContain('href="/nexora-phoenix-48.png"');
+    expect(indexHtml).toContain('href="/nexora-phoenix-96.png"');
+    expect(indexHtml).toContain('href="/phoenix-icon.svg?v=2"');
+    expect(indexHtml).toContain('href="/favicon.ico?v=2"');
+    expect(indexHtml).toContain('href="/icon-192.png?v=2"');
+    expect(indexHtml).toContain('href="/manifest.webmanifest?v=2"');
     expect(indexHtml).toContain('<link rel="canonical" href="https://www.nexora-bvm.online/" />');
     expect(indexHtml).toContain("content='#05010F'");
   });
@@ -92,8 +96,8 @@ describe('Official Brand Favicon & Web Manifest Asset Verification', () => {
     expect(manifest.background_color).toBe('#05010F');
 
     const iconSrcs = manifest.icons.map((i: any) => i.src);
-    expect(iconSrcs).toContain('/icon-192.png');
-    expect(iconSrcs).toContain('/icon-512.png');
-    expect(iconSrcs).toContain('/icon-maskable-512.png');
+    expect(iconSrcs).toContain('/nexora-phoenix-192.png');
+    expect(iconSrcs).toContain('/phoenix-icon.svg?v=2');
+    expect(iconSrcs).not.toContain('/icon-maskable-512.png');
   });
 });
