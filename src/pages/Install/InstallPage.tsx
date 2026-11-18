@@ -1,22 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { Download, Smartphone, Share2, CheckCircle2, Globe2 } from 'lucide-react';
-import { isInstalledMobilePwa } from '../../pwa/mobilePwa';
+import { isInstalledMobilePwa, getMobileInstallPrompt, clearMobileInstallPrompt, type MobileInstallPrompt } from '../../pwa/mobilePwa';
 
-type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
+
 export const InstallPage: React.FC = () => {
-  const [promptEvent, setPromptEvent] = useState<InstallPromptEvent | null>(null);
+  const [promptEvent, setPromptEvent] = useState<MobileInstallPrompt | null>(() => getMobileInstallPrompt());
   const [installed, setInstalled] = useState(() => isInstalledMobilePwa());
   const [message, setMessage] = useState('');
   useEffect(() => {
-    const onPrompt = (event: Event) => { event.preventDefault(); setPromptEvent(event as InstallPromptEvent); };
+    const onPrompt = () => { setPromptEvent(getMobileInstallPrompt()); };
     const onInstalled = () => { setInstalled(true); setPromptEvent(null); };
-    window.addEventListener('beforeinstallprompt', onPrompt);
+    window.addEventListener('nexora-install-available', onPrompt);
     window.addEventListener('appinstalled', onInstalled);
-    return () => { window.removeEventListener('beforeinstallprompt', onPrompt); window.removeEventListener('appinstalled', onInstalled); };
+    return () => { window.removeEventListener('nexora-install-available', onPrompt); window.removeEventListener('appinstalled', onInstalled); };
   }, []);
   const installAndroid = async () => {
-    if (!promptEvent) { setMessage('Open NEXORA in Android Chrome, tap the browser menu, then select Install app or Add to Home screen.'); return; }
-    try { await promptEvent.prompt(); const result = await promptEvent.userChoice; setMessage(result.outcome === 'accepted' ? 'Installation accepted. Check your home screen.' : 'You can install later from the Chrome menu.'); setPromptEvent(null); }
+    if (!promptEvent) { setMessage('Your browser has not offered an automatic install prompt. Use its menu: Chrome or Brave → Install app / Add to Home screen; Firefox Android → Add to Home screen. On desktop, open this page on your phone.'); return; }
+    try { await promptEvent.prompt(); const result = await promptEvent.userChoice; setMessage(result.outcome === 'accepted' ? 'Installation accepted. Check your home screen.' : 'You can install later from the Chrome menu.'); clearMobileInstallPrompt(); setPromptEvent(null); }
     catch { setMessage('Use the browser menu and choose Install app or Add to Home screen.'); }
   };
   return <section className="min-h-[75vh] bg-[#08080D] px-4 py-14 text-slate-100">
@@ -30,9 +30,9 @@ export const InstallPage: React.FC = () => {
         <article className="rounded-2xl border border-violet-500/30 bg-[#151024] p-6">
           <Smartphone className="text-violet-300" size={28}/>
           <h2 className="mt-4 text-xl font-bold">Android</h2>
-          <p className="mt-2 text-sm text-slate-300">Install from Chrome. No APK download or external app store required.</p>
-          <button type="button" onClick={installAndroid} className="mt-6 w-full rounded-xl bg-violet-600 px-5 py-3 font-semibold text-white hover:bg-violet-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"><Download className="mr-2 inline-block" size={18}/>Install on Android</button>
-          <p className="mt-4 text-sm text-slate-400">If no prompt appears: Chrome menu (⋮) → Install app / Add to Home screen.</p>
+          <p className="mt-2 text-sm text-slate-300">Install from Chrome or Brave when supported. Firefox on Android can add a home-screen shortcut. No APK download required.</p>
+          <button type="button" onClick={installAndroid} className="mt-6 w-full rounded-xl bg-violet-600 px-5 py-3 font-semibold text-white hover:bg-violet-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"><Download className="mr-2 inline-block" size={18}/>{promptEvent ? 'Install NEXORA BVM' : 'Show Android install instructions'}</button>
+          <p className="mt-4 text-sm text-slate-400">Chrome / Brave: browser menu (⋮) → Install app or Add to Home screen. Firefox: browser menu → Add to Home screen. If the browser cannot offer installation, use Chrome on Android.</p>
         </article>
         <article className="rounded-2xl border border-violet-500/30 bg-[#151024] p-6">
           <Share2 className="text-violet-300" size={28}/>
