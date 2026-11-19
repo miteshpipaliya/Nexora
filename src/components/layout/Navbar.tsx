@@ -116,7 +116,7 @@ export const Navbar: React.FC = () => {
             <NotificationBell />
             <button
               type="button"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              onClick={() => setMobileMenuOpen(open => !open)}
               className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-violet-950/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
               aria-label={mobileMenuOpen ? 'Close Menu' : 'Open Menu'}
               aria-expanded={mobileMenuOpen}
@@ -135,6 +135,7 @@ export const Navbar: React.FC = () => {
               <Link
                 key={link.path}
                 to={link.path}
+                onClick={() => setMobileMenuOpen(false)}
                 className={`px-3 py-2 text-sm rounded-lg transition-colors ${
                   isActive(link.path)
                     ? 'text-white bg-violet-950/40 font-semibold border-l-2 border-violet-400'
@@ -155,6 +156,7 @@ export const Navbar: React.FC = () => {
                 </div>
                 <Link
                   to="/profile"
+                  onClick={() => setMobileMenuOpen(false)}
                   className="block w-full text-center py-2 px-4 text-xs font-semibold text-white bg-violet-600/30 border border-violet-500/40 rounded-lg"
                 >
                   Go to Student Profile
@@ -163,6 +165,7 @@ export const Navbar: React.FC = () => {
             ) : (
               <Link
                 to="/login"
+                onClick={() => setMobileMenuOpen(false)}
                 className="block w-full text-center py-2 px-4 text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-purple-600 rounded-lg shadow-lg"
               >
                 Sign In / Join NEXORA
