@@ -20,6 +20,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import { RegistrationRecord, UserProfile } from '../../types';
+import { PushNotificationControl } from '../../components/ui/PushNotificationControl';
 import { IndianPhoneInput } from '../../components/common/IndianPhoneInput';
 import { RegistrationTicket } from '../../components/common/RegistrationTicket';
 import {
@@ -162,6 +163,12 @@ export const ProfilePage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      <section className="rounded-xl border border-violet-500/20 bg-[#171426] p-5 space-y-3">
+        <h2 className="text-lg font-semibold text-white">Notification settings</h2>
+        <p className="text-sm text-slate-400">Control notifications for this browser or installed PWA.</p>
+        <PushNotificationControl profileMode />
+      </section>
 
       {saveSuccess && (
         <div className="p-4 bg-emerald-950/40 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-center gap-2">
