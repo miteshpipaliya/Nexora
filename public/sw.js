@@ -1,5 +1,5 @@
 // NEXORA mobile PWA: online-first, never cache account, registration, admin or payment data.
-const CACHE = 'nexora-mobile-offline-v6';
+const CACHE = 'nexora-mobile-offline-v7';
 const OFFLINE = '/offline.html';
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
@@ -52,6 +52,7 @@ self.addEventListener('push', event => {
     // Do not provide a separate badge image (Android may render it as
     // an additional, confusing symbol on the right or in the status bar).
     icon: '/pwa-phoenix-192.png',
+    badge: '/notification-badge-96.png',
     tag: String(data.broadcastId || 'nexora-broadcast'),
     data: { url }
   }));
