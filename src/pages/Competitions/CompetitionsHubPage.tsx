@@ -25,7 +25,10 @@ export const CompetitionsHubPage: React.FC = () => {
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    // Firestore may stall on mobile networks. Never leave the portfolio
+    // indefinitely stuck behind a loading spinner.
+    const timeout = window.setTimeout(() => setLoading(false), 12000);
+    return () => { window.clearTimeout(timeout); unsubscribe(); };
   }, []);
 
   const getEventIcon = (slug: string) => {
