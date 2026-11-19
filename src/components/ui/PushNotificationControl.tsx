@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 import { BellRing, BellOff, LoaderCircle } from 'lucide-react';
 import { auth } from '../../services/firebase';
@@ -97,8 +98,8 @@ export const PushNotificationControl: React.FC<{ profileMode?: boolean }> = ({ p
         <p className="text-sm text-rose-400">It is very important to get notifications for updates. You can enable them here anytime.</p>}
       {permission === 'denied' && profileMode &&
         <p className="text-sm text-rose-400">Notifications are blocked in browser settings. Allow them there first.</p>}
-      {showPrompt && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 p-5">
+      {showPrompt && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 p-5" style={{ position: 'fixed', inset: 0 }}>
           <div role="dialog" aria-modal="true" aria-label="NEXORA notification preference"
             className="w-full max-w-sm space-y-4 rounded-2xl border border-violet-500/40 bg-[#171426] p-6 text-white shadow-2xl">
             <h2 className="text-lg font-bold">Get NEXORA updates?</h2>
@@ -109,7 +110,8 @@ export const PushNotificationControl: React.FC<{ profileMode?: boolean }> = ({ p
             </div>
             {error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
