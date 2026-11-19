@@ -592,6 +592,16 @@ class NexoraDataService {
   }
 
   // 7. Update Student Profile
+  public applyServerSavedProfile(updates: Partial<UserProfile>): void {
+    const current = auth.currentUser;
+    if (!current) return;
+    this.currentUserCache = {
+      ...(this.currentUserCache || this.buildFallbackProfile(current)),
+      ...updates
+    };
+    this.notify();
+  }
+
   public async updateProfile(updates: Partial<UserProfile>): Promise<UserProfile> {
     const user = auth.currentUser;
     if (!user) throw new Error('Authentication required.');
