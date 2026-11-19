@@ -10,7 +10,7 @@ import { playNotificationSound } from '../../shared/lib/notificationSound';
 const SEEN_BROADCASTS_KEY = 'nexora_seen_broadcasts';
 const MAX_SEEN_CACHE = 200;
 const MAX_STACK = 3;
-const AUTO_DISMISS_MS = 10000;
+const AUTO_DISMISS_MS = 7000;
 const MAX_TOAST_AGE_MS = 24 * 60 * 60 * 1000; // Show missed broadcasts after reopening the PWA
 
 export function getSeenBroadcastIds(): Set<string> {
@@ -214,7 +214,7 @@ export const BroadcastToast: React.FC = () => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Tick timers for active toasts (pause on hover, Urgent is sticky)
+  // Auto-dismiss all toast priorities after seven seconds; messages remain in the bell.
   useEffect(() => {
     if (activeToasts.length === 0) return;
 
@@ -223,17 +223,6 @@ export const BroadcastToast: React.FC = () => {
       setActiveToasts(prev => {
         const updated: ToastItem[] = [];
         for (const item of prev) {
-          // Urgent is sticky until closed
-          if (item.notification.priority === 'Urgent') {
-            updated.push(item);
-            continue;
-          }
-
-          if (item.isPaused) {
-            updated.push(item);
-            continue;
-          }
-
           const elapsed = item.timerStart ? now - item.timerStart : 100;
           const remaining = item.remainingMs - elapsed;
           if (remaining <= 0) {
@@ -254,17 +243,11 @@ export const BroadcastToast: React.FC = () => {
   }, [activeToasts.length]);
 
   const handleMouseEnter = (id: string) => {
-    setActiveToasts(prev =>
-      prev.map(t => (t.notification.id === id ? { ...t, isPaused: true } : t))
-    );
+    // Viewing a toast must not extend its seven-second lifespan.
   };
 
   const handleMouseLeave = (id: string) => {
-    setActiveToasts(prev =>
-      prev.map(t =>
-        t.notification.id === id ? { ...t, isPaused: false, timerStart: Date.now() } : t
-      )
-    );
+    // Keep the original timer running.
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
