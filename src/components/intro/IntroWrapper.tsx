@@ -69,6 +69,7 @@ export const IntroWrapper: React.FC = () => {
   const handleComplete = useCallback(() => {
     markIntroCompleted();
     setShowIntro(false);
+    window.dispatchEvent(new Event('nexora:intro-complete'));
   }, []);
 
   useEffect(() => {
