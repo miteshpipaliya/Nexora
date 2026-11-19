@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { auth } from '../../services/firebase';
+import { dataService } from '../../services/dataService';
 import { NexoraLogo } from '../../components/ui/NexoraLogo';
 import { AcademicYear } from '../../types';
 import { IndianPhoneInput } from '../../components/common/IndianPhoneInput';
@@ -161,7 +162,7 @@ export const LoginPage: React.FC = () => {
         throw new Error(result.error || 'Failed to save academic profile.');
       }
       // Keep the authenticated profile in sync after the server write.
-      await updateProfile({
+      dataService.applyServerSavedProfile({
         college: academicData.college,
         branch: academicData.branch,
         academic_year: academicData.academic_year,
@@ -169,7 +170,7 @@ export const LoginPage: React.FC = () => {
         division: academicData.division.trim(),
         phone_number: academicData.phone_number?.trim() ? normalizeIndianMobile(academicData.phone_number) : '',
         is_profile_complete: true
-      }).catch(() => { /* server save already succeeded; do not block onboarding */ });
+      });
       setShowProfileCompleteModal(false);
       navigate('/', { replace: true });
     } catch (err: any) {
