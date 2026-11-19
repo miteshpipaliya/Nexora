@@ -99,8 +99,16 @@ service cloud.firestore {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
       allow create: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming(), userId);
-      allow update: if (isOwner(userId) && isValidUserProfile(incoming(), userId) && incoming().id == existing().id
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['id', 'email', 'is_admin', 'email_verified', 'created_at'])) || isAdmin();
+      // Legacy user documents may contain server-managed fields. Validate only
+      // the keys changed by the student rather than rejecting the entire document.
+      allow update: if (isOwner(userId)
+        && existing().id == userId
+        && incoming().id == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'full_name', 'phone', 'phone_number', 'college', 'branch',
+          'semester', 'academic_year', 'enrollment_number', 'division',
+          'avatar_url', 'bio', 'is_profile_complete', 'updated_at'
+        ])) || isAdmin();
       allow delete: if isAdmin();
     }
 
