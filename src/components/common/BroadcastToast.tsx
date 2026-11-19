@@ -67,6 +67,33 @@ export const BroadcastToast: React.FC = () => {
   const [activeToasts, setActiveToasts] = useState<ToastItem[]>([]);
   const isInitialSnapshotRef = useRef<boolean>(true);
   const touchStartXRef = useRef<number | null>(null);
+  // On desktop, hold announcements until three seconds after the cinematic
+  // fog intro has completely handed off to the homepage.
+  const [introDelayFinished, setIntroDelayFinished] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    const desktop = window.matchMedia('(min-width: 769px) and (pointer: fine)').matches;
+    if (!desktop) return true;
+    try { return sessionStorage.getItem('introPlayed') === 'true' && new URLSearchParams(location.search).get('intro') !== '1'; }
+    catch { return false; }
+  });
+  useEffect(() => {
+    if (introDelayFinished) return;
+    let timer: number | undefined;
+    const onIntroComplete = () => {
+      timer = window.setTimeout(() => setIntroDelayFinished(true), 3000);
+    };
+    window.addEventListener('nexora:intro-complete', onIntroComplete);
+    // Recover if the intro was skipped before this component mounted.
+    try {
+      if (sessionStorage.getItem('introPlayed') === 'true' &&
+          new URLSearchParams(location.search).get('intro') !== '1') onIntroComplete();
+    } catch { /* wait for intro completion */ }
+    return () => {
+      window.removeEventListener('nexora:intro-complete', onIntroComplete);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [introDelayFinished]);
+
 
   // Dismiss a specific toast and record seen everywhere
   const dismissToast = useCallback((id: string) => {
@@ -88,6 +115,7 @@ export const BroadcastToast: React.FC = () => {
 
   // Subscribe to published notifications
   useEffect(() => {
+    if (!introDelayFinished) return;
     const unsubscribe = dataService.subscribeNotifications('all', (allNotifs: InAppNotification[]) => {
       const seen = getSeenBroadcastIds();
       const now = Date.now();
@@ -199,7 +227,7 @@ export const BroadcastToast: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, introDelayFinished]);
 
   // Cross-tab synchronization via storage event
   useEffect(() => {
@@ -283,7 +311,7 @@ export const BroadcastToast: React.FC = () => {
       role="status"
       aria-live="polite"
       aria-label="Broadcast notifications"
-      className="fixed top-20 right-4 sm:top-auto sm:right-6 sm:bottom-6 z-50 flex flex-col gap-3 pointer-events-none max-w-sm sm:max-w-md w-full px-2 sm:px-0"
+      className="fixed top-20 right-4 sm:top-[38vh] sm:left-[38.3vw] sm:right-auto sm:bottom-auto z-50 flex flex-col gap-3 pointer-events-none w-[calc(100%-2rem)] max-w-sm sm:w-[min(360px,calc(100vw-40px))] sm:max-w-none px-2 sm:px-0"
     >
       {activeToasts.map(({ notification, remainingMs, isPaused }) => {
         const isUrgent = notification.priority === 'Urgent';
