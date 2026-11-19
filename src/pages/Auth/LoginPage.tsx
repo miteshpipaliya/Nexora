@@ -135,6 +135,7 @@ export const LoginPage: React.FC = () => {
       }
     }
 
+    setErrorDetails(null);
     setSavingProfile(true);
     try {
       await updateProfile({
@@ -147,7 +148,7 @@ export const LoginPage: React.FC = () => {
         is_profile_complete: true
       });
       setShowProfileCompleteModal(false);
-      navigate(redirectPath);
+      navigate('/', { replace: true });
     } catch (err: any) {
       setErrorDetails({
         message: err.message || 'Failed to save academic profile.'
@@ -411,6 +412,7 @@ export const LoginPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleSaveAcademicProfile} className="space-y-4">
+              {errorDetails && <p role="alert" className="rounded-lg border border-red-500/40 bg-red-950/50 p-3 text-xs text-red-200">{errorDetails.message}</p>}
               <div>
                 <label className="block text-xs text-slate-300 mb-1">College / Institution</label>
                 <select
