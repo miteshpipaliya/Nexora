@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 import { BellRing, BellOff, LoaderCircle } from 'lucide-react';
@@ -28,6 +28,7 @@ export const PushNotificationControl: React.FC<{ profileMode?: boolean }> = ({ p
   const [enabled, setEnabled] = useState(false);
   const [choice, setChoice] = useState<Choice>('unset');
   const [busy, setBusy] = useState(false);
+  const operationInProgress = useRef(false);
   const [checking, setChecking] = useState(true);
   const [showPrompt, setShowPrompt] = useState(false);
   const [error, setError] = useState('');
@@ -41,8 +42,10 @@ export const PushNotificationControl: React.FC<{ profileMode?: boolean }> = ({ p
       try {
         const [accountChoice, active] = await Promise.all([preference('GET'), getNexoraPushStatus()]);
         if (!mounted) return;
-        setChoice(accountChoice);
-        setEnabled(active);
+        if (!operationInProgress.current) {
+          setChoice(accountChoice);
+          setEnabled(active);
+        }
         if (!profileMode && location.pathname === '/' && accountChoice === 'unset' && supported && !promptedAccounts.has(user.id)) {
           promptedAccounts.add(user.id);
           setShowPrompt(true);
@@ -52,14 +55,15 @@ export const PushNotificationControl: React.FC<{ profileMode?: boolean }> = ({ p
       } finally { if (mounted) setChecking(false); }
     };
     void refresh();
-    const onFocus = () => { if (!busy) void getNexoraPushStatus().then(v => { if (mounted) setEnabled(v); }); };
+    const onFocus = () => { if (!operationInProgress.current) void getNexoraPushStatus().then(v => { if (mounted && !operationInProgress.current) setEnabled(v); }).catch(() => {}); };
     window.addEventListener('focus', onFocus);
     return () => { mounted = false; window.removeEventListener('focus', onFocus); };
   }, [user?.id, profileMode, location.pathname]);
 
   if (!user) return null;
   const update = async (allow: boolean) => {
-    if (busy) return;
+    if (operationInProgress.current) return;
+    operationInProgress.current = true;
     const previousEnabled = enabled;
     const previousChoice = choice;
     // Optimistic UI: give instant feedback while the actual device registration
@@ -89,7 +93,7 @@ export const PushNotificationControl: React.FC<{ profileMode?: boolean }> = ({ p
         setEnabled(false);
         setShowPrompt(false);
       }
-    } finally { setBusy(false); }
+    } finally { operationInProgress.current = false; setBusy(false); }
   };
   return (
     <div className="flex flex-col gap-1">
