@@ -52,33 +52,41 @@ export const PushNotificationControl: React.FC<{ profileMode?: boolean }> = ({ p
       } finally { if (mounted) setChecking(false); }
     };
     void refresh();
-    const onFocus = () => { void getNexoraPushStatus().then(v => { if (mounted) setEnabled(v); }); };
+    const onFocus = () => { if (!busy) void getNexoraPushStatus().then(v => { if (mounted) setEnabled(v); }); };
     window.addEventListener('focus', onFocus);
     return () => { mounted = false; window.removeEventListener('focus', onFocus); };
   }, [user?.id, profileMode, location.pathname]);
 
   if (!user) return null;
   const update = async (allow: boolean) => {
+    if (busy) return;
+    const previousEnabled = enabled;
+    const previousChoice = choice;
+    // Optimistic UI: give instant feedback while the actual device registration
+    // and account preference are persisted. Roll back on any failure.
+    setEnabled(allow);
+    setChoice(allow ? 'enabled' : 'declined');
     setBusy(true);
     setError('');
     try {
       if (allow) {
         await enableNexoraPush(); // Browser permission only after an explicit tap
         await preference('PUT', 'enabled');
-        setChoice('enabled');
-        setEnabled(true);
+        window.localStorage.setItem('nexora-push-enabled', 'yes');
       } else {
-        if (enabled) await disableNexoraPush();
+        if (previousEnabled) await disableNexoraPush();
         await preference('PUT', 'declined');
-        setChoice('declined');
-        setEnabled(false);
+        window.localStorage.removeItem('nexora-push-enabled');
       }
       setShowPrompt(false);
     } catch (e) {
+      setEnabled(previousEnabled);
+      setChoice(previousChoice);
       setError(e instanceof Error ? e.message : 'Could not change notification settings');
       if (allow && Notification.permission === 'denied') {
         await preference('PUT', 'declined').catch(() => {});
         setChoice('declined');
+        setEnabled(false);
         setShowPrompt(false);
       }
     } finally { setBusy(false); }
@@ -90,7 +98,7 @@ export const PushNotificationControl: React.FC<{ profileMode?: boolean }> = ({ p
         className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-60 ${enabled
           ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-300'
           : 'border-rose-500/60 bg-rose-500/15 text-rose-300'}`}>
-        {busy || checking ? <LoaderCircle size={15} className="animate-spin" /> : enabled ? <BellRing size={15} /> : <BellOff size={15} />}
+        {enabled ? <BellRing size={15} /> : <BellOff size={15} />}
         {enabled ? 'Notifications On' : 'Notifications Off'}
       </button>
       {error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
