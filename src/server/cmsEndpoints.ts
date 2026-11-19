@@ -498,6 +498,61 @@ apiRouter.post('/admin/competitions', requireElevatedAdmin, async (req: Request,
     try { return (await adminAuth.verifyIdToken(match[1], true)).uid as string; }
     catch { return null; }
   };
+  // Academic onboarding uses a verified Firebase ID token and the Admin SDK.
+  // This avoids stale deployed Firestore client rules blocking new students,
+  // without granting the browser elevated database permissions.
+  apiRouter.post('/profile/academic', async (req: Request, res: Response) => {
+    const uid = await verifiedPushUser(req);
+    if (!uid) { res.status(401).json({ error: 'Sign in again to save your profile.' }); return; }
+    const input = req.body || {};
+    const allowed = ['college', 'branch', 'academic_year', 'enrollment_number', 'division', 'phone_number'];
+    if (Object.keys(input).some(key => !allowed.includes(key))) {
+      res.status(400).json({ error: 'Unsupported profile field.' }); return;
+    }
+    const value = (key: string, max: number) => {
+      const raw = input[key];
+      return typeof raw === 'string' && raw.length <= max ? raw.trim() : null;
+    };
+    const college = value('college', 150);
+    const branch = value('branch', 120);
+    const academicYear = value('academic_year', 40);
+    const enrollment = value('enrollment_number', 60);
+    const division = value('division', 60);
+    const phone = value('phone_number', 20);
+    if (!college || !branch || !academicYear || !enrollment || division === null || phone === null ||
+        (phone !== '' && !/^\\+?[0-9]{10,15}$/.test(phone))) {
+      res.status(400).json({ error: 'Check your academic details and mobile number.' }); return;
+    }
+    try {
+      const db = await getAdminFirestore();
+      const adminAuth = await getAdminAuth();
+      if (!db || !adminAuth) { res.status(503).json({ error: 'Profile service unavailable.' }); return; }
+      const account = await adminAuth.getUser(uid);
+      const profile = {
+        college, branch, academic_year: academicYear,
+        enrollment_number: enrollment.toUpperCase(), division, phone_number: phone,
+        is_profile_complete: true, updated_at: new Date().toISOString()
+      };
+      const ref = db.collection('users').doc(uid);
+      await db.runTransaction(async (tx: any) => {
+        const existing = await tx.get(ref);
+        if (existing.exists) {
+          tx.update(ref, profile);
+        } else {
+          tx.create(ref, {
+            id: uid, email: account.email || '', full_name: account.displayName || 'NEXORA Member',
+            created_at: new Date().toISOString(), ...profile
+          });
+        }
+      });
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ success: true });
+    } catch (error) {
+      console.error('[ACADEMIC PROFILE SAVE]', error);
+      res.status(503).json({ error: 'Unable to save your profile right now. Please retry.' });
+    }
+  });
+
   // Account-level preference: browsers still require permission separately on
   // each device, but we never re-prompt a declined account automatically.
   apiRouter.get('/push/preference', async (req: Request, res: Response) => {
