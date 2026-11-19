@@ -16,6 +16,7 @@ import {
   Globe
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { auth } from '../../services/firebase';
 import { NexoraLogo } from '../../components/ui/NexoraLogo';
 import { AcademicYear } from '../../types';
 import { IndianPhoneInput } from '../../components/common/IndianPhoneInput';
