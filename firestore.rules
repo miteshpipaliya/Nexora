@@ -40,7 +40,8 @@ service cloud.firestore {
       return data.keys().hasOnly([
         'id', 'email', 'full_name', 'phone', 'college', 'branch', 
         'semester', 'academic_year', 'created_at', 'updated_at', 
-        'avatar_url', 'bio'
+        'avatar_url', 'bio', 'enrollment_number', 'division',
+        'phone_number', 'is_profile_complete', 'email_verified', 'is_admin'
       ]) &&
       data.id == userId &&
       (!('email' in data) || data.email == request.auth.token.email);
@@ -98,7 +99,8 @@ service cloud.firestore {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
       allow create: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming(), userId);
-      allow update: if (isOwner(userId) && isValidUserProfile(incoming(), userId) && incoming().id == existing().id) || isAdmin();
+      allow update: if (isOwner(userId) && isValidUserProfile(incoming(), userId) && incoming().id == existing().id
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['id', 'email', 'is_admin', 'email_verified', 'created_at'])) || isAdmin();
       allow delete: if isAdmin();
     }
 
