@@ -138,6 +138,28 @@ export const LoginPage: React.FC = () => {
     setErrorDetails(null);
     setSavingProfile(true);
     try {
+      const current = auth.currentUser;
+      if (!current) throw new Error('Please sign in again.');
+      const response = await fetch('/api/profile/academic', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await current.getIdToken()}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          college: academicData.college,
+          branch: academicData.branch,
+          academic_year: academicData.academic_year,
+          enrollment_number: academicData.enrollment_number.trim().toUpperCase(),
+          division: academicData.division.trim(),
+          phone_number: academicData.phone_number?.trim() ? normalizeIndianMobile(academicData.phone_number) : ''
+        })
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || 'Failed to save academic profile.');
+      }
+      // Keep the authenticated profile in sync after the server write.
       await updateProfile({
         college: academicData.college,
         branch: academicData.branch,
@@ -146,7 +168,7 @@ export const LoginPage: React.FC = () => {
         division: academicData.division.trim(),
         phone_number: academicData.phone_number?.trim() ? normalizeIndianMobile(academicData.phone_number) : '',
         is_profile_complete: true
-      });
+      }).catch(() => { /* server save already succeeded; do not block onboarding */ });
       setShowProfileCompleteModal(false);
       navigate('/', { replace: true });
     } catch (err: any) {
