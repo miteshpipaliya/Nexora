@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { BellRing, BellOff, LoaderCircle } from 'lucide-react';
 import { auth } from '../../services/firebase';
 import { enableNexoraPush, disableNexoraPush, getNexoraPushStatus } from '../../services/pushNotifications';
@@ -22,6 +23,7 @@ async function preference(method: 'GET' | 'PUT', choice?: Choice): Promise<Choic
 
 export const PushNotificationControl: React.FC<{ profileMode?: boolean }> = ({ profileMode = false }) => {
   const { user } = useAuth();
+  const location = useLocation();
   const [enabled, setEnabled] = useState(false);
   const [choice, setChoice] = useState<Choice>('unset');
   const [busy, setBusy] = useState(false);
@@ -40,7 +42,7 @@ export const PushNotificationControl: React.FC<{ profileMode?: boolean }> = ({ p
         if (!mounted) return;
         setChoice(accountChoice);
         setEnabled(active);
-        if (!profileMode && accountChoice === 'unset' && supported && !promptedAccounts.has(user.id)) {
+        if (!profileMode && location.pathname === '/' && accountChoice === 'unset' && supported && !promptedAccounts.has(user.id)) {
           promptedAccounts.add(user.id);
           setShowPrompt(true);
         }
@@ -52,7 +54,7 @@ export const PushNotificationControl: React.FC<{ profileMode?: boolean }> = ({ p
     const onFocus = () => { void getNexoraPushStatus().then(v => { if (mounted) setEnabled(v); }); };
     window.addEventListener('focus', onFocus);
     return () => { mounted = false; window.removeEventListener('focus', onFocus); };
-  }, [user?.id, profileMode]);
+  }, [user?.id, profileMode, location.pathname]);
 
   if (!user) return null;
   const update = async (allow: boolean) => {
