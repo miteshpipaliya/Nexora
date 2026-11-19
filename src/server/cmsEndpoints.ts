@@ -498,6 +498,32 @@ apiRouter.post('/admin/competitions', requireElevatedAdmin, async (req: Request,
     try { return (await adminAuth.verifyIdToken(match[1], true)).uid as string; }
     catch { return null; }
   };
+  // Account-level preference: browsers still require permission separately on
+  // each device, but we never re-prompt a declined account automatically.
+  apiRouter.get('/push/preference', async (req: Request, res: Response) => {
+    const uid = await verifiedPushUser(req);
+    if (!uid) { res.status(401).json({ error: 'Sign in required' }); return; }
+    try {
+      const db = await getAdminFirestore();
+      if (!db) { res.status(503).json({ error: 'Unavailable' }); return; }
+      const doc = await db.collection('pushPreferences').doc(uid).get();
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ choice: doc.data()?.choice || 'unset' });
+    } catch { res.status(503).json({ error: 'Unavailable' }); }
+  });
+  apiRouter.put('/push/preference', async (req: Request, res: Response) => {
+    const uid = await verifiedPushUser(req);
+    if (!uid) { res.status(401).json({ error: 'Sign in required' }); return; }
+    const choice = req.body?.choice;
+    if (!['enabled', 'declined'].includes(choice)) { res.status(400).json({ error: 'Invalid choice' }); return; }
+    try {
+      const db = await getAdminFirestore();
+      if (!db) { res.status(503).json({ error: 'Unavailable' }); return; }
+      await db.collection('pushPreferences').doc(uid).set({ choice, updatedAt: new Date().toISOString() });
+      res.json({ success: true });
+    } catch { res.status(503).json({ error: 'Unavailable' }); }
+  });
+
   apiRouter.post('/push/subscriptions', async (req: Request, res: Response) => {
     const uid = await verifiedPushUser(req);
     if (!uid) { res.status(401).json({ error: 'Sign in required' }); return; }
